@@ -144,25 +144,50 @@ function Register-ResumeAfterReboot {
     }
 }
 
+function Test-DistroReady {
+    param([int]$Retries = 10)
+    # A freshly registered rootfs can take a few seconds to accept commands.
+    for ($i = 0; $i -lt $Retries; $i++) {
+        & wsl -d $Distro -u root -- bash -c "exit 0" *> $null
+        if ($LASTEXITCODE -eq 0) { return $true }
+        Start-Sleep -Seconds 2
+    }
+    return $false
+}
+
 function Install-DistroUnattended {
-    # Silent provisioning: install the distro without OOBE, create a 'qwen'
+    # Silent provisioning: register the distro without OOBE, create a 'qwen'
     # user with passwordless sudo, and make it the default. Returns $true on success.
     Write-Host "Step 1/3: Downloading and registering $Distro (several hundred MB - progress below)..."
     $code = Invoke-Streamed -Activity "the $Distro download" -FilePath "wsl" -Arguments "--install -d $Distro --no-launch"
     if ($code -ne 0) { return $false }
-    # The store launcher for "Ubuntu-24.04" is "ubuntu2404.exe".
+
+    Write-Host "Step 2/3: Unpacking the Linux filesystem (usually 1-2 minutes, produces little output)..."
+    # Older WSL builds only unpack the rootfs when the store launcher
+    # ("ubuntu2404.exe") runs. WSL 2.4+ unpacks during '--install --no-launch'
+    # and often does not put that launcher on PATH at all, so treat it as an
+    # optimization: what decides success is whether root commands work after.
     $launcherName = (($Distro -replace '[-.]', '').ToLower()) + ".exe"
     $launcher = Get-Command $launcherName -ErrorAction SilentlyContinue
-    if (-not $launcher) {
-        Write-Host "Could not find the $launcherName store launcher for silent setup." -ForegroundColor Yellow
+    if ($launcher) {
+        $code = Invoke-Streamed -Activity "the $Distro first-time setup" -FilePath $launcher.Source -Arguments "install --root"
+        if ($code -ne 0) { Write-Host "   $launcherName exited with $code - checking whether the distro works anyway..." -ForegroundColor Yellow }
+    } else {
+        Write-Host "   ($launcherName is not on PATH - this WSL version does not need it.)"
+    }
+    if (-not (Test-DistroReady)) {
+        Write-Host "$Distro is registered but not accepting commands yet." -ForegroundColor Yellow
         return $false
     }
-    Write-Host "Step 2/3: Unpacking the Linux filesystem (usually 1-2 minutes, produces little output)..."
-    $code = Invoke-Streamed -Activity "the $Distro first-time setup" -FilePath $launcher.Source -Arguments "install --root"
-    if ($code -ne 0) { return $false }
+
     Write-Host "Step 3/3: Creating the 'qwen' Linux user account..."
     & wsl -d $Distro -u root -- bash -c "id qwen >/dev/null 2>&1 || useradd -m -s /bin/bash qwen; usermod -aG sudo qwen; echo 'qwen ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/qwen; chmod 440 /etc/sudoers.d/qwen; printf '[user]\ndefault=qwen\n' > /etc/wsl.conf" *>&1 | Out-Host
-    if ($LASTEXITCODE -ne 0) { return $false }
+    if ($LASTEXITCODE -ne 0) {
+        # A distro that runs as root still works end to end; don't fail the
+        # whole install (and re-trigger a pointless OOBE) over the user account.
+        Write-Host "WARNING: could not create the 'qwen' user - continuing with root as the default user." -ForegroundColor Yellow
+        return $true
+    }
     & wsl --terminate $Distro *> $null
     Write-Host "User account ready."
     return $true
@@ -278,7 +303,11 @@ if ($distros -notcontains $Distro) {
         Write-Host "Silent install unavailable - falling back to the interactive Ubuntu setup." -ForegroundColor Yellow
         Write-Host "A window will open asking you to create a Linux username and password;" -ForegroundColor Yellow
         Write-Host "type 'exit' in the Linux shell when done." -ForegroundColor Yellow
-        Start-Process wsl -ArgumentList "--install -d $Distro" -Wait
+        # If it is already registered, '--install' is a no-op - opening a shell
+        # is what actually runs the first-time setup.
+        $distros = (& wsl -l -q) -replace "`0", "" | Where-Object { $_ -ne "" }
+        if ($distros -contains $Distro) { Start-Process wsl -ArgumentList "-d $Distro" -Wait }
+        else { Start-Process wsl -ArgumentList "--install -d $Distro" -Wait }
         $distros = (& wsl -l -q) -replace "`0", "" | Where-Object { $_ -ne "" }
         if ($distros -notcontains $Distro) { Fail "Failed to install $Distro. Run 'wsl --install -d $Distro' manually, then re-run this script." }
     }
