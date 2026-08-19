@@ -403,18 +403,24 @@ $xaml = @'
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="TabItem">
+            <!-- Tabs sit straight on the window background, so an idle tab needs
+                 a genuinely light foreground: #8A93A5 measured ~6:1 here, which
+                 is thin for 13px text beside hairline icon glyphs. -->
             <Border x:Name="Bd" Background="Transparent" BorderThickness="0,0,0,2" BorderBrush="Transparent"
-                    Padding="16,8" Margin="0,0,4,0">
+                    CornerRadius="8,8,0,0" Padding="16,8" Margin="0,0,4,0">
               <ContentPresenter x:Name="Content" ContentSource="Header"
-                                TextElement.Foreground="#8A93A5" TextElement.FontSize="13"/>
+                                TextElement.Foreground="#AAB3C2" TextElement.FontSize="13"/>
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="Content" Property="TextElement.Foreground" Value="#C9D1DE"/>
+                <Setter TargetName="Bd" Property="Background" Value="#171B24"/>
+                <Setter TargetName="Content" Property="TextElement.Foreground" Value="#E6EAF1"/>
               </Trigger>
+              <!-- After the hover trigger on purpose: selected wins when both apply. -->
               <Trigger Property="IsSelected" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="#1A1F29"/>
                 <Setter TargetName="Bd" Property="BorderBrush" Value="#76B900"/>
-                <Setter TargetName="Content" Property="TextElement.Foreground" Value="#EDF0F5"/>
+                <Setter TargetName="Content" Property="TextElement.Foreground" Value="#F4F7FB"/>
                 <Setter TargetName="Content" Property="TextElement.FontWeight" Value="SemiBold"/>
               </Trigger>
             </ControlTemplate.Triggers>
