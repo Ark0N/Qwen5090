@@ -454,44 +454,58 @@ $xaml = @'
           <RowDefinition Height="Auto"/>
           <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
+        <!-- Buttons are docked BEFORE the title so a DockPanel reserves their width
+             first: when the window is narrow the title ellipsizes instead of the
+             action buttons silently clipping off the right edge. -->
         <DockPanel Grid.Row="0" LastChildFill="False" Margin="0,0,0,10">
-          <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
-            <Border Background="#76B900" CornerRadius="7" Width="32" Height="32" VerticalAlignment="Center">
-              <TextBlock Text="Q" FontSize="18" FontWeight="Bold" Foreground="#0E1206"
-                         HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-1,0,0"/>
-            </Border>
-            <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
-              <TextBlock Text="Qwen 5090" FontSize="16" FontWeight="SemiBold" Foreground="#EDF0F5"/>
-              <TextBlock Text="Local AI control panel for your RTX 5090" FontSize="11" Foreground="#7C8494"/>
-            </StackPanel>
-          </StackPanel>
           <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+            <TextBlock x:Name="TxtBusy" Text="" Visibility="Collapsed" FontFamily="Consolas" FontSize="14" FontWeight="Bold"
+                       Foreground="#76B900" VerticalAlignment="Center" Width="16" TextAlignment="Center" Margin="0,0,10,0"
+                       ToolTip="Working - progress streams in the tab below"/>
             <Button x:Name="BtnRefresh" Content="Refresh" Padding="12,6"/>
             <Button x:Name="BtnLogs" Content="Open logs" Padding="12,6"/>
             <Button x:Name="BtnDiag" Content="Collect diagnostics" Padding="12,6" Margin="0"/>
           </StackPanel>
+          <!-- Inner DockPanel (not a horizontal StackPanel) so the text gets a
+               finite width and TextTrimming can actually take effect. -->
+          <DockPanel DockPanel.Dock="Left">
+            <Border DockPanel.Dock="Left" Background="#76B900" CornerRadius="7" Width="32" Height="32" VerticalAlignment="Center">
+              <TextBlock Text="Q" FontSize="18" FontWeight="Bold" Foreground="#0E1206"
+                         HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-1,0,0"/>
+            </Border>
+            <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+              <TextBlock Text="Qwen 5090" FontSize="16" FontWeight="SemiBold" Foreground="#EDF0F5"
+                         TextTrimming="CharacterEllipsis"/>
+              <TextBlock Text="Local AI control panel for your RTX 5090" FontSize="11" Foreground="#7C8494"
+                         TextTrimming="CharacterEllipsis"/>
+            </StackPanel>
+          </DockPanel>
         </DockPanel>
         <WrapPanel Grid.Row="1">
           <Border Style="{StaticResource StatusPill}">
             <StackPanel Orientation="Horizontal">
+              <Ellipse x:Name="DotGpu" Width="8" Height="8" Fill="#4A5261" VerticalAlignment="Center" Margin="0,0,7,0"/>
               <TextBlock Text="GPU" Style="{StaticResource PillLabel}"/>
               <TextBlock x:Name="TxtGpuS" Text="checking..." FontSize="12" Foreground="#C9D1DE" VerticalAlignment="Center"/>
             </StackPanel>
           </Border>
           <Border Style="{StaticResource StatusPill}">
             <StackPanel Orientation="Horizontal">
+              <Ellipse x:Name="DotWsl" Width="8" Height="8" Fill="#4A5261" VerticalAlignment="Center" Margin="0,0,7,0"/>
               <TextBlock Text="WSL" Style="{StaticResource PillLabel}"/>
               <TextBlock x:Name="TxtWslS" Text="checking..." FontSize="12" Foreground="#C9D1DE" VerticalAlignment="Center"/>
             </StackPanel>
           </Border>
           <Border Style="{StaticResource StatusPill}">
             <StackPanel Orientation="Horizontal">
+              <Ellipse x:Name="DotModel" Width="8" Height="8" Fill="#4A5261" VerticalAlignment="Center" Margin="0,0,7,0"/>
               <TextBlock Text="MODEL" Style="{StaticResource PillLabel}"/>
               <TextBlock x:Name="TxtModelS" Text="unknown" FontSize="12" Foreground="#C9D1DE" VerticalAlignment="Center"/>
             </StackPanel>
           </Border>
           <Border Style="{StaticResource StatusPill}" Margin="0,0,0,4">
             <StackPanel Orientation="Horizontal">
+              <Ellipse x:Name="DotServer" Width="8" Height="8" Fill="#4A5261" VerticalAlignment="Center" Margin="0,0,7,0"/>
               <TextBlock Text="SERVER" Style="{StaticResource PillLabel}"/>
               <TextBlock x:Name="TxtServerS" Text="stopped" FontSize="12" Foreground="#8A93A5" VerticalAlignment="Center"/>
             </StackPanel>
@@ -502,7 +516,14 @@ $xaml = @'
 
     <TabControl Grid.Row="1">
 
-      <TabItem Header="Setup">
+      <TabItem>
+        <TabItem.Header>
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Style="{x:Null}" Text="&#xE713;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                       FontSize="14" VerticalAlignment="Center" Margin="0,0,7,0"/>
+            <TextBlock Style="{x:Null}" Text="Setup" VerticalAlignment="Center"/>
+          </StackPanel>
+        </TabItem.Header>
         <Grid>
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -522,7 +543,14 @@ $xaml = @'
         </Grid>
       </TabItem>
 
-      <TabItem Header="Server">
+      <TabItem>
+        <TabItem.Header>
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Style="{x:Null}" Text="&#xE768;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                       FontSize="14" VerticalAlignment="Center" Margin="0,0,7,0"/>
+            <TextBlock Style="{x:Null}" Text="Server" VerticalAlignment="Center"/>
+          </StackPanel>
+        </TabItem.Header>
         <Grid>
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -548,7 +576,14 @@ $xaml = @'
         </Grid>
       </TabItem>
 
-      <TabItem Header="Chat">
+      <TabItem>
+        <TabItem.Header>
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Style="{x:Null}" Text="&#xE8BD;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                       FontSize="14" VerticalAlignment="Center" Margin="0,0,7,0"/>
+            <TextBlock Style="{x:Null}" Text="Chat" VerticalAlignment="Center"/>
+          </StackPanel>
+        </TabItem.Header>
         <Grid>
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -573,7 +608,7 @@ $xaml = @'
           </DockPanel>
           <Border Grid.Row="1" Background="#11141B" BorderBrush="#232834" BorderThickness="1" CornerRadius="8" Padding="8,6">
             <RichTextBox x:Name="RtbChat" IsReadOnly="True" VerticalScrollBarVisibility="Auto"
-                         FontFamily="Cascadia Mono, Consolas" FontSize="13"
+                         FontFamily="Segoe UI" FontSize="13"
                          Background="Transparent" Foreground="#E6E9EF" BorderThickness="0"/>
           </Border>
           <Grid Grid.Row="2" Margin="0,10,0,0">
@@ -596,6 +631,7 @@ $xaml = @'
 
 $Window = [Windows.Markup.XamlReader]::Parse($xaml)
 foreach ($name in 'TxtGpuS','TxtWslS','TxtModelS','TxtServerS','BtnRefresh','BtnLogs','BtnDiag',
+                  'DotGpu','DotWsl','DotModel','DotServer','TxtBusy',
                   'BtnInstall','BtnCleanup','ChkSkipDownload','TxtSetupLog',
                   'BtnStart','BtnStop','TxtPort','CmbCtx','ChkMtp','ChkShare','TxtServerLog',
                   'ChkThink','CmbEffort','BtnClear','RtbChat','TxtInput','BtnSend') {
@@ -620,11 +656,12 @@ $script:Http = New-Object System.Net.Http.HttpClient
 $script:Http.Timeout = [TimeSpan]::FromSeconds(3)
 $script:PingTask = $null
 $script:TickCount = 0
+$script:SpinnerFrames = @('|', '/', '-', '\')
 
 $doc = New-Object Windows.Documents.FlowDocument
-$script:ChatPara = New-Object Windows.Documents.Paragraph
-$doc.Blocks.Add($script:ChatPara)
+$doc.PagePadding = New-Object Windows.Thickness(4)
 $RtbChat.Document = $doc
+$script:ChatPara = $null   # created per message by New-ChatParagraph
 
 # ------------------------------------------------------------------ helpers
 function Add-Tail([string]$path, $box) {
@@ -655,9 +692,45 @@ function Add-Log($box, [string]$msg) {
     $box.ScrollToEnd()
 }
 
+function New-Brush([string]$color) {
+    New-Object Windows.Media.SolidColorBrush([Windows.Media.ColorConverter]::ConvertFromString($color))
+}
+
+function Set-Dot($dot, [string]$color) { $dot.Fill = New-Brush $color }
+
+function New-ChatParagraph([string]$kind) {
+    # One paragraph per message: 'user' and 'assistant' render as bubbles,
+    # 'info' as plain dim text. Streaming runs append to the current paragraph.
+    $p = New-Object Windows.Documents.Paragraph
+    $p.Padding = New-Object Windows.Thickness(10, 7, 10, 7)
+    $p.Margin = New-Object Windows.Thickness(0, 3, 0, 3)
+    switch ($kind) {
+        'user' {
+            $p.Background = New-Brush "#FF1C2712"
+            $p.BorderBrush = New-Brush "#FF2E4218"
+            $p.BorderThickness = New-Object Windows.Thickness(1)
+            $p.Margin = New-Object Windows.Thickness(60, 3, 0, 3)
+        }
+        'assistant' {
+            $p.Background = New-Brush "#FF181D26"
+            $p.BorderBrush = New-Brush "#FF242B38"
+            $p.BorderThickness = New-Object Windows.Thickness(1)
+            $p.Margin = New-Object Windows.Thickness(0, 3, 60, 3)
+        }
+        'info' {
+            $p.Padding = New-Object Windows.Thickness(2)
+        }
+    }
+    $RtbChat.Document.Blocks.Add($p)
+    $script:ChatPara = $p
+    $RtbChat.ScrollToEnd()
+    return $p
+}
+
 function Add-ChatRun([string]$text, [string]$color, [switch]$Bold, [switch]$Italic) {
+    if (-not $script:ChatPara) { $null = New-ChatParagraph 'info' }
     $run = New-Object Windows.Documents.Run($text)
-    $run.Foreground = New-Object Windows.Media.SolidColorBrush([Windows.Media.ColorConverter]::ConvertFromString($color))
+    $run.Foreground = New-Brush $color
     if ($Bold) { $run.FontWeight = 'Bold' }
     if ($Italic) { $run.FontStyle = 'Italic' }
     $script:ChatPara.Inlines.Add($run)
@@ -671,25 +744,29 @@ function Get-WslDistros {
 function Update-Status {
     try {
         $g = (& nvidia-smi --query-gpu=name,driver_version --format=csv,noheader 2>$null) -split ',\s*'
-        $TxtGpuS.Text = if ($g.Count -ge 2) { "$($g[0].Trim()) (driver $($g[1].Trim()))" } else { "no NVIDIA GPU?" }
-    } catch { $TxtGpuS.Text = "driver missing" }
+        if ($g.Count -ge 2) { $TxtGpuS.Text = "$($g[0].Trim()) (driver $($g[1].Trim()))"; Set-Dot $DotGpu "#FF76B900" }
+        else { $TxtGpuS.Text = "no NVIDIA GPU?"; Set-Dot $DotGpu "#FFFF6B6B" }
+    } catch { $TxtGpuS.Text = "driver missing"; Set-Dot $DotGpu "#FFFF6B6B" }
 
     $distros = Get-WslDistros
     if ($distros -contains $Distro) {
         & wsl -d $Distro -- bash -c "test -x `$HOME/.qwen5090/venv/bin/vllm" 2>$null
-        $TxtWslS.Text = if ($LASTEXITCODE -eq 0) { "$Distro + vLLM ready" } else { "$Distro (vLLM not installed)" }
+        if ($LASTEXITCODE -eq 0) { $TxtWslS.Text = "$Distro + vLLM ready"; Set-Dot $DotWsl "#FF76B900" }
+        else { $TxtWslS.Text = "$Distro (vLLM not installed)"; Set-Dot $DotWsl "#FFE0B84C" }
         $cachePath = "`$HOME/.cache/huggingface/hub/models--$($script:ModelId -replace '/','--')"
         & wsl -d $Distro -- bash -c "test -d $cachePath" 2>$null
-        $TxtModelS.Text = if ($LASTEXITCODE -eq 0) { "downloaded" } else { "not downloaded" }
+        if ($LASTEXITCODE -eq 0) { $TxtModelS.Text = "downloaded"; Set-Dot $DotModel "#FF76B900" }
+        else { $TxtModelS.Text = "not downloaded"; Set-Dot $DotModel "#FF4A5261" }
     } else {
-        $TxtWslS.Text = "not installed"
-        $TxtModelS.Text = "not downloaded"
+        $TxtWslS.Text = "not installed";   Set-Dot $DotWsl "#FF4A5261"
+        $TxtModelS.Text = "not downloaded"; Set-Dot $DotModel "#FF4A5261"
     }
 }
 
 function Set-ServerStatus([string]$text, [string]$color) {
     $TxtServerS.Text = $text
-    $TxtServerS.Foreground = New-Object Windows.Media.SolidColorBrush([Windows.Media.ColorConverter]::ConvertFromString($color))
+    $TxtServerS.Foreground = New-Brush $color
+    Set-Dot $DotServer $color
 }
 
 # ------------------------------------------------------------------ setup
@@ -946,12 +1023,14 @@ function Send-ChatMessage {
     $msg = $TxtInput.Text.Trim()
     if (-not $msg) { return }
     if (-not $script:ServerUp) {
-        Add-ChatRun "`n(server is not running - start it on the Server tab first)`n" "#FFFF6B6B" -Italic
+        $null = New-ChatParagraph 'info'
+        Add-ChatRun "(server is not running - start it on the Server tab first)" "#FFFF6B6B" -Italic
         return
     }
     $TxtInput.Text = ""
-    Add-ChatRun "`nYou > " "#FF76B900" -Bold
-    Add-ChatRun "$msg`n" "#FFE6E9EF"
+    $null = New-ChatParagraph 'user'
+    Add-ChatRun "You`n" "#FF76B900" -Bold
+    Add-ChatRun $msg "#FFE6E9EF"
     $null = $script:Messages.Add(@{ role = "user"; content = $msg })
 
     $body = [ordered]@{
@@ -970,7 +1049,8 @@ function Send-ChatMessage {
     }
     $json = $body | ConvertTo-Json -Depth 8
 
-    Add-ChatRun "Qwen > " "#FF4FC1FF" -Bold
+    $null = New-ChatParagraph 'assistant'
+    Add-ChatRun "Qwen`n" "#FF4FC1FF" -Bold
     $script:ChatBusy = $true
     $script:ChatReply = New-Object Text.StringBuilder
     $BtnSend.IsEnabled = $false
@@ -1019,7 +1099,10 @@ $BtnStop.Add_Click({ Stop-Server })
 $BtnSend.Add_Click({ Send-ChatMessage })
 $BtnClear.Add_Click({
     $script:Messages.Clear()
-    $script:ChatPara.Inlines.Clear()
+    # One paragraph per message now, so clearing the current one would leave
+    # every earlier bubble on screen - drop the whole document instead.
+    $RtbChat.Document.Blocks.Clear()
+    $script:ChatPara = $null   # Add-ChatRun starts a fresh paragraph
     Add-ChatRun "(history cleared)`n" "#FF8A93A5" -Italic
 })
 $TxtInput.Add_KeyDown({ if ($_.Key -eq 'Return') { Send-ChatMessage } })
@@ -1033,6 +1116,17 @@ $timer.Add_Tick({
     $script:TickCount++
     Read-Tails
     Drain-ChatQueue
+    # Spinner in the header: something is running that the user cannot see,
+    # because every child process is hidden and logs into a tab below.
+    $busy = [bool]($script:SetupProc -or $script:CleanupProc -or $script:DiagProc -or
+                   $script:ChatBusy -or ($script:ServerProc -and -not $script:ServerUp))
+    if ($busy) {
+        # [int] rounds to even, which makes the spinner stutter; floor it.
+        $TxtBusy.Text = $script:SpinnerFrames[[int]([math]::Floor($script:TickCount / 2) % 4)]
+        $TxtBusy.Visibility = [Windows.Visibility]::Visible
+    } elseif ($TxtBusy.Visibility -eq [Windows.Visibility]::Visible) {
+        $TxtBusy.Visibility = [Windows.Visibility]::Collapsed
+    }
     if ($script:SetupProc -and $script:SetupProc.HasExited) { Complete-Install }
     if ($script:CleanupProc -and $script:CleanupProc.HasExited) { Complete-Cleanup }
     if ($script:DiagProc -and $script:DiagProc.HasExited) {
