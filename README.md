@@ -58,6 +58,9 @@ Cline, ...) — API key can be anything.
   on Windows, `~/.qwen5090/logs` in WSL). If anything breaks, click
   **Collect diagnostics** — it zips all logs + system info to your Desktop for
   a one-file bug report.
+- **A clean exit**: **Cleanup / Uninstall** on the Setup tab removes everything
+  the app installed — Ubuntu, the Python environment, and the ~17 GB model —
+  freeing 20+ GB. Reinstalling later is one click.
 
 ## How it works
 
@@ -81,6 +84,7 @@ Python 3.13 venv with `vllm`, `flashinfer`, and the CUTLASS DSL → downloads
 .\app\install.ps1    # everything the GUI does; add -SkipDownload / -Unattended
 .\app\run.ps1        # serve on http://localhost:8000/v1
 .\app\chat.ps1       # terminal chat (second terminal)
+.\app\uninstall.ps1  # remove the distro, env, and model (what the Cleanup button runs)
 ```
 
 **Tuning:**
@@ -136,6 +140,7 @@ app/                       everything under the hood:
   run.ps1                    start the vLLM server (CLI)
   chat.ps1                   terminal chat client (CLI)
   share.ps1                  expose the API to LAN/Tailscale (used by -Share)
+  uninstall.ps1              remove everything (distro + model); GUI 'Cleanup' button
   collect-logs.ps1           zip all logs + system state for bug reports
   scripts/                   Linux-side setup, serve, chat, benchmark
   docs/                      troubleshooting + performance notes
