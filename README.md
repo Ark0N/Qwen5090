@@ -91,7 +91,7 @@ Python 3.13 venv with `vllm`, `flashinfer`, and the CUTLASS DSL → downloads
 
 | Knob | Default | Notes |
 |---|---|---|
-| `run.ps1 -Ctx` | `131072` | Context window. `262144` is the native max; drop to `65536` if you hit OOM while gaming. |
+| `run.ps1 -Ctx` | `262144` | Context window, defaulting to the model's native maximum. Drop to `131072` (or `65536` if you are gaming at the same time) should the server run out of VRAM at startup. |
 | `run.ps1 -Port` | `8000` | API port. |
 | `run.ps1 -GpuUtil` | `0.90` | Fraction of VRAM vLLM may claim — the Windows desktop shares the GPU. |
 | `run.ps1 -NoMtp` | off | Disables speculative decoding if it misbehaves. |

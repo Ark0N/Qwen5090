@@ -3,15 +3,15 @@
   Start the Qwen3.8-27B-NVFP4 vLLM server (runs inside WSL2, Ctrl+C stops it).
 
 .EXAMPLE
-  .\run.ps1                     # 128K context, port 8000, MTP on
-  .\run.ps1 -Ctx 262144         # full native context
+  .\run.ps1                     # full 262K context, port 8000, MTP on
+  .\run.ps1 -Ctx 131072         # halve the context if VRAM is tight
   .\run.ps1 -Port 8080 -NoMtp
   .\run.ps1 -Share              # also reachable from LAN/Tailscale (one admin prompt)
 #>
 [CmdletBinding()]
 param(
     [string]$Distro = "Ubuntu-24.04",
-    [int]$Ctx = 131072,
+    [int]$Ctx = 262144,
     [int]$Port = 8000,
     [string]$Model = "unsloth/Qwen3.8-27B-NVFP4",
     [double]$GpuUtil = 0.90,

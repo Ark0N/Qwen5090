@@ -5,7 +5,7 @@ set -euo pipefail
 
 VENV="${QWEN5090_VENV:-$HOME/.qwen5090/venv}"
 MODEL="${MODEL:-unsloth/Qwen3.8-27B-NVFP4}"
-CTX="${CTX:-131072}"          # native max is 262144; 128K is the safe default on 32 GB
+CTX="${CTX:-262144}"          # the model's native max; drop to 131072 if the KV cache will not fit
 PORT="${PORT:-8000}"
 GPU_UTIL="${GPU_UTIL:-0.90}"  # leave headroom: on WSL the same GPU drives the Windows desktop
 MTP="${MTP:-1}"               # multi-token prediction (speculative decoding); set 0 to disable
