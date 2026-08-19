@@ -1,105 +1,99 @@
-# Qwen3.8-27B-NVFP4 on Windows 11 + RTX 5090
+# Qwen3.8-27B on your RTX 5090 — Windows 11
 
-Run **Qwen3.8-27B** — Alibaba's Apache-2.0, 27B dense multimodal model (released
-2026-08-14) — locally on a Windows 11 gaming PC with an **RTX 5090**, using the
-**NVFP4** 4-bit quantization built for Blackwell GPUs.
+Your own private ChatGPT-class AI, running 100% on your gaming PC. No cloud, no
+subscription, no data leaving your machine.
 
-One double-click and you have a control panel that installs everything, runs an
-OpenAI-compatible API, and chats with the model — entirely on your own hardware.
+<div align="center">
 
-## Quickstart (GUI)
+### [⬇️ &nbsp;DOWNLOAD ZIP&nbsp; ⬇️](https://github.com/Ark0N/Qwen3.8-27B-NVFP4-RTX-5090/archive/refs/heads/main.zip)
 
-1. **[⬇ Download the ZIP](https://github.com/Ark0N/Qwen3.8-27B-NVFP4-RTX-5090/archive/refs/heads/main.zip)**
-   and unzip it anywhere (or `git clone https://github.com/Ark0N/Qwen3.8-27B-NVFP4-RTX-5090.git`)
-2. Double-click **`Qwen5090.cmd`**
-3. Click **Install / Repair** (approve the admin prompt), wait for the ~17 GB
-   download, then hit **Start server** and use the **Chat** tab
+[![Download ZIP](https://img.shields.io/badge/⬇_Download_for_Windows_11-Qwen3.8--27B_NVFP4-76b900?style=for-the-badge&logo=nvidia&logoColor=white)](https://github.com/Ark0N/Qwen3.8-27B-NVFP4-RTX-5090/archive/refs/heads/main.zip)
 
-The installer is fully unattended: it enables WSL2, provisions Ubuntu 24.04
-silently (no Linux username prompts — a `qwen` user is created for you),
-installs vLLM, downloads the model, and drops a **Qwen 5090** shortcut on your
-desktop. If Windows needs its one WSL reboot, the app re-opens by itself after
-you log back in and you just click Install again to resume.
+**Unzip → double-click `Qwen5090.cmd` → click Install. That's it.**
 
-## Quickstart (command line)
+</div>
 
-```powershell
-.\install.ps1        # run in an elevated (Administrator) PowerShell
-.\run.ps1            # starts the server on http://localhost:8000/v1
-.\chat.ps1           # chat with it from a second terminal
-```
+<!-- Maintainer note: while this repo is private, the ZIP link only works for
+     logged-in GitHub accounts with access. It works for everyone once public. -->
 
-## Why NVFP4 on a 5090
+## Get started (3 steps)
 
-- **It fits.** NVFP4 weights are ~17 GB; the 5090 has 32 GB. With an FP8 KV
-  cache the default 128K context fits comfortably, and the full native 262K
-  context is reachable (`.\run.ps1 -Ctx 262144`).
-- **It's fast.** NVFP4 uses the 5090's Blackwell FP4 tensor cores: ~1.5× faster
-  than the BF16 checkpoint, with community reports of ~80 tok/s single-stream.
-  Multi-token prediction (speculative decoding) is enabled by default on top.
-- **It's barely lossy.** Unsloth's dynamic NVFP4 quants keep accuracy close to
-  the original checkpoint — unlike older 4-bit weight-only formats.
+1. **[Download the ZIP](https://github.com/Ark0N/Qwen3.8-27B-NVFP4-RTX-5090/archive/refs/heads/main.zip)**
+   and unzip it anywhere (Desktop is fine).
+   *Windows may flag the download: right-click the ZIP → Properties → tick
+   **Unblock** before unzipping, and choose "More info → Run anyway" if
+   SmartScreen asks.*
+2. **Double-click `Qwen5090.cmd`**, then click **Install / Repair** and approve
+   the admin prompt. Everything is automatic: WSL2, Ubuntu, the AI engine, and
+   the ~17 GB model download (15–40 min total). If Windows asks to reboot once,
+   the app re-opens by itself afterwards — just click Install again to resume.
+3. **Click Start server** on the Server tab, wait for the green light
+   (a minute or two), and talk to your AI on the **Chat** tab.
 
-## Requirements
+You also get a **Qwen 5090** desktop shortcut, and an OpenAI-compatible API at
+`http://localhost:8000/v1` that works with any AI app (Open WebUI, Continue,
+Cline, ...) — API key can be anything.
 
-| Component | Requirement |
+## What you need
+
+| | |
 |---|---|
-| OS | Windows 11 (build 22000+) |
-| GPU | NVIDIA RTX 5090 (any Blackwell / RTX 50-series with ≥24 GB works) |
-| Driver | NVIDIA ≥ 570 (580+ recommended) — Windows driver only, never install one inside WSL |
-| Disk | ~25 GB free (weights + Python environment) |
-| Software | WSL2 + Ubuntu 24.04 — `install.ps1` sets both up for you |
+| 💻 OS | Windows 11 |
+| 🎮 GPU | NVIDIA RTX 5090 (other RTX 50-series with ≥24 GB also work) |
+| 🔧 Driver | NVIDIA 570 or newer ([get the latest](https://www.nvidia.com/drivers)) |
+| 💾 Disk | ~25 GB free |
 
-vLLM (the only engine with NVFP4 support today) doesn't run natively on
-Windows, so everything Linux-side lives in WSL2. The PowerShell scripts hide
-that completely: install, run, and chat from Windows; `localhost:8000` is
-forwarded automatically.
+## What you get
 
-## What the installer does
+- **The model**: Qwen3.8-27B — Alibaba's Apache-2.0, 27B multimodal model
+  (released 2026-08-14) with 262K context and a reasoning dial, in NVIDIA's
+  NVFP4 4-bit format built for your 5090's Blackwell tensor cores. Expect
+  ~80–100 tokens/s.
+- **A control panel** (pure Windows, no Electron): one-button install with live
+  progress, server start/stop with health light, and streaming chat where the
+  model's "thinking" renders dim. Thinking mode and effort (low → xhigh) are
+  toggles.
+- **Logs & diagnostics**: every run is logged (`%LOCALAPPDATA%\Qwen5090\logs`
+  on Windows, `~/.qwen5090/logs` in WSL). If anything breaks, click
+  **Collect diagnostics** — it zips all logs + system info to your Desktop for
+  a one-file bug report.
 
-1. Verifies Windows 11, the NVIDIA driver version, and your GPU.
-2. Enables WSL2 and provisions Ubuntu 24.04. In GUI/`-Unattended` mode this is
-   silent: a `qwen` Linux user with passwordless sudo is created automatically.
-   If the one-time WSL reboot is needed, a RunOnce entry re-opens the app after
-   login (CLI users just re-run `install.ps1`; it resumes safely).
-3. Inside WSL: installs [uv](https://docs.astral.sh/uv/), creates a Python 3.13
-   venv at `~/.qwen5090/venv`, and installs `vllm`, `flashinfer`, and the
-   CUTLASS DSL that NVFP4 kernels need.
-4. Downloads [`unsloth/Qwen3.8-27B-NVFP4`](https://huggingface.co/unsloth/Qwen3.8-27B-NVFP4)
-   (~17 GB) into the Hugging Face cache. Skip with `-SkipDownload` (or the GUI
-   checkbox).
-5. Creates a desktop shortcut (disable with `-NoShortcut`).
+## How it works
 
-## The GUI
+vLLM (currently the only engine that runs NVFP4) is Linux-only, so the
+installer sets up **WSL2 + Ubuntu 24.04** — Microsoft's built-in Linux layer —
+completely silently: no Linux prompts, a `qwen` user is created for you, and
+your Windows NVIDIA driver powers the GPU inside WSL automatically. The
+PowerShell scripts hide all of it; `localhost:8000` just works.
 
-`Qwen5090.cmd` opens a native WPF control panel (pure PowerShell — nothing to
-install, no Electron):
+What `install.ps1` actually does: checks Windows 11 + driver ≥ 570 → enables
+WSL2 (one reboot max, auto-resumes) → provisions Ubuntu unattended → creates a
+Python 3.13 venv with `vllm`, `flashinfer`, and the CUTLASS DSL → downloads
+[`unsloth/Qwen3.8-27B-NVFP4`](https://huggingface.co/unsloth/Qwen3.8-27B-NVFP4)
+(~17 GB, skippable) → desktop shortcut. Re-running is always safe.
 
-- **Status bar** — GPU/driver, WSL + vLLM state, model download state, server
-  health, all at a glance.
-- **Setup tab** — one Install/Repair button with live installer logs and
-  download progress; handles the admin elevation and reboot-resume for you.
-- **Server tab** — start/stop, port, context-length picker (64K/128K/256K),
-  MTP toggle, live vLLM logs. The server keeps running if you close the window.
-- **Chat tab** — streaming chat with the model; thinking tokens render dim,
-  with a thinking-mode toggle and Qwen3.8's `reasoning_effort` dial
-  (low → xhigh). Sampling uses the recommended instruct settings.
-- **Logs & diagnostics** — every run is logged to `%LOCALAPPDATA%\Qwen5090\logs`
-  (Windows) and `~/.qwen5090/logs` (WSL); GUI crashes are caught and logged
-  with a stack trace instead of vanishing. The **Collect diagnostics** button
-  (or `.\collect-logs.ps1`) zips all logs plus GPU/driver/WSL state to your
-  Desktop for one-file bug reports.
+## For power users
 
-## Using the API
-
-The server speaks the OpenAI protocol — point any client at
-`http://localhost:8000/v1` with any API key:
+**Command line** (elevated PowerShell for install):
 
 ```powershell
-curl.exe http://localhost:8000/v1/chat/completions `
-  -H "Content-Type: application/json" `
-  -d '{\"model\": \"unsloth/Qwen3.8-27B-NVFP4\", \"messages\": [{\"role\": \"user\", \"content\": \"Hello!\"}]}'
+.\install.ps1        # everything the GUI does; add -SkipDownload / -Unattended
+.\run.ps1            # serve on http://localhost:8000/v1
+.\chat.ps1           # terminal chat (second terminal)
 ```
+
+**Tuning:**
+
+| Knob | Default | Notes |
+|---|---|---|
+| `.\run.ps1 -Ctx` | `131072` | Context window. `262144` is the native max; drop to `65536` if you hit OOM while gaming. |
+| `.\run.ps1 -Port` | `8000` | API port. |
+| `.\run.ps1 -GpuUtil` | `0.90` | Fraction of VRAM vLLM may claim — the Windows desktop shares the GPU. |
+| `.\run.ps1 -NoMtp` | off | Disables speculative decoding if it misbehaves. |
+| `.\chat.ps1 -NoThink` | off | Direct answers, no reasoning tokens. |
+| `.\chat.ps1 -Effort low\|medium\|high\|xhigh` | model default | Qwen3.8's reasoning-effort dial. |
+
+**API example** (sampling: temperature 0.7, top-p 0.8, top-k 20, presence 1.5):
 
 ```python
 from openai import OpenAI
@@ -112,31 +106,18 @@ resp = client.chat.completions.create(
 print(resp.choices[0].message.content)
 ```
 
-Works out of the box with Open WebUI, Continue, Cline, and any other
-OpenAI-compatible frontend. Tool calling and the `qwen3` reasoning parser are
-enabled on the server.
+Tool calling and the `qwen3` reasoning parser are enabled on the server.
+Quick benchmark while it runs (from WSL): `bash scripts/benchmark.sh`
 
-## Tuning
-
-| Knob | Default | Notes |
-|---|---|---|
-| `.\run.ps1 -Ctx` | `131072` | Context window. `262144` is the native max; lower to `65536` if you hit OOM while gaming. |
-| `.\run.ps1 -Port` | `8000` | API port. |
-| `.\run.ps1 -GpuUtil` | `0.90` | Fraction of VRAM vLLM may claim. The Windows desktop shares the GPU — don't go much higher. |
-| `.\run.ps1 -NoMtp` | off | Disables speculative decoding if it misbehaves. |
-| `.\chat.ps1 -NoThink` | off | Direct answers, no reasoning tokens. |
-| `.\chat.ps1 -Effort low\|medium\|high\|xhigh` | model default | Qwen3.8's reasoning-effort dial. |
-
-Recommended sampling (already set in `chat.ps1`): temperature 0.7, top-p 0.8,
-top-k 20, presence penalty 1.5.
-
-Quick throughput check while the server runs (from WSL):
-`bash scripts/benchmark.sh`
+**Why NVFP4 on a 5090:** the ~17 GB weights fit the 32 GB card with room for
+128K–262K context (FP8 KV cache + Qwen3.8's hybrid attention), it runs ~1.5×
+faster than BF16 on Blackwell's FP4 tensor cores, and Unsloth's dynamic quants
+keep accuracy close to the original checkpoint.
 
 ## Repo layout
 
 ```
-Qwen5090.cmd           double-click launcher for the GUI
+Qwen5090.cmd           ← double-click this
 gui.ps1                WPF control panel (install / server / chat)
 install.ps1            one-shot installer (also used headless by the GUI)
 run.ps1                start the vLLM server (CLI)
@@ -149,10 +130,11 @@ scripts/benchmark.sh   single-stream tok/s check
 docs/                  troubleshooting + performance notes
 ```
 
-## Troubleshooting & performance
+## Something not working?
 
 See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) and
-[docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+[docs/PERFORMANCE.md](docs/PERFORMANCE.md), or click **Collect diagnostics**
+in the app and share the ZIP it puts on your Desktop.
 
 ## Credits & license
 
