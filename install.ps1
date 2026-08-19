@@ -53,7 +53,7 @@ function Install-DistroUnattended {
     if (-not $launcher) { return $false }
     & $launcher.Source install --root *>&1 | Out-Host
     if ($LASTEXITCODE -ne 0) { return $false }
-    & wsl -d $Distro -u root -- bash -c "id qwen >/dev/null 2>&1 || useradd -m -s /bin/bash qwen; usermod -aG sudo qwen; echo 'qwen ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/qwen; chmod 440 /etc/sudoers.d/qwen; printf '[user]\ndefault=qwen\n' > /etc/wsl.conf"
+    & wsl -d $Distro -u root -- bash -c "id qwen >/dev/null 2>&1 || useradd -m -s /bin/bash qwen; usermod -aG sudo qwen; echo 'qwen ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/qwen; chmod 440 /etc/sudoers.d/qwen; printf '[user]\ndefault=qwen\n' > /etc/wsl.conf" *>&1 | Out-Host
     if ($LASTEXITCODE -ne 0) { return $false }
     & wsl --terminate $Distro *> $null
     return $true

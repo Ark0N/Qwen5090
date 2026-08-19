@@ -246,7 +246,7 @@ function Start-Install {
         $r = [Windows.MessageBox]::Show("Installing needs Administrator rights.`nRelaunch the app as Administrator?",
             "Qwen 5090", "YesNo", "Question")
         if ($r -eq "Yes") {
-            Start-Process powershell -Verb RunAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -AutoInstall"
+            Start-Process powershell -Verb RunAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$PSCommandPath`" -AutoInstall"
             $Window.Close()
         }
         return
@@ -329,6 +329,8 @@ function Test-ServerHealth {
                 if (-not $script:ServerUp) {
                     $script:ServerUp = $true
                     Set-ServerStatus "running on port $($TxtPort.Text)" "#FF76B900"
+                    $BtnStart.IsEnabled = $false
+                    $BtnStop.IsEnabled = $true    # works even for a server this GUI didn't start (pkill)
                     Add-Log $TxtServerLog "Server is READY - chat tab is live, API at http://localhost:$($TxtPort.Text)/v1"
                     try {
                         $json = $resp.Content.ReadAsStringAsync().Result | ConvertFrom-Json
@@ -338,10 +340,15 @@ function Test-ServerHealth {
             } elseif ($script:ServerUp) {
                 $script:ServerUp = $false
                 Set-ServerStatus "not responding" "#FFFF6B6B"
+                $BtnStart.IsEnabled = $true
             }
             $resp.Dispose()
         } catch {
-            if ($script:ServerUp) { $script:ServerUp = $false; Set-ServerStatus "not responding" "#FFFF6B6B" }
+            if ($script:ServerUp) {
+                $script:ServerUp = $false
+                Set-ServerStatus "not responding" "#FFFF6B6B"
+                $BtnStart.IsEnabled = $true
+            }
         }
         return
     }
@@ -479,14 +486,16 @@ $timer.Add_Tick({
     Read-Tails
     Drain-ChatQueue
     if ($script:SetupProc -and $script:SetupProc.HasExited) { Complete-Install }
-    if ($script:ServerProc -and $script:ServerProc.HasExited -and -not $script:ServerUp -and ($script:TickCount % 10 -eq 0)) {
+    if ($script:ServerProc -and $script:ServerProc.HasExited -and -not $script:ServerUp) {
         # wrapper died before the server came up -> surface it
         Set-ServerStatus "exited (see log)" "#FFFF6B6B"
         $BtnStart.IsEnabled = $true
         $BtnStop.IsEnabled = $false
         $script:ServerProc = $null
     }
-    if (($script:ServerProc -or $script:ServerUp) -and ($script:TickCount % 7 -eq 0)) { Test-ServerHealth }
+    # Ping unconditionally so a server started outside this GUI (run.ps1, or a
+    # previous session) is detected too; a refused connection fails instantly.
+    if ($script:TickCount % 7 -eq 0) { Test-ServerHealth }
 })
 $timer.Start()
 
