@@ -4,7 +4,7 @@
   Cleanup / uninstall for Qwen 5090 - removes everything install.ps1 set up.
 
 .DESCRIPTION
-  Deletes the Ubuntu distro (which contains the Python env AND the ~17 GB
+  Deletes the Ubuntu distro (which contains the Python env AND the ~22 GB
   model download), removes the network-sharing port proxy and firewall rule,
   the desktop shortcut, and the resume-after-reboot entry. Frees ~20+ GB.
 

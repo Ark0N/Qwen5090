@@ -17,18 +17,37 @@
 .EXAMPLE
   .\install.ps1
   .\install.ps1 -SkipDownload   # set everything up but let vLLM fetch weights on first run
+  .\install.ps1 -Uncensored -HfToken hf_xxxxxxxx   # the abliterated build (gated repo)
   .\install.ps1 -Unattended     # no prompts; what gui.ps1 runs under the hood
   .\install.ps1 -WslMemoryOnly  # only re-size the WSL VM from this PC's RAM, then exit
 #>
 [CmdletBinding()]
 param(
     [string]$Distro = "Ubuntu-24.04",
+    # Which checkpoint to download. -Uncensored is orcarouter's abliterated
+    # build; it is a GATED Hugging Face repo, so it also needs -HfToken once
+    # (the GUI passes it through the QWEN5090_HF_TOKEN environment variable).
+    [string]$Model = "",
+    [switch]$Uncensored,
+    [string]$HfToken = $env:QWEN5090_HF_TOKEN,
     [switch]$SkipDownload,
     [switch]$Unattended,
     [switch]$NoShortcut,
     [switch]$WslMemoryOnly
 )
 $ErrorActionPreference = "Stop"
+
+$script:ModelStandard = "unsloth/Qwen3.8-27B-NVFP4"
+$script:ModelUncensored = "orcarouter/Qwen3.8-27B-Uncensored-NVFP4"
+if (-not $Model) { $Model = if ($Uncensored) { $script:ModelUncensored } else { $script:ModelStandard } }
+# Both values end up inside a single-quoted bash string; keep them to the shapes
+# Hugging Face actually uses so nothing can break out of the quoting.
+if ($Model -notmatch '^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$') {
+    Write-Host "ERROR: '$Model' is not a Hugging Face repo id (owner/name)." -ForegroundColor Red; exit 1
+}
+if ($HfToken -and $HfToken -notmatch '^[A-Za-z0-9_-]{8,200}$') {
+    Write-Host "ERROR: that does not look like a Hugging Face token (expected hf_...)." -ForegroundColor Red; exit 1
+}
 
 # Every run is transcribed to %LOCALAPPDATA%\Qwen5090\logs so failures leave
 # a trace even outside the GUI (which also captures stdout separately).
@@ -131,7 +150,7 @@ function Invoke-Streamed {
 }
 
 Write-Host "Logging this run to: $script:LogFile"
-Write-Host ("Run context: time={0} | unattended={1} | skipDownload={2} | distro={3}" -f (Get-Date -Format o), [bool]$Unattended, [bool]$SkipDownload, $Distro)
+Write-Host ("Run context: time={0} | unattended={1} | skipDownload={2} | distro={3} | model={4} | hfToken={5}" -f (Get-Date -Format o), [bool]$Unattended, [bool]$SkipDownload, $Distro, $Model, [bool]$HfToken)
 try { Write-Host ("WSL: " + (((& wsl --version 2>$null) -replace "`0", "" | Where-Object { $_ }) -join " | ")) } catch { Write-Host "WSL: not queryable yet" }
 
 function ConvertFrom-WslSize {
@@ -448,12 +467,18 @@ if ($distros -notcontains $Distro) {
 Write-Host "$Distro - OK"
 
 Step "Running Linux-side setup (vLLM install + model download)"
-Write-Host "This is the longest step: Python + vLLM install, then the ~22 GB model download."
+Write-Host "Model: $Model"
+if ($Model -eq $script:ModelUncensored) {
+    Write-Host "This build has its safety alignment removed and is gated on Hugging Face;"
+    Write-Host "accept its terms once at https://huggingface.co/$Model if you have not."
+}
+Write-Host "This is the longest step: Python + vLLM install, then the model download (~22 GB)."
 Write-Host "Detailed progress streams below the whole time."
 $repoWin = $PSScriptRoot -replace '\\', '/'
 $repoWsl = ((& wsl -d $Distro -- wslpath -a "$repoWin") -replace "`0", "").Trim()
 if (-not $repoWsl) { Fail "Could not translate the repo path into WSL. Is $Distro initialized? Try 'wsl -d $Distro' once, then re-run." }
-$envPrefix = ""
+$envPrefix = "MODEL='$Model' "
+if ($HfToken) { $envPrefix += "HF_TOKEN='$HfToken' " }
 if ($SkipDownload) { $envPrefix += "SKIP_DOWNLOAD=1 " }
 if ($Unattended) { $envPrefix += "NONINTERACTIVE=1 " }
 & wsl -d $Distro -- bash -c "${envPrefix}bash '$repoWsl/scripts/setup-wsl.sh'"
@@ -467,6 +492,7 @@ if (-not $NoShortcut) {
 Step "All done"
 Write-Host "Open the app     :  double-click 'Start Qwen 5090.cmd' (or the 'Qwen 5090' desktop shortcut)"
 Write-Host "Command line     :  .\app\run.ps1 to serve, .\app\chat.ps1 to chat"
+if ($Model -ne $script:ModelStandard) { Write-Host "Serve this model :  .\app\run.ps1 -Model $Model" }
 Write-Host "API endpoint     :  http://localhost:8000/v1   (OpenAI-compatible, api_key can be anything)"
 Stop-Log
 exit 0

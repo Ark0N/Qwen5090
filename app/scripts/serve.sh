@@ -4,7 +4,7 @@
 set -euo pipefail
 
 VENV="${QWEN5090_VENV:-$HOME/.qwen5090/venv}"
-MODEL="${MODEL:-unsloth/Qwen3.8-27B-NVFP4}"
+MODEL="${MODEL:-unsloth/Qwen3.8-27B-NVFP4}"   # or orcarouter/Qwen3.8-27B-Uncensored-NVFP4
 CTX="${CTX:-262144}"          # the model's native max; drop to 131072 if the KV cache will not fit
 PORT="${PORT:-8000}"
 GPU_UTIL="${GPU_UTIL:-0.90}"  # leave headroom: on WSL the same GPU drives the Windows desktop
@@ -85,19 +85,39 @@ EOF
 }
 check_wsl_memory
 
+# Per-checkpoint quirks, each overridable from the environment.
+# The uncensored (abliterated) build is quantized differently from unsloth's:
+# it carries its own KV-cache scheme in config.json - passing --kv-cache-dtype
+# on top of that is rejected - ships a 2-token MTP head, and needs its own
+# modelling code loaded from the repo.
+if [[ "$MODEL" == *[Uu]ncensored* || "$MODEL" == *bliterated* ]]; then
+  KV_CACHE_DTYPE="${KV_CACHE_DTYPE-}"
+  SPEC_TOKENS="${SPEC_TOKENS:-2}"
+  TRUST_REMOTE_CODE="${TRUST_REMOTE_CODE:-1}"
+else
+  KV_CACHE_DTYPE="${KV_CACHE_DTYPE-fp8}"
+  SPEC_TOKENS="${SPEC_TOKENS:-3}"
+  TRUST_REMOTE_CODE="${TRUST_REMOTE_CODE:-0}"
+fi
+
 ARGS=(
   serve "$MODEL"
   --host 0.0.0.0 --port "$PORT"
   --max-model-len "$CTX"
-  --kv-cache-dtype fp8
   --gpu-memory-utilization "$GPU_UTIL"
   --reasoning-parser qwen3
   --enable-auto-tool-choice --tool-call-parser qwen3_coder
 )
+if [[ -n "$KV_CACHE_DTYPE" ]]; then
+  ARGS+=(--kv-cache-dtype "$KV_CACHE_DTYPE")
+fi
+if [[ "$TRUST_REMOTE_CODE" == "1" ]]; then
+  ARGS+=(--trust-remote-code)
+fi
 if [[ "$MTP" == "1" ]]; then
-  ARGS+=(--speculative-config '{"method":"mtp","num_speculative_tokens":3}')
+  ARGS+=(--speculative-config "{\"method\":\"mtp\",\"num_speculative_tokens\":$SPEC_TOKENS}")
 fi
 
-echo ">> model=$MODEL ctx=$CTX port=$PORT gpu_util=$GPU_UTIL mtp=$MTP"
+echo ">> model=$MODEL ctx=$CTX port=$PORT gpu_util=$GPU_UTIL mtp=$MTP kv=${KV_CACHE_DTYPE:-from-config}"
 echo ">> OpenAI-compatible endpoint: http://localhost:$PORT/v1"
 exec "$VENV/bin/vllm" "${ARGS[@]}"

@@ -6,6 +6,7 @@
   .\run.ps1                     # full 262K context, port 8000, MTP on
   .\run.ps1 -Ctx 131072         # halve the context if VRAM is tight
   .\run.ps1 -Port 8080 -NoMtp
+  .\run.ps1 -Uncensored         # serve the abliterated build instead
   .\run.ps1 -Share              # also reachable from LAN/Tailscale (one admin prompt)
 #>
 [CmdletBinding()]
@@ -14,11 +15,18 @@ param(
     [int]$Ctx = 262144,
     [int]$Port = 8000,
     [string]$Model = "unsloth/Qwen3.8-27B-NVFP4",
+    # Download it first with:  .\install.ps1 -Uncensored -HfToken hf_xxxxxxxx
+    # serve.sh keys its flags off the model id, so nothing else changes here.
+    [switch]$Uncensored,
     [double]$GpuUtil = 0.90,
     [switch]$NoMtp,
     [switch]$Share
 )
 $ErrorActionPreference = "Stop"
+
+if ($Uncensored -and $Model -eq "unsloth/Qwen3.8-27B-NVFP4") {
+    $Model = "orcarouter/Qwen3.8-27B-Uncensored-NVFP4"
+}
 
 $repoWin = $PSScriptRoot -replace '\\', '/'
 $repoWsl = ((& wsl -d $Distro -- wslpath -a "$repoWin") -replace "`0", "").Trim()
@@ -44,5 +52,5 @@ if ($Share) {
 
 $mtp = if ($NoMtp) { 0 } else { 1 }
 $gpuUtilStr = $GpuUtil.ToString([System.Globalization.CultureInfo]::InvariantCulture)
-Write-Host "Starting Qwen3.8-27B-NVFP4 on http://localhost:$Port/v1  (first load takes a minute; Ctrl+C stops)" -ForegroundColor Cyan
+Write-Host "Starting $Model on http://localhost:$Port/v1  (first load takes a minute; Ctrl+C stops)" -ForegroundColor Cyan
 & wsl -d $Distro -- bash -c "CTX=$Ctx PORT=$Port MODEL='$Model' GPU_UTIL=$gpuUtilStr MTP=$mtp bash '$repoWsl/scripts/serve.sh'"

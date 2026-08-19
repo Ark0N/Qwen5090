@@ -11,7 +11,11 @@
 param(
     [string]$Distro = "Ubuntu-24.04",
     [switch]$AutoInstall,
-    [switch]$AutoCleanup
+    [switch]$AutoCleanup,
+    # Both are only ever passed by this script to its own elevated relaunch, so
+    # the model choice (and a gated repo's token) survive the UAC prompt.
+    [string]$Model = "",
+    [string]$HfTokenFile = ""
 )
 $ErrorActionPreference = "Stop"
 
@@ -533,19 +537,35 @@ $xaml = @'
         <Grid>
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
           </Grid.RowDefinitions>
-          <DockPanel Grid.Row="0" LastChildFill="False" Margin="0,0,0,12">
+          <DockPanel Grid.Row="0" LastChildFill="False" Margin="0,0,0,10">
             <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
               <Button x:Name="BtnInstall" Content="Install / Repair" Style="{StaticResource AccentButton}"/>
-              <CheckBox x:Name="ChkSkipDownload" Content="Skip the 17 GB model download (fetch on first run instead)"/>
+              <CheckBox x:Name="ChkSkipDownload" Content="Skip the 22 GB model download (fetch on first run instead)"/>
             </StackPanel>
             <Button x:Name="BtnCleanup" Content="Cleanup / Uninstall" DockPanel.Dock="Right"
                     Style="{StaticResource DangerButton}" Margin="0"
                     ToolTip="Remove everything this app installed: the Ubuntu distro, the Python environment, and the downloaded model (~20+ GB freed)"/>
           </DockPanel>
-          <TextBox x:Name="TxtSetupLog" Grid.Row="1" Style="{StaticResource LogBox}"
-                   Text="Ready when you are.&#10;&#10;Click  Install / Repair  to set everything up automatically:&#10;   1. WSL2 + Ubuntu 24.04 (silent, no prompts)&#10;   2. Python 3.13 + vLLM inside Linux&#10;   3. The Qwen3.8-27B model (~17 GB download)&#10;&#10;Every step streams live progress here. Re-running is always safe - finished steps are skipped.&#10;One reboot may be requested; the app re-opens automatically after you log back in.&#10;"/>
+          <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,12">
+            <TextBlock Text="Model" Style="{StaticResource FieldLabel}"/>
+            <ComboBox x:Name="CmbModel" Width="196" SelectedIndex="0" VerticalAlignment="Center" Margin="0,0,14,0"
+                      ToolTip="Which checkpoint to download and serve">
+              <ComboBoxItem Content="Standard" Tag="unsloth/Qwen3.8-27B-NVFP4"
+                            ToolTip="The official Qwen3.8-27B release in NVFP4 - about 22 GB, no account needed"/>
+              <ComboBoxItem Content="Uncensored (abliterated)" Tag="orcarouter/Qwen3.8-27B-Uncensored-NVFP4"
+                            ToolTip="Same model with the refusal direction removed - about 23 GB. Gated on Hugging Face: accept its terms there, then paste a read token."/>
+            </ComboBox>
+            <TextBlock Text="HF token" Style="{StaticResource FieldLabel}"/>
+            <TextBox x:Name="TxtHfToken" Width="220" Height="30" VerticalAlignment="Center" IsEnabled="False"
+                     ToolTip="Only needed for the uncensored build: a READ token from huggingface.co/settings/tokens. It is stored inside WSL, so you paste it once."/>
+            <TextBlock x:Name="TxtModelHint" Text="" FontSize="11" Foreground="#FFE0B84C"
+                       VerticalAlignment="Center" Margin="12,0,0,0" TextWrapping="Wrap" MaxWidth="230"/>
+          </StackPanel>
+          <TextBox x:Name="TxtSetupLog" Grid.Row="2" Style="{StaticResource LogBox}"
+                   Text="Ready when you are.&#10;&#10;Click  Install / Repair  to set everything up automatically:&#10;   1. WSL2 + Ubuntu 24.04 (silent, no prompts)&#10;   2. Python 3.13 + vLLM inside Linux&#10;   3. The Qwen3.8-27B model (~22 GB download)&#10;&#10;Every step streams live progress here. Re-running is always safe - finished steps are skipped.&#10;One reboot may be requested; the app re-opens automatically after you log back in.&#10;"/>
         </Grid>
       </TabItem>
 
@@ -641,6 +661,7 @@ $Window = [Windows.Markup.XamlReader]::Parse($xaml)
 foreach ($name in 'TxtGpuS','TxtWslS','TxtModelS','TxtServerS','BtnRefresh','BtnLogs','BtnDiag',
                   'DotGpu','DotWsl','DotModel','DotServer','TxtBusy',
                   'BtnInstall','BtnCleanup','ChkSkipDownload','TxtSetupLog',
+                  'CmbModel','TxtHfToken','TxtModelHint',
                   'BtnStart','BtnStop','TxtPort','CmbCtx','ChkMtp','ChkShare','TxtServerLog',
                   'ChkThink','CmbEffort','BtnClear','RtbChat','TxtInput','BtnSend') {
     Set-Variable -Name $name -Value $Window.FindName($name)
@@ -653,7 +674,10 @@ $script:ServerProc = $null
 $script:DiagProc = $null
 $script:DiagZip = $null
 $script:ServerUp = $false
+# The id the running server reports (used in chat requests); the id the user
+# picked on the Setup tab is what install/run get told about.
 $script:ModelId = "unsloth/Qwen3.8-27B-NVFP4"
+$script:ModelStandard = "unsloth/Qwen3.8-27B-NVFP4"
 $script:Messages = New-Object System.Collections.ArrayList
 $script:ChatQueue = [System.Collections.Concurrent.ConcurrentQueue[object]]::new()
 $script:ChatBusy = $false
@@ -672,6 +696,28 @@ $RtbChat.Document = $doc
 $script:ChatPara = $null   # created per message by New-ChatParagraph
 
 # ------------------------------------------------------------------ helpers
+function Get-SelectedModel {
+    if ($CmbModel -and $CmbModel.SelectedItem) { return [string]$CmbModel.SelectedItem.Tag }
+    return $script:ModelStandard
+}
+
+function Get-SelectedModelLabel {
+    if ((Get-SelectedModel) -eq $script:ModelStandard) { return "standard" }
+    return "uncensored"
+}
+
+function Update-ModelChoice {
+    # The uncensored build is the only gated one: enable the token box for it.
+    $gated = (Get-SelectedModel) -ne $script:ModelStandard
+    $TxtHfToken.IsEnabled = $gated
+    if ($gated) {
+        $TxtModelHint.Text = "Gated: accept the terms on huggingface.co, then paste a read token (once)."
+    } else {
+        $TxtModelHint.Text = ""
+    }
+    Update-Status
+}
+
 function Add-Tail([string]$path, $box) {
     foreach ($old in @($script:Tails | Where-Object { $_.Path -eq $path })) { $script:Tails.Remove($old) }
     if (Test-Path $path) { Remove-Item $path -Force -ErrorAction SilentlyContinue }
@@ -761,10 +807,11 @@ function Update-Status {
         & wsl -d $Distro -- bash -c "test -x `$HOME/.qwen5090/venv/bin/vllm" 2>$null
         if ($LASTEXITCODE -eq 0) { $TxtWslS.Text = "$Distro + vLLM ready"; Set-Dot $DotWsl "#FF76B900" }
         else { $TxtWslS.Text = "$Distro (vLLM not installed)"; Set-Dot $DotWsl "#FFE0B84C" }
-        $cachePath = "`$HOME/.cache/huggingface/hub/models--$($script:ModelId -replace '/','--')"
+        $label = Get-SelectedModelLabel
+        $cachePath = "`$HOME/.cache/huggingface/hub/models--$((Get-SelectedModel) -replace '/','--')"
         & wsl -d $Distro -- bash -c "test -d $cachePath" 2>$null
-        if ($LASTEXITCODE -eq 0) { $TxtModelS.Text = "downloaded"; Set-Dot $DotModel "#FF76B900" }
-        else { $TxtModelS.Text = "not downloaded"; Set-Dot $DotModel "#FF4A5261" }
+        if ($LASTEXITCODE -eq 0) { $TxtModelS.Text = "$label - downloaded"; Set-Dot $DotModel "#FF76B900" }
+        else { $TxtModelS.Text = "$label - not downloaded"; Set-Dot $DotModel "#FF4A5261" }
     } else {
         $TxtWslS.Text = "not installed";   Set-Dot $DotWsl "#FF4A5261"
         $TxtModelS.Text = "not downloaded"; Set-Dot $DotModel "#FF4A5261"
@@ -783,7 +830,20 @@ function Start-Install {
         $r = [Windows.MessageBox]::Show("Installing needs Administrator rights.`nRelaunch the app as Administrator?",
             "Qwen 5090", "YesNo", "Question")
         if ($r -eq "Yes") {
-            Start-Process powershell -Verb RunAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$PSCommandPath`" -AutoInstall"
+            $relaunch = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$PSCommandPath`" -AutoInstall -Model $(Get-SelectedModel)"
+            $tok = ""
+            if ($TxtHfToken.Text) { $tok = $TxtHfToken.Text.Trim() }
+            if ($tok) {
+                # Elevation keeps the same user, so %LOCALAPPDATA% still resolves
+                # here. Deliberately NOT the logs folder - collect-logs.ps1 zips
+                # that up for bug reports. The elevated instance deletes it.
+                $tokFile = Join-Path (Split-Path $script:LogDir -Parent) "hf-token.tmp"
+                try {
+                    Set-Content -LiteralPath $tokFile -Value $tok -Encoding ASCII -NoNewline
+                    $relaunch += " -HfTokenFile `"$tokFile`""
+                } catch { Write-GuiLog "could not stage the HF token: $($_.Exception.Message)" }
+            }
+            Start-Process powershell -Verb RunAs -ArgumentList $relaunch
             $Window.Close()
         }
         return
@@ -795,8 +855,18 @@ function Start-Install {
     $errLog = Join-Path $script:LogDir "install-$ts.err.log"
     Add-Tail $outLog $TxtSetupLog
     Add-Tail $errLog $TxtSetupLog
-    $psArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$script:RepoRoot\install.ps1`" -Unattended -Distro $Distro"
+    $model = Get-SelectedModel
+    $psArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$script:RepoRoot\install.ps1`" -Unattended -Distro $Distro -Model $model"
     if ($ChkSkipDownload.IsChecked) { $psArgs += " -SkipDownload" }
+    # Hand the token over in the environment rather than on the command line -
+    # install.ps1 picks it up as the default for -HfToken.
+    $token = ""
+    if ($TxtHfToken.Text) { $token = $TxtHfToken.Text.Trim() }
+    [Environment]::SetEnvironmentVariable("QWEN5090_HF_TOKEN", $token, "Process")
+    Add-Log $TxtSetupLog "Model: $model"
+    if ($model -ne $script:ModelStandard -and -not $token) {
+        Add-Log $TxtSetupLog "No Hugging Face token given - this build is gated, so the download only works if you already saved a token."
+    }
     Add-Log $TxtSetupLog "Starting installer (this can take 15-40 min incl. the model download)..."
     Add-Log $TxtSetupLog "Logging to $outLog"
     Write-GuiLog "installer started | args: $psArgs"
@@ -832,7 +902,7 @@ function Start-Cleanup {
     $msg = "This removes everything Qwen 5090 installed:`n`n" +
            "  - The $Distro Linux distro`n" +
            "  - The Python environment and vLLM`n" +
-           "  - The downloaded model (~17 GB)`n" +
+           "  - The downloaded model (~22 GB)`n" +
            "  - Network sharing rules, desktop shortcut, startup entry`n`n" +
            "Around 20+ GB of disk space is freed. You can reinstall at any time`n" +
            "by clicking 'Install / Repair' again.`n`nRemove everything now?"
@@ -902,13 +972,14 @@ function Start-Server {
     $errLog = Join-Path $script:LogDir "server-$ts.err.log"
     Add-Tail $outLog $TxtServerLog
     Add-Tail $errLog $TxtServerLog
-    $psArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$script:RepoRoot\run.ps1`" -Port $port -Ctx $ctx -Distro $Distro"
+    $model = Get-SelectedModel
+    $psArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$script:RepoRoot\run.ps1`" -Port $port -Ctx $ctx -Distro $Distro -Model $model"
     if (-not $ChkMtp.IsChecked) { $psArgs += " -NoMtp" }
     if ($ChkShare.IsChecked) {
         $psArgs += " -Share"
         Add-Log $TxtServerLog "Network sharing requested - approve the admin prompt that appears."
     }
-    Add-Log $TxtServerLog "Starting server on port $port (context $ctx)... first start takes a minute or two."
+    Add-Log $TxtServerLog "Starting $model on port $port (context $ctx)... first start takes a minute or two."
     Add-Log $TxtServerLog "Logging to $outLog"
     Write-GuiLog "server starting | args: $psArgs"
     Set-ServerStatus "starting..." "#FFE0B84C"
@@ -1101,6 +1172,7 @@ $BtnRefresh.Add_Click({ Update-Status })
 $BtnLogs.Add_Click({ Start-Process explorer.exe $script:LogDir })
 $BtnDiag.Add_Click({ Start-Diagnostics })
 $BtnInstall.Add_Click({ Start-Install })
+$CmbModel.Add_SelectionChanged({ Update-ModelChoice })
 $BtnCleanup.Add_Click({ Start-Cleanup })
 $BtnStart.Add_Click({ Start-Server })
 $BtnStop.Add_Click({ Stop-Server })
@@ -1170,6 +1242,18 @@ $Window.Dispatcher.Add_UnhandledException({
 })
 
 $Window.Add_Loaded({
+    if ($Model) {
+        foreach ($item in $CmbModel.Items) {
+            if ([string]$item.Tag -eq $Model) { $CmbModel.SelectedItem = $item; break }
+        }
+    }
+    if ($HfTokenFile -and (Test-Path -LiteralPath $HfTokenFile)) {
+        try {
+            $TxtHfToken.Text = (Get-Content -LiteralPath $HfTokenFile -Raw).Trim()
+            Remove-Item -LiteralPath $HfTokenFile -Force
+        } catch { Write-GuiLog "could not read the staged HF token: $($_.Exception.Message)" }
+    }
+    Update-ModelChoice
     Update-Status
     Add-ChatRun "Local Qwen3.8-27B chat - start the server on the Server tab, then ask anything. Dim italic text is the model thinking.`n" "#FF8A93A5" -Italic
     if ($AutoInstall -and $script:IsAdmin) { Start-Install }

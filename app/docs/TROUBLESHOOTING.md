@@ -114,6 +114,28 @@ Your vLLM/flashinfer build predates Blackwell NVFP4 support. Re-run
 for this checkpoint: SGLang can't load its FP8 lm_head, llama.cpp only reads
 GGUF.
 
+## Uncensored build: "gated repository" / 401 / "Access to model ... is restricted"
+
+`orcarouter/Qwen3.8-27B-Uncensored-NVFP4` is gated, so Hugging Face serves it
+only to an account that has accepted its terms:
+
+1. Sign in at
+   [huggingface.co/orcarouter/Qwen3.8-27B-Uncensored-NVFP4](https://huggingface.co/orcarouter/Qwen3.8-27B-Uncensored-NVFP4)
+   and accept the terms (approval is automatic).
+2. Create a **read** token at
+   [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens).
+3. Paste it into the **HF token** box on the Setup tab and click
+   **Install / Repair**, or run
+   `.\app\install.ps1 -Uncensored -HfToken hf_xxxxxxxx`.
+
+The token is saved to `~/.cache/huggingface/token` inside WSL, so the server
+reuses it later. To replace a wrong one, paste the new token and install again;
+to remove it, `wsl -- rm ~/.cache/huggingface/token`.
+
+Both builds can be installed side by side — they land in separate cache
+folders (~45 GB in total). The **Model** dropdown decides which one the
+**Start server** button serves.
+
 ## Model download is slow or fails
 - Re-run `.\install.ps1` — the Hugging Face cache resumes partial downloads.
 - Behind a proxy/VPN, DNS inside WSL sometimes breaks. Test with

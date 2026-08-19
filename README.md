@@ -46,6 +46,11 @@ Cline, ...) — API key can be anything.
 
 ## What you get
 
+- **A choice of two builds**, picked from the **Model** dropdown on the Setup
+  tab: the standard Qwen3.8-27B, or an **uncensored** (abliterated) build whose
+  refusal behaviour has been removed. See
+  [Uncensored build](#uncensored-build) below — it is a gated download and you
+  answer for what you generate with it.
 - **The model**: Qwen3.8-27B — Alibaba's Apache-2.0, 27B multimodal model
   (released 2026-08-14) with 262K context and a reasoning dial, in NVIDIA's
   NVFP4 4-bit format built for your 5090's Blackwell tensor cores. Expect
@@ -83,10 +88,39 @@ Python 3.13 venv with `vllm`, `flashinfer`, and the CUTLASS DSL → downloads
 
 ```powershell
 .\app\install.ps1    # everything the GUI does; add -SkipDownload / -Unattended
+.\app\install.ps1 -WslMemoryOnly   # only re-size the WSL VM from this PC's RAM
 .\app\run.ps1        # serve on http://localhost:8000/v1
 .\app\chat.ps1       # terminal chat (second terminal)
 .\app\uninstall.ps1  # remove the distro, env, and model (what the Cleanup button runs)
 ```
+
+<a id="uncensored-build"></a>
+**Uncensored build.** Pick *Uncensored (abliterated)* in the Setup tab's
+**Model** dropdown, or from PowerShell:
+
+```powershell
+.\app\install.ps1 -Uncensored -HfToken hf_xxxxxxxx   # one-time download (~23 GB)
+.\app\run.ps1 -Uncensored                            # serve it
+```
+
+It is [`orcarouter/Qwen3.8-27B-Uncensored-NVFP4`](https://huggingface.co/orcarouter/Qwen3.8-27B-Uncensored-NVFP4) —
+the same Qwen3.8-27B with the refusal direction removed, re-quantized to
+NVFP4 + FP8, Apache-2.0, 262K context, MTP and tool calling intact. Two things
+differ from the standard build:
+
+- **It is gated on Hugging Face.** Sign in there, accept the terms on the model
+  page (access is automatic), create a **read** token at
+  [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens), and
+  paste it into the **HF token** box next to the dropdown. It is stored inside
+  WSL, so you do this once.
+- **It has no safety guardrails.** It answers what the standard model declines,
+  including things that are illegal or dangerous to act on, and it is no more
+  accurate than the standard build while doing so. It is your responsibility
+  what you do with the output. Both builds run entirely on your PC.
+
+Serving flags follow the checkpoint automatically (`serve.sh` reads the model
+id): the uncensored build takes its KV-cache dtype from its own `config.json`,
+drafts 2 MTP tokens instead of 3, and loads with `--trust-remote-code`.
 
 **Tuning:**
 
@@ -96,6 +130,8 @@ Python 3.13 venv with `vllm`, `flashinfer`, and the CUTLASS DSL → downloads
 | `run.ps1 -Port` | `8000` | API port. |
 | `run.ps1 -GpuUtil` | `0.90` | Fraction of VRAM vLLM may claim — the Windows desktop shares the GPU. |
 | `run.ps1 -NoMtp` | off | Disables speculative decoding if it misbehaves. |
+| `run.ps1 -Uncensored` | off | Serves the abliterated build instead (install it first). |
+| `run.ps1 -Model` | `unsloth/Qwen3.8-27B-NVFP4` | Any Hugging Face repo id or a path inside WSL. |
 | `chat.ps1 -NoThink` | off | Direct answers, no reasoning tokens. |
 | `chat.ps1 -Effort low\|medium\|high\|xhigh` | model default | Qwen3.8's reasoning-effort dial. |
 
