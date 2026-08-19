@@ -18,13 +18,15 @@
   .\install.ps1
   .\install.ps1 -SkipDownload   # set everything up but let vLLM fetch weights on first run
   .\install.ps1 -Unattended     # no prompts; what gui.ps1 runs under the hood
+  .\install.ps1 -WslMemoryOnly  # only re-size the WSL VM from this PC's RAM, then exit
 #>
 [CmdletBinding()]
 param(
     [string]$Distro = "Ubuntu-24.04",
     [switch]$SkipDownload,
     [switch]$Unattended,
-    [switch]$NoShortcut
+    [switch]$NoShortcut,
+    [switch]$WslMemoryOnly
 )
 $ErrorActionPreference = "Stop"
 
@@ -314,6 +316,21 @@ function New-DesktopShortcut {
     } catch {
         Write-Host "WARNING: could not create a desktop shortcut ($($_.Exception.Message))" -ForegroundColor Yellow
     }
+}
+
+if ($WslMemoryOnly) {
+    # Escape hatch for a machine that is installed but cannot load the weights:
+    # size the VM from this PC's RAM and get out, no prerequisite checks.
+    Step "Sizing the WSL virtual machine"
+    if (Set-WslMemoryLimit) {
+        Write-Host "   Restarting WSL so the new limits take effect (this stops any running server)..."
+        & wsl --shutdown *> $null
+        Write-Host "Done - start the server again."
+    } else {
+        Write-Host "Nothing to change."
+    }
+    Stop-Log
+    exit 0
 }
 
 Step "Checking Windows version"

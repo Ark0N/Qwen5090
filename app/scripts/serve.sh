@@ -51,26 +51,33 @@ check_wsl_memory() {
   budget=$(( (avail_kib + ${swap_kib:-0}) * 1024 ))
   (( shard > budget )) || return 0
 
-  local shard_gib="$((shard / 1073741824))" budget_gib="$((budget / 1073741824))"
+  local shard_gib=$(( shard / 1073741824 ))
+  local budget_gib=$(( budget / 1073741824 ))
+  local total_gib=$(( ($(awk '/^MemTotal:/ {print $2}' /proc/meminfo) * 1024) / 1073741824 ))
+  local need_gib=$(( shard_gib + 6 ))   # weights + the loader's own working set
   cat >&2 <<EOF
 
 ERROR: this WSL virtual machine is too small to load the model weights.
 
   largest weights file : ${shard_gib} GiB
-  usable RAM + swap    : ${budget_gib} GiB
+  usable RAM + swap    : ${budget_gib} GiB   (this VM has ${total_gib} GiB of RAM)
+  needed               : ${need_gib} GiB of RAM + swap
 
 Windows gives WSL half the PC's RAM by default, and Linux refuses to map a file
-it cannot back with memory. Fix it on the WINDOWS side:
+it cannot back with memory. The fix is on the WINDOWS side, in PowerShell:
 
-  1. Open the Qwen 5090 app and click "Install / Repair" — it sizes WSL for you.
+     .\app\install.ps1 -WslMemoryOnly
 
-  Or by hand: create %USERPROFILE%\.wslconfig containing
+That reads how much RAM this PC has, writes matching memory/swap limits into
+%USERPROFILE%\.wslconfig and restarts WSL. Clicking "Install / Repair" in the
+Qwen 5090 app does the same thing.
 
-       [wsl2]
-       memory=24GB
-       swap=24GB
+By hand instead: put this in %USERPROFILE%\.wslconfig - keep ~8 GB for Windows
+and make up any shortfall with swap - then run  wsl --shutdown  :
 
-  2. Then run   wsl --shutdown   in PowerShell and start the server again.
+     [wsl2]
+     memory=${need_gib}GB
+     swap=8GB
 
 (Override this check with QWEN5090_SKIP_MEMCHECK=1 to let vLLM try anyway.)
 EOF

@@ -83,8 +83,9 @@ Checkpoint size: 21.81 GiB. Available RAM: 11.09 GiB.
 
 Fix it on the **Windows** side:
 
-1. Click **Install / Repair** in the app — it raises the limits in
-   `%USERPROFILE%\.wslconfig` and restarts WSL for you.
+1. Click **Install / Repair** in the app, or run `.\app\install.ps1 -WslMemoryOnly`
+   in PowerShell for just this step. Either one reads how much RAM the PC has,
+   writes matching limits to `%USERPROFILE%\.wslconfig`, and restarts WSL.
 2. By hand instead: create `%USERPROFILE%\.wslconfig` with
 
    ```ini
