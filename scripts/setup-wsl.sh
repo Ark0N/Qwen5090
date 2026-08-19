@@ -7,6 +7,15 @@ set -euo pipefail
 VENV="${QWEN5090_VENV:-$HOME/.qwen5090/venv}"
 MODEL="${MODEL:-unsloth/Qwen3.8-27B-NVFP4}"
 
+# Mirror all output to a persistent log so failed runs can be diagnosed later
+# (bundled by collect-logs.ps1 / the GUI's "Collect diagnostics" button).
+LOG_DIR="$HOME/.qwen5090/logs"
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/setup-$(date +%Y%m%d-%H%M%S).log"
+exec > >(tee -a "$LOG_FILE") 2>&1
+trap 'echo "ERROR: setup-wsl.sh failed at line $LINENO (exit $?)"' ERR
+echo "(logging to $LOG_FILE)"
+
 echo "== [1/4] Checking the GPU is visible inside WSL =="
 if ! command -v nvidia-smi >/dev/null 2>&1 || ! nvidia-smi >/dev/null 2>&1; then
   echo "nvidia-smi failed inside WSL." >&2

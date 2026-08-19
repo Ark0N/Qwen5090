@@ -13,11 +13,38 @@ param(
     [switch]$AutoInstall
 )
 $ErrorActionPreference = "Stop"
-Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Net.Http
 
 $script:IsAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
     ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 $script:RepoRoot = $PSScriptRoot
+
+# ------------------------------------------------------------------ logging
+# Everything lands in %LOCALAPPDATA%\Qwen5090\logs so failures leave a trace
+# even when the hidden console dies. Logs older than 14 days are pruned.
+$script:LogDir = Join-Path $env:LOCALAPPDATA "Qwen5090\logs"
+New-Item -ItemType Directory -Force -Path $script:LogDir | Out-Null
+$script:GuiLog = Join-Path $script:LogDir ("gui-{0}.log" -f (Get-Date -Format "yyyyMMdd-HHmmss"))
+function Write-GuiLog([string]$msg) {
+    try { Add-Content -Path $script:GuiLog -Value ("{0} {1}" -f (Get-Date -Format "HH:mm:ss.fff"), $msg) -Encoding UTF8 } catch { }
+}
+Get-ChildItem $script:LogDir -Filter *.log -ErrorAction SilentlyContinue |
+    Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-14) } |
+    Remove-Item -Force -ErrorAction SilentlyContinue
+Write-GuiLog "GUI starting | admin=$script:IsAdmin | distro=$Distro | autoInstall=$AutoInstall | repo=$script:RepoRoot | ps=$($PSVersionTable.PSVersion)"
+
+# Any terminating error anywhere in the script gets logged + shown, instead of
+# the hidden PowerShell window silently vanishing.
+trap {
+    $detail = "FATAL: $($_ | Out-String)  at: $($_.ScriptStackTrace)"
+    Write-GuiLog $detail
+    try {
+        [Windows.MessageBox]::Show("Qwen 5090 hit a fatal error.`nDetails were logged to:`n$script:GuiLog`n`n$($_.Exception.Message)",
+            "Qwen 5090", "OK", "Error") | Out-Null
+    } catch { }
+    break
+}
+
+Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Net.Http
 
 # ------------------------------------------------------------------ UI layout
 $xaml = @"
@@ -61,6 +88,8 @@ $xaml = @"
         <TextBlock Text="Server:" FontWeight="Bold" Margin="0,0,6,0"/>
         <TextBlock x:Name="TxtServerS" Text="stopped" Margin="0,0,18,0"/>
         <Button x:Name="BtnRefresh" Content="Refresh" Padding="8,2"/>
+        <Button x:Name="BtnLogs" Content="Logs" Padding="8,2"/>
+        <Button x:Name="BtnDiag" Content="Collect diagnostics" Padding="8,2"/>
       </StackPanel>
     </Border>
 
@@ -146,7 +175,7 @@ $xaml = @"
 "@
 
 $Window = [Windows.Markup.XamlReader]::Parse($xaml)
-foreach ($name in 'TxtGpuS','TxtWslS','TxtModelS','TxtServerS','BtnRefresh',
+foreach ($name in 'TxtGpuS','TxtWslS','TxtModelS','TxtServerS','BtnRefresh','BtnLogs','BtnDiag',
                   'BtnInstall','ChkSkipDownload','TxtSetupLog',
                   'BtnStart','BtnStop','TxtPort','CmbCtx','ChkMtp','TxtServerLog',
                   'ChkThink','CmbEffort','BtnClear','RtbChat','TxtInput','BtnSend') {
@@ -156,6 +185,8 @@ foreach ($name in 'TxtGpuS','TxtWslS','TxtModelS','TxtServerS','BtnRefresh',
 # ------------------------------------------------------------------ state
 $script:SetupProc = $null
 $script:ServerProc = $null
+$script:DiagProc = $null
+$script:DiagZip = $null
 $script:ServerUp = $false
 $script:ModelId = "unsloth/Qwen3.8-27B-NVFP4"
 $script:Messages = New-Object System.Collections.ArrayList
@@ -252,13 +283,16 @@ function Start-Install {
         return
     }
     $BtnInstall.IsEnabled = $false
-    $outLog = Join-Path $env:TEMP "qwen5090-setup.out.log"
-    $errLog = Join-Path $env:TEMP "qwen5090-setup.err.log"
+    $ts = Get-Date -Format "yyyyMMdd-HHmmss"
+    $outLog = Join-Path $script:LogDir "install-$ts.out.log"
+    $errLog = Join-Path $script:LogDir "install-$ts.err.log"
     Add-Tail $outLog $TxtSetupLog
     Add-Tail $errLog $TxtSetupLog
     $psArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$script:RepoRoot\install.ps1`" -Unattended -Distro $Distro"
     if ($ChkSkipDownload.IsChecked) { $psArgs += " -SkipDownload" }
     Add-Log $TxtSetupLog "Starting installer (this can take 15-40 min incl. the model download)..."
+    Add-Log $TxtSetupLog "Logging to $outLog"
+    Write-GuiLog "installer started | args: $psArgs"
     $script:SetupProc = Start-Process powershell -ArgumentList $psArgs -PassThru -WindowStyle Hidden `
         -RedirectStandardOutput $outLog -RedirectStandardError $errLog
 }
@@ -267,6 +301,7 @@ function Complete-Install {
     $code = $script:SetupProc.ExitCode
     $script:SetupProc = $null
     $BtnInstall.IsEnabled = $true
+    Write-GuiLog "installer exited | code=$code"
     switch ($code) {
         0 {
             Add-Log $TxtSetupLog "Install complete. Go to the Server tab and click 'Start server'."
@@ -292,13 +327,16 @@ function Start-Server {
     $ctx = [int]$CmbCtx.SelectedItem.Content
     $BtnStart.IsEnabled = $false
     $BtnStop.IsEnabled = $true
-    $outLog = Join-Path $env:TEMP "qwen5090-server.out.log"
-    $errLog = Join-Path $env:TEMP "qwen5090-server.err.log"
+    $ts = Get-Date -Format "yyyyMMdd-HHmmss"
+    $outLog = Join-Path $script:LogDir "server-$ts.out.log"
+    $errLog = Join-Path $script:LogDir "server-$ts.err.log"
     Add-Tail $outLog $TxtServerLog
     Add-Tail $errLog $TxtServerLog
     $psArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$script:RepoRoot\run.ps1`" -Port $port -Ctx $ctx -Distro $Distro"
     if (-not $ChkMtp.IsChecked) { $psArgs += " -NoMtp" }
     Add-Log $TxtServerLog "Starting server on port $port (context $ctx)... first start takes a minute or two."
+    Add-Log $TxtServerLog "Logging to $outLog"
+    Write-GuiLog "server starting | args: $psArgs"
     Set-ServerStatus "starting..." "#FFE0B84C"
     $script:ServerProc = Start-Process powershell -ArgumentList $psArgs -PassThru -WindowStyle Hidden `
         -RedirectStandardOutput $outLog -RedirectStandardError $errLog
@@ -315,6 +353,21 @@ function Stop-Server {
     $BtnStop.IsEnabled = $false
     Set-ServerStatus "stopped" "#FF8A8A96"
     Add-Log $TxtServerLog "Server stopped."
+    Write-GuiLog "server stopped by user"
+}
+
+function Start-Diagnostics {
+    if ($script:DiagProc) { return }
+    $ts = Get-Date -Format "yyyyMMdd-HHmmss"
+    $script:DiagZip = Join-Path ([Environment]::GetFolderPath('Desktop')) "qwen5090-diagnostics-$ts.zip"
+    $diagLog = Join-Path $script:LogDir "diag-$ts.log"
+    Add-Tail $diagLog $TxtSetupLog
+    $BtnDiag.IsEnabled = $false
+    Add-Log $TxtSetupLog "Collecting diagnostics (takes ~15-30s)..."
+    Write-GuiLog "diagnostics started -> $script:DiagZip"
+    $psArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$script:RepoRoot\collect-logs.ps1`" -Distro $Distro -OutFile `"$script:DiagZip`""
+    $script:DiagProc = Start-Process powershell -ArgumentList $psArgs -PassThru -WindowStyle Hidden `
+        -RedirectStandardOutput $diagLog -RedirectStandardError (Join-Path $script:LogDir "diag-$ts.err.log")
 }
 
 function Test-ServerHealth {
@@ -331,6 +384,7 @@ function Test-ServerHealth {
                     Set-ServerStatus "running on port $($TxtPort.Text)" "#FF76B900"
                     $BtnStart.IsEnabled = $false
                     $BtnStop.IsEnabled = $true    # works even for a server this GUI didn't start (pkill)
+                    Write-GuiLog "server detected UP on port $($TxtPort.Text)"
                     Add-Log $TxtServerLog "Server is READY - chat tab is live, API at http://localhost:$($TxtPort.Text)/v1"
                     try {
                         $json = $resp.Content.ReadAsStringAsync().Result | ConvertFrom-Json
@@ -341,6 +395,7 @@ function Test-ServerHealth {
                 $script:ServerUp = $false
                 Set-ServerStatus "not responding" "#FFFF6B6B"
                 $BtnStart.IsEnabled = $true
+                Write-GuiLog "server went DOWN (HTTP $([int]$resp.StatusCode))"
             }
             $resp.Dispose()
         } catch {
@@ -348,6 +403,7 @@ function Test-ServerHealth {
                 $script:ServerUp = $false
                 Set-ServerStatus "not responding" "#FFFF6B6B"
                 $BtnStart.IsEnabled = $true
+                Write-GuiLog "server went DOWN (no response)"
             }
         }
         return
@@ -446,7 +502,7 @@ function Drain-ChatQueue {
         switch ($item.t) {
             'think' { Add-ChatRun $item.s "#FF8A8A96" -Italic }
             'text'  { Add-ChatRun $item.s "#FFE8E8EE"; $null = $script:ChatReply.Append($item.s) }
-            'err'   { Add-ChatRun "`n(error: $($item.s))`n" "#FFFF6B6B" -Italic }
+            'err'   { Add-ChatRun "`n(error: $($item.s))`n" "#FFFF6B6B" -Italic; Write-GuiLog "chat error: $($item.s)" }
             'done'  {
                 Add-ChatRun "`n" "#FFE8E8EE"
                 if ($script:ChatReply.Length -gt 0) {
@@ -465,6 +521,8 @@ function Drain-ChatQueue {
 
 # ------------------------------------------------------------------ events
 $BtnRefresh.Add_Click({ Update-Status })
+$BtnLogs.Add_Click({ Start-Process explorer.exe $script:LogDir })
+$BtnDiag.Add_Click({ Start-Diagnostics })
 $BtnInstall.Add_Click({ Start-Install })
 $BtnStart.Add_Click({ Start-Server })
 $BtnStop.Add_Click({ Stop-Server })
@@ -486,6 +544,18 @@ $timer.Add_Tick({
     Read-Tails
     Drain-ChatQueue
     if ($script:SetupProc -and $script:SetupProc.HasExited) { Complete-Install }
+    if ($script:DiagProc -and $script:DiagProc.HasExited) {
+        $script:DiagProc = $null
+        $BtnDiag.IsEnabled = $true
+        if (Test-Path $script:DiagZip) {
+            Add-Log $TxtSetupLog "Diagnostics bundle saved to: $script:DiagZip"
+            Write-GuiLog "diagnostics done -> $script:DiagZip"
+            [Windows.MessageBox]::Show("Diagnostics bundle saved to your Desktop:`n$script:DiagZip`n`nAttach this file when reporting the issue.", "Qwen 5090") | Out-Null
+        } else {
+            Add-Log $TxtSetupLog "Diagnostics collection FAILED - check $script:LogDir"
+            Write-GuiLog "diagnostics FAILED"
+        }
+    }
     if ($script:ServerProc -and $script:ServerProc.HasExited -and -not $script:ServerUp) {
         # wrapper died before the server came up -> surface it
         Set-ServerStatus "exited (see log)" "#FFFF6B6B"
@@ -498,6 +568,13 @@ $timer.Add_Tick({
     if ($script:TickCount % 7 -eq 0) { Test-ServerHealth }
 })
 $timer.Start()
+
+# Exceptions thrown inside event handlers land here instead of killing the app.
+$Window.Dispatcher.Add_UnhandledException({
+    Write-GuiLog ("UNHANDLED: " + ($_.Exception | Out-String))
+    try { [Windows.MessageBox]::Show("Unexpected error (details logged to $script:GuiLog):`n$($_.Exception.Message)", "Qwen 5090") | Out-Null } catch { }
+    $_.Handled = $true
+})
 
 $Window.Add_Loaded({
     Update-Status

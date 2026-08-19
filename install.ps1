@@ -28,8 +28,20 @@ param(
 )
 $ErrorActionPreference = "Stop"
 
+# Every run is transcribed to %LOCALAPPDATA%\Qwen5090\logs so failures leave
+# a trace even outside the GUI (which also captures stdout separately).
+$script:LogDir = Join-Path $env:LOCALAPPDATA "Qwen5090\logs"
+New-Item -ItemType Directory -Force -Path $script:LogDir | Out-Null
+$script:LogFile = Join-Path $script:LogDir ("install-{0}.transcript.log" -f (Get-Date -Format "yyyyMMdd-HHmmss"))
+try { Start-Transcript -Path $script:LogFile -Force | Out-Null } catch { }
+function Stop-Log { try { Stop-Transcript | Out-Null } catch { } }
+
 function Step($msg) { Write-Host "`n== $msg ==" -ForegroundColor Cyan }
-function Fail($msg) { Write-Host "ERROR: $msg" -ForegroundColor Red; exit 1 }
+function Fail($msg) { Write-Host "ERROR: $msg" -ForegroundColor Red; Stop-Log; exit 1 }
+
+Write-Host "Logging this run to: $script:LogFile"
+Write-Host ("Run context: time={0} | unattended={1} | skipDownload={2} | distro={3}" -f (Get-Date -Format o), [bool]$Unattended, [bool]$SkipDownload, $Distro)
+try { Write-Host ("WSL: " + (((& wsl --version 2>$null) -replace "`0", "" | Where-Object { $_ }) -join " | ")) } catch { Write-Host "WSL: not queryable yet" }
 
 function Register-ResumeAfterReboot {
     # Re-open the GUI at next logon so the user can continue with one click.
@@ -102,6 +114,7 @@ if ($LASTEXITCODE -ne 0) {
     if ($Unattended) { Register-ResumeAfterReboot }
     Write-Host "`nWSL installed. Windows needs ONE reboot, then setup continues." -ForegroundColor Yellow
     if (-not $Unattended) { Write-Host "After rebooting, run .\install.ps1 again." -ForegroundColor Yellow }
+    Stop-Log
     exit 3010
 }
 Write-Host "Updating the WSL kernel (fast if already current)..."
@@ -145,4 +158,5 @@ Step "All done"
 Write-Host "Open the app     :  double-click Qwen5090.cmd (or the 'Qwen 5090' desktop shortcut)"
 Write-Host "Command line     :  .\run.ps1 to serve, .\chat.ps1 to chat"
 Write-Host "API endpoint     :  http://localhost:8000/v1   (OpenAI-compatible, api_key can be anything)"
+Stop-Log
 exit 0

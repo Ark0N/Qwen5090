@@ -10,6 +10,14 @@ PORT="${PORT:-8000}"
 GPU_UTIL="${GPU_UTIL:-0.90}"  # leave headroom: on WSL the same GPU drives the Windows desktop
 MTP="${MTP:-1}"               # multi-token prediction (speculative decoding); set 0 to disable
 
+# Mirror all output (vLLM included) to a persistent log for diagnostics.
+LOG_DIR="${QWEN5090_LOG_DIR:-$HOME/.qwen5090/logs}"
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/serve-$(date +%Y%m%d-%H%M%S).log"
+exec > >(tee -a "$LOG_FILE") 2>&1
+trap 'echo "ERROR: serve.sh failed at line $LINENO (exit $?)"' ERR
+echo ">> logging to $LOG_FILE"
+
 if [[ ! -x "$VENV/bin/vllm" ]]; then
   echo "vLLM venv not found at $VENV — run install.ps1 (or scripts/setup-wsl.sh) first." >&2
   exit 1
