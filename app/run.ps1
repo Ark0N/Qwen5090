@@ -15,7 +15,7 @@ param(
     [int]$Ctx = 262144,
     [int]$Port = 8000,
     [string]$Model = "unsloth/Qwen3.8-27B-NVFP4",
-    # Download it first with:  .\install.ps1 -Uncensored -HfToken hf_xxxxxxxx
+    # Download it first with:  .\install.ps1 -Uncensored
     # serve.sh keys its flags off the model id, so nothing else changes here.
     [switch]$Uncensored,
     [double]$GpuUtil = 0.90,
@@ -25,7 +25,8 @@ param(
 $ErrorActionPreference = "Stop"
 
 if ($Uncensored -and $Model -eq "unsloth/Qwen3.8-27B-NVFP4") {
-    $Model = "orcarouter/Qwen3.8-27B-Uncensored-NVFP4"
+    # The ungated abliterated NVFP4 re-quant; -Model takes any other repo id.
+    $Model = "sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4"
 }
 
 $repoWin = $PSScriptRoot -replace '\\', '/'

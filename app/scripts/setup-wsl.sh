@@ -5,9 +5,9 @@
 set -euo pipefail
 
 VENV="${QWEN5090_VENV:-$HOME/.qwen5090/venv}"
-MODEL="${MODEL:-unsloth/Qwen3.8-27B-NVFP4}"   # or orcarouter/Qwen3.8-27B-Uncensored-NVFP4
-# Gated repos (the uncensored build is one) need HF_TOKEN once; it is then saved
-# where huggingface_hub looks by default, so vLLM reuses it at serve time.
+MODEL="${MODEL:-unsloth/Qwen3.8-27B-NVFP4}"   # or sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4
+# Most repos need no account. A gated one (orcarouter's) needs HF_TOKEN once; it
+# is then saved where huggingface_hub looks by default, so vLLM reuses it later.
 
 # Mirror all output to a persistent log so failed runs can be diagnosed later
 # (bundled by collect-logs.ps1 / the GUI's "Collect diagnostics" button).
@@ -32,12 +32,19 @@ echo "== [2/5] Checking model access =="
 # The uncensored (abliterated) checkpoint is a gated Hugging Face repo. Catch a
 # missing token here, in five seconds, instead of after the ten-minute vLLM
 # install. Everything else is public and needs no account.
+# Only repos that Hugging Face actually gates go in this list - the community
+# NVFP4 re-quants of the abliterated weights are public downloads.
 IS_GATED=0
 SIZE_HINT="~22 GB"
-if [[ "$MODEL" == *[Uu]ncensored* || "$MODEL" == *bliterated* ]]; then
-  IS_GATED=1
-  SIZE_HINT="~23 GB"
-fi
+case "$MODEL" in
+  orcarouter/Qwen3.8-27B-Uncensored-NVFP4)
+    IS_GATED=1
+    SIZE_HINT="~23 GB"
+    ;;
+  *[Aa]bliterated*|*[Uu]ncensored*)
+    SIZE_HINT="~19 GB"
+    ;;
+esac
 if [[ "$IS_GATED" == "0" ]]; then
   echo "$MODEL is a public repo - no Hugging Face account needed."
 elif [[ -n "${HF_TOKEN:-}" ]]; then

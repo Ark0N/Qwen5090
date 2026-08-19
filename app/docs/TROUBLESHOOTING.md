@@ -116,8 +116,13 @@ GGUF.
 
 ## Uncensored build: "gated repository" / 401 / "Access to model ... is restricted"
 
-`orcarouter/Qwen3.8-27B-Uncensored-NVFP4` is gated, so Hugging Face serves it
-only to an account that has accepted its terms:
+Only the *Uncensored - OrcaRouter (sign-in)* entry needs an account. If you do
+not want one, pick plain *Uncensored (abliterated)*
+(`sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4`) instead — it downloads
+without a token and no other step changes.
+
+For the OrcaRouter entry, Hugging Face serves it only to an account that has
+accepted its terms:
 
 1. Sign in at
    [huggingface.co/orcarouter/Qwen3.8-27B-Uncensored-NVFP4](https://huggingface.co/orcarouter/Qwen3.8-27B-Uncensored-NVFP4)

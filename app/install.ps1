@@ -17,16 +17,16 @@
 .EXAMPLE
   .\install.ps1
   .\install.ps1 -SkipDownload   # set everything up but let vLLM fetch weights on first run
-  .\install.ps1 -Uncensored -HfToken hf_xxxxxxxx   # the abliterated build (gated repo)
+  .\install.ps1 -Uncensored     # the abliterated build (public download, no account)
   .\install.ps1 -Unattended     # no prompts; what gui.ps1 runs under the hood
   .\install.ps1 -WslMemoryOnly  # only re-size the WSL VM from this PC's RAM, then exit
 #>
 [CmdletBinding()]
 param(
     [string]$Distro = "Ubuntu-24.04",
-    # Which checkpoint to download. -Uncensored is orcarouter's abliterated
-    # build; it is a GATED Hugging Face repo, so it also needs -HfToken once
-    # (the GUI passes it through the QWEN5090_HF_TOKEN environment variable).
+    # Which checkpoint to download. -Uncensored is the abliterated NVFP4
+    # re-quant, a public download. -HfToken is only needed for a gated repo
+    # passed via -Model (the GUI hands it over in QWEN5090_HF_TOKEN).
     [string]$Model = "",
     [switch]$Uncensored,
     [string]$HfToken = $env:QWEN5090_HF_TOKEN,
@@ -38,7 +38,8 @@ param(
 $ErrorActionPreference = "Stop"
 
 $script:ModelStandard = "unsloth/Qwen3.8-27B-NVFP4"
-$script:ModelUncensored = "orcarouter/Qwen3.8-27B-Uncensored-NVFP4"
+$script:ModelUncensored = "sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4"
+$script:ModelUncensoredGated = "orcarouter/Qwen3.8-27B-Uncensored-NVFP4"
 if (-not $Model) { $Model = if ($Uncensored) { $script:ModelUncensored } else { $script:ModelStandard } }
 # Both values end up inside a single-quoted bash string; keep them to the shapes
 # Hugging Face actually uses so nothing can break out of the quoting.
@@ -469,6 +470,9 @@ Write-Host "$Distro - OK"
 Step "Running Linux-side setup (vLLM install + model download)"
 Write-Host "Model: $Model"
 if ($Model -eq $script:ModelUncensored) {
+    Write-Host "This build has its safety alignment removed (abliterated)."
+}
+if ($Model -eq $script:ModelUncensoredGated) {
     Write-Host "This build has its safety alignment removed and is gated on Hugging Face;"
     Write-Host "accept its terms once at https://huggingface.co/$Model if you have not."
 }

@@ -46,11 +46,11 @@ Cline, ...) — API key can be anything.
 
 ## What you get
 
-- **A choice of two builds**, picked from the **Model** dropdown on the Setup
-  tab: the standard Qwen3.8-27B, or an **uncensored** (abliterated) build whose
-  refusal behaviour has been removed. See
-  [Uncensored build](#uncensored-build) below — it is a gated download and you
-  answer for what you generate with it.
+- **A choice of builds**, picked from the **Model** dropdown on the Setup tab:
+  the standard Qwen3.8-27B, or an **uncensored** (abliterated) build whose
+  refusal behaviour has been removed — a plain public download, no account. See
+  [Uncensored build](#uncensored-build); you answer for what you generate with
+  it.
 - **The model**: Qwen3.8-27B — Alibaba's Apache-2.0, 27B multimodal model
   (released 2026-08-14) with 262K context and a reasoning dial, in NVIDIA's
   NVFP4 4-bit format built for your 5090's Blackwell tensor cores. Expect
@@ -99,28 +99,36 @@ Python 3.13 venv with `vllm`, `flashinfer`, and the CUTLASS DSL → downloads
 **Model** dropdown, or from PowerShell:
 
 ```powershell
-.\app\install.ps1 -Uncensored -HfToken hf_xxxxxxxx   # one-time download (~23 GB)
-.\app\run.ps1 -Uncensored                            # serve it
+.\app\install.ps1 -Uncensored   # one-time download (~19 GB), no account needed
+.\app\run.ps1 -Uncensored       # serve it
+.\app\run.ps1                   # back to the standard build
 ```
 
-It is [`orcarouter/Qwen3.8-27B-Uncensored-NVFP4`](https://huggingface.co/orcarouter/Qwen3.8-27B-Uncensored-NVFP4) —
-the same Qwen3.8-27B with the refusal direction removed, re-quantized to
-NVFP4 + FP8, Apache-2.0, 262K context, MTP and tool calling intact. Two things
-differ from the standard build:
+That is [`sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4`](https://huggingface.co/sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4) —
+[huihui-ai's abliterated Qwen3.8-27B](https://huggingface.co/huihui-ai/Huihui-Qwen3.8-27B-abliterated)
+re-quantized to NVFP4 with llm-compressor, Apache-2.0, MTP head preserved. It
+is a **public download**: no Hugging Face account, no token. At ~19 GB it is
+smaller than the standard build, so there is more room for KV cache.
 
-- **It is gated on Hugging Face.** Sign in there, accept the terms on the model
-  page (access is automatic), create a **read** token at
-  [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens), and
-  paste it into the **HF token** box next to the dropdown. It is stored inside
-  WSL, so you do this once.
-- **It has no safety guardrails.** It answers what the standard model declines,
-  including things that are illegal or dangerous to act on, and it is no more
-  accurate than the standard build while doing so. It is your responsibility
-  what you do with the output. Both builds run entirely on your PC.
+It has **no safety guardrails**. It answers what the standard model declines,
+including things that are illegal or dangerous to act on, and it is no more
+accurate while doing so — abliteration removes refusals, not mistakes. What you
+do with the output is on you. Both builds run entirely on your PC. The author
+also notes it occasionally drops a closing parenthesis when generating code.
 
-Serving flags follow the checkpoint automatically (`serve.sh` reads the model
-id): the uncensored build takes its KV-cache dtype from its own `config.json`,
-drafts 2 MTP tokens instead of 3, and loads with `--trust-remote-code`.
+A third entry, *Uncensored - OrcaRouter (sign-in)*
+([`orcarouter/Qwen3.8-27B-Uncensored-NVFP4`](https://huggingface.co/orcarouter/Qwen3.8-27B-Uncensored-NVFP4),
+~23 GB), is a different abliteration of the same model. It is **gated**: sign in
+at Hugging Face, accept the terms on the model page, create a **read** token at
+[huggingface.co/settings/tokens](https://huggingface.co/settings/tokens), and
+paste it into the **HF token** box that lights up next to the dropdown. Stored
+inside WSL, so you do it once.
+
+Any other checkpoint works too: `run.ps1 -Model owner/name` (add
+`install.ps1 -Model owner/name` to download it). Serving flags follow the model
+id automatically — `serve.sh` knows which builds take `--kv-cache-dtype` from
+the command line versus their own `config.json`, how many MTP tokens to draft,
+and which need `--trust-remote-code`.
 
 **Tuning:**
 

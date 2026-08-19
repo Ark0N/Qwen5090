@@ -551,12 +551,14 @@ $xaml = @'
           </DockPanel>
           <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,12">
             <TextBlock Text="Model" Style="{StaticResource FieldLabel}"/>
-            <ComboBox x:Name="CmbModel" Width="196" SelectedIndex="0" VerticalAlignment="Center" Margin="0,0,14,0"
+            <ComboBox x:Name="CmbModel" Width="252" SelectedIndex="0" VerticalAlignment="Center" Margin="0,0,14,0"
                       ToolTip="Which checkpoint to download and serve">
               <ComboBoxItem Content="Standard" Tag="unsloth/Qwen3.8-27B-NVFP4"
                             ToolTip="The official Qwen3.8-27B release in NVFP4 - about 22 GB, no account needed"/>
-              <ComboBoxItem Content="Uncensored (abliterated)" Tag="orcarouter/Qwen3.8-27B-Uncensored-NVFP4"
-                            ToolTip="Same model with the refusal direction removed - about 23 GB. Gated on Hugging Face: accept its terms there, then paste a read token."/>
+              <ComboBoxItem Content="Uncensored (abliterated)" Tag="sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4"
+                            ToolTip="huihui-ai's abliterated Qwen3.8-27B re-quantized to NVFP4 - about 19 GB, public download, no account needed. Refusals removed."/>
+              <ComboBoxItem Content="Uncensored - OrcaRouter (sign-in)" Tag="orcarouter/Qwen3.8-27B-Uncensored-NVFP4"
+                            ToolTip="OrcaRouter's abliterated build - about 23 GB. Gated on Hugging Face: accept its terms there and paste a read token."/>
             </ComboBox>
             <TextBlock Text="HF token" Style="{StaticResource FieldLabel}"/>
             <TextBox x:Name="TxtHfToken" Width="220" Height="30" VerticalAlignment="Center" IsEnabled="False"
@@ -678,6 +680,7 @@ $script:ServerUp = $false
 # picked on the Setup tab is what install/run get told about.
 $script:ModelId = "unsloth/Qwen3.8-27B-NVFP4"
 $script:ModelStandard = "unsloth/Qwen3.8-27B-NVFP4"
+$script:ModelGated = "orcarouter/Qwen3.8-27B-Uncensored-NVFP4"   # the only entry needing a token
 $script:Messages = New-Object System.Collections.ArrayList
 $script:ChatQueue = [System.Collections.Concurrent.ConcurrentQueue[object]]::new()
 $script:ChatBusy = $false
@@ -707,8 +710,8 @@ function Get-SelectedModelLabel {
 }
 
 function Update-ModelChoice {
-    # The uncensored build is the only gated one: enable the token box for it.
-    $gated = (Get-SelectedModel) -ne $script:ModelStandard
+    # Only the OrcaRouter entry is gated; the others download without an account.
+    $gated = (Get-SelectedModel) -eq $script:ModelGated
     $TxtHfToken.IsEnabled = $gated
     if ($gated) {
         $TxtModelHint.Text = "Gated: accept the terms on huggingface.co, then paste a read token (once)."
@@ -864,7 +867,7 @@ function Start-Install {
     if ($TxtHfToken.Text) { $token = $TxtHfToken.Text.Trim() }
     [Environment]::SetEnvironmentVariable("QWEN5090_HF_TOKEN", $token, "Process")
     Add-Log $TxtSetupLog "Model: $model"
-    if ($model -ne $script:ModelStandard -and -not $token) {
+    if ($model -eq $script:ModelGated -and -not $token) {
         Add-Log $TxtSetupLog "No Hugging Face token given - this build is gated, so the download only works if you already saved a token."
     }
     Add-Log $TxtSetupLog "Starting installer (this can take 15-40 min incl. the model download)..."
