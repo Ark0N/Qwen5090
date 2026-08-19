@@ -2,6 +2,22 @@
 
 Work top-to-bottom: most failures are the driver, WSL state, or VRAM.
 
+## GUI won't open / closes instantly
+- If you downloaded a ZIP (instead of `git clone`), Windows may block the
+  scripts: right-click `Qwen5090.cmd` → Properties → check **Unblock**, or run
+  `Unblock-File -Path .\* , .\scripts\*` in PowerShell from the repo folder.
+- SmartScreen may warn on first launch — choose "More info → Run anyway".
+
+## Where the GUI logs live
+The GUI streams installer and server output into the window, and also writes
+raw logs to `%TEMP%\qwen5090-setup.*.log` and `%TEMP%\qwen5090-server.*.log` —
+attach those when reporting an issue.
+
+## GUI chat says "server is not running"
+Start it on the Server tab and wait for the status to turn green ("running") —
+first start takes a minute or two while the model loads and CUDA graphs
+compile. If it stays on "starting...", check the Server tab log.
+
 ## `install.ps1` says WSL needs a reboot
 Normal on a machine that never had WSL. Reboot, then run `.\install.ps1`
 again — it picks up where it left off.

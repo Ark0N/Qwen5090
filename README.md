@@ -4,18 +4,27 @@ Run **Qwen3.8-27B** — Alibaba's Apache-2.0, 27B dense multimodal model (releas
 2026-08-14) — locally on a Windows 11 gaming PC with an **RTX 5090**, using the
 **NVFP4** 4-bit quantization built for Blackwell GPUs.
 
-Three commands and you have an OpenAI-compatible API plus a terminal chat,
-running entirely on your own hardware.
+One double-click and you have a control panel that installs everything, runs an
+OpenAI-compatible API, and chats with the model — entirely on your own hardware.
+
+## Quickstart (GUI)
+
+1. `git clone https://github.com/Ark0N/Qwen3.8-27B-NVFP4-RTX-5090.git` (or
+   download the ZIP and unzip it)
+2. Double-click **`Qwen5090.cmd`**
+3. Click **Install / Repair** (approve the admin prompt), wait for the ~17 GB
+   download, then hit **Start server** and use the **Chat** tab
+
+The installer is fully unattended: it enables WSL2, provisions Ubuntu 24.04
+silently (no Linux username prompts — a `qwen` user is created for you),
+installs vLLM, downloads the model, and drops a **Qwen 5090** shortcut on your
+desktop. If Windows needs its one WSL reboot, the app re-opens by itself after
+you log back in and you just click Install again to resume.
+
+## Quickstart (command line)
 
 ```powershell
-git clone https://github.com/Ark0N/Qwen3.8-27B-NVFP4-RTX-5090.git
-cd Qwen3.8-27B-NVFP4-RTX-5090
 .\install.ps1        # run in an elevated (Administrator) PowerShell
-```
-
-then, in a normal PowerShell:
-
-```powershell
 .\run.ps1            # starts the server on http://localhost:8000/v1
 .\chat.ps1           # chat with it from a second terminal
 ```
@@ -46,16 +55,35 @@ Windows, so everything Linux-side lives in WSL2. The PowerShell scripts hide
 that completely: install, run, and chat from Windows; `localhost:8000` is
 forwarded automatically.
 
-## What `install.ps1` does
+## What the installer does
 
 1. Verifies Windows 11, the NVIDIA driver version, and your GPU.
-2. Enables WSL2 and installs Ubuntu 24.04 if missing (a reboot may be needed —
-   just re-run the script afterwards; it resumes safely).
+2. Enables WSL2 and provisions Ubuntu 24.04. In GUI/`-Unattended` mode this is
+   silent: a `qwen` Linux user with passwordless sudo is created automatically.
+   If the one-time WSL reboot is needed, a RunOnce entry re-opens the app after
+   login (CLI users just re-run `install.ps1`; it resumes safely).
 3. Inside WSL: installs [uv](https://docs.astral.sh/uv/), creates a Python 3.13
    venv at `~/.qwen5090/venv`, and installs `vllm`, `flashinfer`, and the
    CUTLASS DSL that NVFP4 kernels need.
 4. Downloads [`unsloth/Qwen3.8-27B-NVFP4`](https://huggingface.co/unsloth/Qwen3.8-27B-NVFP4)
-   (~17 GB) into the Hugging Face cache. Skip with `-SkipDownload`.
+   (~17 GB) into the Hugging Face cache. Skip with `-SkipDownload` (or the GUI
+   checkbox).
+5. Creates a desktop shortcut (disable with `-NoShortcut`).
+
+## The GUI
+
+`Qwen5090.cmd` opens a native WPF control panel (pure PowerShell — nothing to
+install, no Electron):
+
+- **Status bar** — GPU/driver, WSL + vLLM state, model download state, server
+  health, all at a glance.
+- **Setup tab** — one Install/Repair button with live installer logs and
+  download progress; handles the admin elevation and reboot-resume for you.
+- **Server tab** — start/stop, port, context-length picker (64K/128K/256K),
+  MTP toggle, live vLLM logs. The server keeps running if you close the window.
+- **Chat tab** — streaming chat with the model; thinking tokens render dim,
+  with a thinking-mode toggle and Qwen3.8's `reasoning_effort` dial
+  (low → xhigh). Sampling uses the recommended instruct settings.
 
 ## Using the API
 
@@ -103,9 +131,11 @@ Quick throughput check while the server runs (from WSL):
 ## Repo layout
 
 ```
-install.ps1            Windows one-shot installer (elevated PowerShell)
-run.ps1                start the vLLM server
-chat.ps1               terminal chat client
+Qwen5090.cmd           double-click launcher for the GUI
+gui.ps1                WPF control panel (install / server / chat)
+install.ps1            one-shot installer (also used headless by the GUI)
+run.ps1                start the vLLM server (CLI)
+chat.ps1               terminal chat client (CLI)
 scripts/setup-wsl.sh   Linux-side setup (called by install.ps1)
 scripts/serve.sh       vllm serve with 5090-tuned flags
 scripts/chat.py        streaming chat client (runs in the WSL venv)

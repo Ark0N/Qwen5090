@@ -25,16 +25,13 @@ This file guides Claude Code when working in this repository.
 
 ## Commands
 
-<!-- List the exact commands Claude can't guess — fill in as the project
-     takes shape, then delete this comment:
-
 | Task | Command |
 |------|---------|
-| Dev server | `npm run dev` |
-| Test (single file) | `npm test -- test/<file>.test.ts` |
-| Lint | `npm run lint` |
-| Build | `npm run build` |
--->
+| Lint bash | `bash -n scripts/*.sh` |
+| Lint python | `python3 -m py_compile scripts/chat.py` |
+| Lint powershell | parse with `[System.Management.Automation.Language.Parser]::ParseFile` via a portable pwsh (download to scratchpad if missing); optionally `Invoke-ScriptAnalyzer` |
+
+- All `.ps1` files must keep their UTF-8 BOM (Windows PowerShell 5.1 reads BOM-less files as ANSI and mangles non-ASCII).
 
 ## Code Style
 
