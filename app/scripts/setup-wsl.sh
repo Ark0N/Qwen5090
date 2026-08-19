@@ -61,7 +61,10 @@ print("Model cached.")
 PY
   DL_PID=$!
   while kill -0 "$DL_PID" 2>/dev/null; do
-    SIZE=$(du -sh "$CACHE_DIR" 2>/dev/null | cut -f1)
+    # 'du' exits non-zero until the cache dir exists, and under 'set -e' a bare
+    # assignment inherits that status and would kill the install a split second
+    # after the download starts. Swallow it inside the substitution.
+    SIZE=$(du -sh "$CACHE_DIR" 2>/dev/null | cut -f1 || true)
     echo "   ... downloaded ${SIZE:-0} of ~17G"
     sleep 15
   done
