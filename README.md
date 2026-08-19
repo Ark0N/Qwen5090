@@ -9,8 +9,8 @@ OpenAI-compatible API, and chats with the model — entirely on your own hardwar
 
 ## Quickstart (GUI)
 
-1. `git clone https://github.com/Ark0N/Qwen3.8-27B-NVFP4-RTX-5090.git` (or
-   download the ZIP and unzip it)
+1. **[⬇ Download the ZIP](https://github.com/Ark0N/Qwen3.8-27B-NVFP4-RTX-5090/archive/refs/heads/main.zip)**
+   and unzip it anywhere (or `git clone https://github.com/Ark0N/Qwen3.8-27B-NVFP4-RTX-5090.git`)
 2. Double-click **`Qwen5090.cmd`**
 3. Click **Install / Repair** (approve the admin prompt), wait for the ~17 GB
    download, then hit **Start server** and use the **Chat** tab
