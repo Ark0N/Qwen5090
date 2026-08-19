@@ -204,6 +204,52 @@ if ($gpuName -notmatch '50\d0|RTX PRO \d+ Blackwell|B\d{3}') {
     Write-Host "WARNING: '$gpuName' does not look like a Blackwell GPU. NVFP4 needs an RTX 50-series card; continuing anyway." -ForegroundColor Yellow
 }
 
+Step "Checking CPU virtualization (required for WSL2)"
+# Three states matter here:
+#  - hypervisor already running            -> fine
+#  - firmware on, hypervisor launch off    -> bcdedit fix + one reboot (3010)
+#  - firmware off                          -> only the BIOS can fix it; fail with instructions
+$hvPresent = $false
+try { $hvPresent = [bool](Get-CimInstance Win32_ComputerSystem).HypervisorPresent } catch { }
+if ($hvPresent) {
+    Write-Host "Hypervisor is running - OK"
+} else {
+    $fwEnabled = $null
+    try { $fwEnabled = [bool](Get-CimInstance Win32_Processor | Select-Object -First 1).VirtualizationFirmwareEnabled } catch { }
+    if ($null -eq $fwEnabled) {
+        Write-Host "WARNING: could not query the virtualization state - continuing; WSL will complain if it is off." -ForegroundColor Yellow
+    } elseif ($fwEnabled) {
+        $bcd = ""
+        try { $bcd = (& bcdedit /enum "{current}") -join "`n" } catch { }
+        if ($bcd -match 'hypervisorlaunchtype\s+Off') {
+            # Commonly left behind by VirtualBox/anti-cheat guides; WSL2 fails with
+            # HCS_E_HYPERV_NOT_INSTALLED until the hypervisor is allowed to start.
+            Write-Host "Virtualization is enabled in firmware, but the Windows hypervisor is switched off"
+            Write-Host "(hypervisorlaunchtype = Off) - turning it back on..."
+            & bcdedit /set "{current}" hypervisorlaunchtype auto | Out-Null
+            if ($Unattended) { Register-ResumeAfterReboot }
+            Write-Host "`nDone. Windows needs ONE reboot for the hypervisor to start, then setup continues." -ForegroundColor Yellow
+            if (-not $Unattended) { Write-Host "After rebooting, run .\install.ps1 again." -ForegroundColor Yellow }
+            Stop-Log
+            exit 3010
+        }
+        Write-Host "Virtualization is enabled in firmware - OK (Windows starts the hypervisor during WSL setup)"
+    } else {
+        Write-Host "CPU virtualization is DISABLED in your BIOS/UEFI firmware." -ForegroundColor Red
+        Write-Host "WSL2 cannot run without it (WSL reports error HCS_E_HYPERV_NOT_INSTALLED)."
+        Write-Host ""
+        Write-Host "How to fix (about 5 minutes):"
+        Write-Host "  1. Restart into firmware settings: Settings > System > Recovery > Advanced startup >"
+        Write-Host "     Restart now, then Troubleshoot > Advanced options > UEFI Firmware Settings"
+        Write-Host "     (or press Del/F2 while the PC boots)."
+        Write-Host "  2. Enable the setting for your CPU (usually under Advanced or CPU Configuration):"
+        Write-Host "       Intel:  'Intel Virtualization Technology' / 'VT-x'"
+        Write-Host "       AMD:    'SVM Mode'"
+        Write-Host "  3. Save and exit (usually F10), boot Windows, and run the installer again."
+        Fail "Enable virtualization in the BIOS/UEFI, then re-run this installer."
+    }
+}
+
 Step "Checking WSL2"
 & wsl --status *> $null
 if ($LASTEXITCODE -ne 0) {

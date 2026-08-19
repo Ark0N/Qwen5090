@@ -52,6 +52,18 @@ again — it picks up where it left off.
   Check Task Manager → Performance → CPU → "Virtualization: Enabled".
 - Update WSL itself: `wsl --update`, then `wsl --shutdown`.
 
+## "virtualization is not enabled" / `HCS_E_HYPERV_NOT_INSTALLED`
+The installer checks for this up front and prints the fix, but in short:
+- **Task Manager says "Virtualization: Disabled"** → enable it in the BIOS/UEFI:
+  restart into firmware (Settings → System → Recovery → Advanced startup →
+  UEFI Firmware Settings, or Del/F2 at boot), then enable
+  "Intel Virtualization Technology"/"VT-x" (Intel) or "SVM Mode" (AMD),
+  save, boot, and run the installer again.
+- **Task Manager says "Enabled" but the error persists** → the Windows
+  hypervisor was switched off (old VirtualBox/anti-cheat guides do this).
+  The installer now repairs this automatically; by hand it is
+  `bcdedit /set hypervisorlaunchtype auto` in an admin prompt, then reboot.
+
 ## `nvidia-smi` works in Windows but fails inside WSL
 - Update the **Windows** driver to ≥ 570 (Game Ready or Studio), then run
   `wsl --shutdown` and retry. The Windows driver provides the GPU to WSL.
