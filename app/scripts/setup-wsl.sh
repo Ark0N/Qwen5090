@@ -54,7 +54,7 @@ uv pip install "${UV_FLAGS[@]}" --python "$VENV/bin/python" \
   "openai>=1.60" \
   --torch-backend=auto
 
-echo "== [4/4] Downloading model weights: $MODEL (~17 GB) =="
+echo "== [4/4] Downloading model weights: $MODEL (~22 GB) =="
 if [[ "${SKIP_DOWNLOAD:-0}" == "1" ]]; then
   echo "SKIP_DOWNLOAD=1 set — skipping. vLLM will download on first serve instead."
 elif [[ "${NONINTERACTIVE:-0}" == "1" ]]; then
@@ -73,7 +73,7 @@ PY
     # assignment inherits that status and would kill the install a split second
     # after the download starts. Swallow it inside the substitution.
     SIZE=$(du -sh "$CACHE_DIR" 2>/dev/null | cut -f1 || true)
-    echo "   ... downloaded ${SIZE:-0} of ~17G"
+    echo "   ... downloaded ${SIZE:-0} of ~22G"
     sleep 15
   done
   wait "$DL_PID"

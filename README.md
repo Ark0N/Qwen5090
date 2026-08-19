@@ -25,7 +25,7 @@ subscription, no data leaving your machine.
    SmartScreen asks.*
 2. **Double-click `Start Qwen 5090.cmd`**, then click **Install / Repair** and approve
    the admin prompt. Everything is automatic: WSL2, Ubuntu, the AI engine, and
-   the ~17 GB model download (15–40 min total). If Windows asks to reboot once,
+   the ~22 GB model download (15–40 min total). If Windows asks to reboot once,
    the app re-opens by itself afterwards — just click Install again to resume.
 3. **Click Start server** on the Server tab, wait for the green light
    (a minute or two), and talk to your AI on the **Chat** tab.
@@ -41,7 +41,8 @@ Cline, ...) — API key can be anything.
 | 💻 OS | Windows 11 |
 | 🎮 GPU | NVIDIA RTX 5090 (other RTX 50-series with ≥24 GB also work) |
 | 🔧 Driver | NVIDIA 570 or newer ([get the latest](https://www.nvidia.com/drivers)) |
-| 💾 Disk | ~25 GB free |
+| 🧠 RAM | 16 GB minimum, 32 GB recommended (the installer sizes WSL's share for you) |
+| 💾 Disk | ~45 GB free (model ~22 GB, Python + CUDA libraries the rest) |
 
 ## What you get
 
@@ -59,7 +60,7 @@ Cline, ...) — API key can be anything.
   **Collect diagnostics** — it zips all logs + system info to your Desktop for
   a one-file bug report.
 - **A clean exit**: **Cleanup / Uninstall** on the Setup tab removes everything
-  the app installed — Ubuntu, the Python environment, and the ~17 GB model —
+  the app installed — Ubuntu, the Python environment, and the ~22 GB model —
   freeing 20+ GB. Reinstalling later is one click.
 
 ## How it works
@@ -74,7 +75,7 @@ What `install.ps1` actually does: checks Windows 11 + driver ≥ 570 → enables
 WSL2 (one reboot max, auto-resumes) → provisions Ubuntu unattended → creates a
 Python 3.13 venv with `vllm`, `flashinfer`, and the CUTLASS DSL → downloads
 [`unsloth/Qwen3.8-27B-NVFP4`](https://huggingface.co/unsloth/Qwen3.8-27B-NVFP4)
-(~17 GB, skippable) → desktop shortcut. Re-running is always safe.
+(~22 GB, skippable) → desktop shortcut. Re-running is always safe.
 
 ## For power users
 
@@ -124,7 +125,7 @@ blocked). The API has no authentication, so only share on networks you trust.
 Undo anytime: `.\app\share.ps1 -Remove`. HTTPS alternative with zero setup:
 `tailscale serve --bg 8000`.
 
-**Why NVFP4 on a 5090:** the ~17 GB weights fit the 32 GB card with room for
+**Why NVFP4 on a 5090:** the ~22 GB weights fit the 32 GB card with room for
 128K–262K context (FP8 KV cache + Qwen3.8's hybrid attention), it runs ~1.5×
 faster than BF16 on Blackwell's FP4 tensor cores, and Unsloth's dynamic quants
 keep accuracy close to the original checkpoint.

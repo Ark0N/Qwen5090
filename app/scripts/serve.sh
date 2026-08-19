@@ -23,6 +23,61 @@ if [[ ! -x "$VENV/bin/vllm" ]]; then
   exit 1
 fi
 
+check_wsl_memory() {
+  # vLLM loads each weights shard through one private, writable mmap of the
+  # whole file. Linux heuristic overcommit (vm.overcommit_memory=0, the WSL
+  # default) refuses a mapping larger than MemAvailable + free swap, so the
+  # ~21 GiB shard dies with "unable to mmap ...: Cannot allocate memory (12)"
+  # about 40 s into startup — Windows gives the WSL VM only half the PC's RAM
+  # by default. Catch it here, where the fix can be explained in five lines
+  # instead of a 200-line traceback.
+  [[ "${QWEN5090_SKIP_MEMCHECK:-0}" == "1" ]] && return 0
+  [[ "$(cat /proc/sys/vm/overcommit_memory 2>/dev/null || echo 0)" == "0" ]] || return 0
+
+  local model_dir shard avail_kib swap_kib budget
+  if [[ -d "$MODEL" ]]; then
+    model_dir="$MODEL"
+  else
+    model_dir="${HF_HOME:-$HOME/.cache/huggingface}/hub/models--${MODEL//\//--}"
+  fi
+  [[ -d "$model_dir" ]] || return 0   # not downloaded yet — vLLM will fetch it
+
+  # Every fallible substitution needs '|| true': under 'set -e' a bare
+  # assignment inherits the pipeline's exit status and would abort the server.
+  shard=$(find -L "$model_dir" -name '*.safetensors' -printf '%s\n' 2>/dev/null | sort -n | tail -1 || true)
+  avail_kib=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo || true)
+  swap_kib=$(awk '/^SwapFree:/ {print $2}' /proc/meminfo || true)
+  [[ -n "${shard:-}" && -n "${avail_kib:-}" ]] || return 0
+  budget=$(( (avail_kib + ${swap_kib:-0}) * 1024 ))
+  (( shard > budget )) || return 0
+
+  local shard_gib="$((shard / 1073741824))" budget_gib="$((budget / 1073741824))"
+  cat >&2 <<EOF
+
+ERROR: this WSL virtual machine is too small to load the model weights.
+
+  largest weights file : ${shard_gib} GiB
+  usable RAM + swap    : ${budget_gib} GiB
+
+Windows gives WSL half the PC's RAM by default, and Linux refuses to map a file
+it cannot back with memory. Fix it on the WINDOWS side:
+
+  1. Open the Qwen 5090 app and click "Install / Repair" — it sizes WSL for you.
+
+  Or by hand: create %USERPROFILE%\.wslconfig containing
+
+       [wsl2]
+       memory=24GB
+       swap=24GB
+
+  2. Then run   wsl --shutdown   in PowerShell and start the server again.
+
+(Override this check with QWEN5090_SKIP_MEMCHECK=1 to let vLLM try anyway.)
+EOF
+  exit 1
+}
+check_wsl_memory
+
 ARGS=(
   serve "$MODEL"
   --host 0.0.0.0 --port "$PORT"

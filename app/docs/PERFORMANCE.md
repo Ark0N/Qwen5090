@@ -15,7 +15,7 @@ from WSL (add `TOKENS=1024` for a longer run).
 
 ## Where the VRAM goes (32 GB card)
 
-- **Weights:** ~17 GB (NVFP4, 4-bit weights + FP8 lm_head)
+- **Weights:** ~22 GB (NVFP4, 4-bit weights + FP8 lm_head)
 - **KV cache:** FP8, and Qwen3.8's hybrid attention (linear attention on 48 of
   64 layers) keeps it small — that's why 128K–262K context fits at all
 - **Headroom:** `GPU_UTIL=0.90` leaves ~3 GB for the Windows desktop, which

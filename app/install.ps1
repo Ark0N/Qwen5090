@@ -5,7 +5,7 @@
 
 .DESCRIPTION
   Checks Windows 11, the NVIDIA driver, and WSL2; installs Ubuntu-24.04 if
-  missing; then runs the Linux-side setup (uv + Python 3.13 + vLLM + ~17 GB
+  missing; then runs the Linux-side setup (uv + Python 3.13 + vLLM + ~22 GB
   model download). Re-running after a reboot or a fixed prerequisite is safe.
 
   In -Unattended mode (used by gui.ps1) the Ubuntu distro is provisioned
@@ -131,6 +131,112 @@ function Invoke-Streamed {
 Write-Host "Logging this run to: $script:LogFile"
 Write-Host ("Run context: time={0} | unattended={1} | skipDownload={2} | distro={3}" -f (Get-Date -Format o), [bool]$Unattended, [bool]$SkipDownload, $Distro)
 try { Write-Host ("WSL: " + (((& wsl --version 2>$null) -replace "`0", "" | Where-Object { $_ }) -join " | ")) } catch { Write-Host "WSL: not queryable yet" }
+
+function ConvertFrom-WslSize {
+    <#
+      .wslconfig sizes look like 16GB / 16G / 12000MB / 8000000000 (bare = bytes).
+      Returns the value in GB, or $null when it cannot be parsed.
+    #>
+    param([string]$Value)
+    if (-not $Value) { return $null }
+    if ($Value.Trim() -notmatch '^(?<num>\d+(\.\d+)?)\s*(?<unit>[KMGT]?B?)$') { return $null }
+    $num = [double]$matches['num']
+    switch ($matches['unit'].ToUpper().TrimEnd('B')) {
+        'T'     { return $num * 1024 }
+        'G'     { return $num }
+        'M'     { return $num / 1024 }
+        'K'     { return $num / 1048576 }
+        default { return $num / 1GB }
+    }
+}
+
+function Set-WslMemoryLimit {
+    <#
+      vLLM maps the whole ~22 GB weights file in one go, and Linux refuses a
+      mapping bigger than the VM's RAM + swap ("unable to mmap ...: Cannot
+      allocate memory (12)"). WSL2 defaults to half the PC's RAM plus a quarter
+      of that as swap - not enough on a 32 GB machine - so raise the limits in
+      %USERPROFILE%\.wslconfig. Existing values are only ever raised, and other
+      keys/sections are left untouched. Returns $true if the file changed.
+    #>
+    $needGB = 28   # ~22 GB of weights + the loader's own working set
+    $hostGB = 0
+    try { $hostGB = [int][math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB) } catch { }
+    if ($hostGB -le 0) {
+        Write-Host "   Could not read the installed RAM - leaving the WSL memory settings alone." -ForegroundColor Yellow
+        return $false
+    }
+
+    $path = Join-Path $env:USERPROFILE ".wslconfig"
+    $lines = @()
+    if (Test-Path -LiteralPath $path) { $lines = @(Get-Content -LiteralPath $path) }
+
+    # Find the [wsl2] section and any memory=/swap= keys inside it.
+    $hdrIdx = -1; $memIdx = -1; $swapIdx = -1; $inWsl2 = $false
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $line = $lines[$i].Trim()
+        if ($line -match '^\[(.+)\]$') {
+            $inWsl2 = ($matches[1].Trim().ToLower() -eq 'wsl2')
+            if ($inWsl2 -and $hdrIdx -lt 0) { $hdrIdx = $i }
+            continue
+        }
+        if (-not $inWsl2) { continue }
+        if ($line -match '^memory\s*=') { $memIdx = $i }
+        elseif ($line -match '^swap\s*=') { $swapIdx = $i }
+    }
+
+    $curMem = $null;  if ($memIdx  -ge 0) { $curMem  = ConvertFrom-WslSize (($lines[$memIdx]  -split '=', 2)[1]) }
+    $curSwap = $null; if ($swapIdx -ge 0) { $curSwap = ConvertFrom-WslSize (($lines[$swapIdx] -split '=', 2)[1]) }
+    if ($null -eq $curMem)  { $curMem  = [math]::Floor($hostGB / 2) }   # WSL2 default
+    if ($null -eq $curSwap) { $curSwap = [math]::Floor($curMem / 4) }   # WSL2 default
+    Write-Host ("   This PC has {0} GB RAM; WSL2 may use {1} GB + {2} GB swap." -f $hostGB, [int]$curMem, [int]$curSwap)
+    if (($curMem + $curSwap) -ge $needGB) {
+        Write-Host "   Enough to load the model - no change needed."
+        return $false
+    }
+
+    # Leave Windows at least 8 GB; make up any shortfall with swap, which is a
+    # sparse file and costs nothing until the loader actually needs it.
+    $newMem = [int][math]::Min([double]$needGB, [math]::Max([double]($hostGB - 8), [double]$curMem))
+    $newSwap = [int][math]::Max([double]$curSwap, [math]::Max([double]($needGB - $newMem), 8.0))
+    $memLine = "memory=${newMem}GB"
+    $swapLine = "swap=${newSwap}GB"
+
+    $out = New-Object System.Collections.ArrayList
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($i -eq $memIdx)       { $null = $out.Add($memLine) }
+        elseif ($i -eq $swapIdx)  { $null = $out.Add($swapLine) }
+        else                      { $null = $out.Add($lines[$i]) }
+    }
+    if ($hdrIdx -lt 0) {
+        if ($out.Count -gt 0) { $null = $out.Add("") }
+        $null = $out.Add("[wsl2]")
+        $null = $out.Add($memLine)
+        $null = $out.Add($swapLine)
+    } else {
+        $insert = @()
+        if ($memIdx  -lt 0) { $insert += $memLine }
+        if ($swapIdx -lt 0) { $insert += $swapLine }
+        # Add a missing key below the one that is already there, not above it.
+        $anchor = [math]::Max($hdrIdx, [math]::Max($memIdx, $swapIdx))
+        if ($insert.Count -gt 0) { $out.InsertRange($anchor + 1, [string[]]$insert) }
+    }
+
+    try {
+        if (Test-Path -LiteralPath $path) {
+            $backup = "$path.bak-" + (Get-Date -Format "yyyyMMdd-HHmmss")
+            Copy-Item -LiteralPath $path -Destination $backup -Force
+            Write-Host "   Existing settings backed up to $backup"
+        }
+        # No BOM: WSL ignores a .wslconfig that starts with one.
+        [System.IO.File]::WriteAllLines($path, [string[]]$out, (New-Object System.Text.UTF8Encoding($false)))
+    } catch {
+        Write-Host "   WARNING: could not write $path ($($_.Exception.Message)) - the server may fail to load the model." -ForegroundColor Yellow
+        return $false
+    }
+    Write-Host "   Raised WSL2 limits in ${path}: $memLine, $swapLine"
+    return $true
+}
 
 function Register-ResumeAfterReboot {
     # Re-open the GUI at next logon so the user can continue with one click.
@@ -292,6 +398,14 @@ Write-Host "This is quick if WSL is already current, but can take a few minutes 
 $null = Invoke-Streamed -Activity "the WSL kernel update" -FilePath "wsl" -Arguments "--update"   # best-effort
 Write-Host "WSL2 - OK"
 
+Step "Sizing the WSL virtual machine"
+# The model is loaded through a single ~22 GB memory mapping; a default-sized
+# WSL VM (half the PC's RAM) cannot back it and the server dies at load time.
+if (Set-WslMemoryLimit) {
+    Write-Host "   Restarting WSL so the new limits take effect (this stops any running server)..."
+    & wsl --shutdown *> $null
+}
+
 Step "Checking Linux distro ($Distro)"
 # wsl.exe prints UTF-16; strip the interleaved nulls before comparing.
 $distros = (& wsl -l -q) -replace "`0", "" | Where-Object { $_ -ne "" }
@@ -317,7 +431,7 @@ if ($distros -notcontains $Distro) {
 Write-Host "$Distro - OK"
 
 Step "Running Linux-side setup (vLLM install + model download)"
-Write-Host "This is the longest step: Python + vLLM install, then the ~17 GB model download."
+Write-Host "This is the longest step: Python + vLLM install, then the ~22 GB model download."
 Write-Host "Detailed progress streams below the whole time."
 $repoWin = $PSScriptRoot -replace '\\', '/'
 $repoWsl = ((& wsl -d $Distro -- wslpath -a "$repoWin") -replace "`0", "").Trim()

@@ -70,6 +70,35 @@ The installer checks for this up front and prints the fix, but in short:
 - Never `apt install` an NVIDIA driver inside WSL — it shadows the Windows one.
   If you did: `sudo apt purge 'nvidia-*'` inside WSL, then `wsl --shutdown`.
 
+## Server dies while loading: "unable to mmap ... Cannot allocate memory (12)"
+
+That is *system* RAM, not VRAM. vLLM maps the whole ~22 GB weights file at
+once, and Windows only lends WSL half the PC's RAM (plus a quarter of that as
+swap), so on a 32 GB machine the mapping is refused before a single byte is
+read. The log line just above it gives it away:
+
+```
+Checkpoint size: 21.81 GiB. Available RAM: 11.09 GiB.
+```
+
+Fix it on the **Windows** side:
+
+1. Click **Install / Repair** in the app — it raises the limits in
+   `%USERPROFILE%\.wslconfig` and restarts WSL for you.
+2. By hand instead: create `%USERPROFILE%\.wslconfig` with
+
+   ```ini
+   [wsl2]
+   memory=24GB
+   swap=8GB
+   ```
+
+   then `wsl --shutdown` in PowerShell and start the server again.
+
+Keep ~8 GB for Windows itself. On a 16 GB PC leave `memory` alone and give
+`swap=20GB` instead — loading is slower but it works. `wsl --shutdown` is
+required for any `.wslconfig` change to take effect.
+
 ## Out of memory (CUDA OOM) at startup
 The 5090's 32 GB is shared with the Windows desktop, so vLLM can't take it all.
 In order of preference:
