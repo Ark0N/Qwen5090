@@ -8,10 +8,21 @@ Work top-to-bottom: most failures are the driver, WSL state, or VRAM.
   `Unblock-File -Path .\* , .\scripts\*` in PowerShell from the repo folder.
 - SmartScreen may warn on first launch — choose "More info → Run anyway".
 
-## Where the GUI logs live
-The GUI streams installer and server output into the window, and also writes
-raw logs to `%TEMP%\qwen5090-setup.*.log` and `%TEMP%\qwen5090-server.*.log` —
-attach those when reporting an issue.
+## Where the logs live
+Every run is logged automatically (kept 14 days):
+- **Windows side**: `%LOCALAPPDATA%\Qwen5090\logs` — GUI events (`gui-*.log`),
+  installer output + transcript (`install-*`), server output (`server-*`).
+  The GUI's **Logs** button opens this folder.
+- **WSL side**: `~/.qwen5090/logs` — Linux setup (`setup-*.log`) and the full
+  vLLM server output (`serve-*.log`).
+
+If the GUI itself crashes, the fatal error (with stack trace) is written to
+the newest `gui-*.log` and shown in a message box.
+
+## Reporting a problem
+Click **Collect diagnostics** in the GUI (or run `.\collect-logs.ps1`). It
+bundles all of the above plus GPU/driver/WSL state and tool versions into
+`qwen5090-diagnostics-<timestamp>.zip` on your Desktop — attach that file.
 
 ## GUI chat says "server is not running"
 Start it on the Server tab and wait for the status to turn green ("running") —

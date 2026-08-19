@@ -84,6 +84,11 @@ install, no Electron):
 - **Chat tab** — streaming chat with the model; thinking tokens render dim,
   with a thinking-mode toggle and Qwen3.8's `reasoning_effort` dial
   (low → xhigh). Sampling uses the recommended instruct settings.
+- **Logs & diagnostics** — every run is logged to `%LOCALAPPDATA%\Qwen5090\logs`
+  (Windows) and `~/.qwen5090/logs` (WSL); GUI crashes are caught and logged
+  with a stack trace instead of vanishing. The **Collect diagnostics** button
+  (or `.\collect-logs.ps1`) zips all logs plus GPU/driver/WSL state to your
+  Desktop for one-file bug reports.
 
 ## Using the API
 
@@ -136,6 +141,7 @@ gui.ps1                WPF control panel (install / server / chat)
 install.ps1            one-shot installer (also used headless by the GUI)
 run.ps1                start the vLLM server (CLI)
 chat.ps1               terminal chat client (CLI)
+collect-logs.ps1       zip all logs + system state for bug reports
 scripts/setup-wsl.sh   Linux-side setup (called by install.ps1)
 scripts/serve.sh       vllm serve with 5090-tuned flags
 scripts/chat.py        streaming chat client (runs in the WSL venv)
