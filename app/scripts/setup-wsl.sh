@@ -38,7 +38,15 @@ if [[ "${NONINTERACTIVE:-0}" == "1" ]]; then
   UV_FLAGS+=(--no-progress)   # keep GUI logs readable (no \r progress bars)
 fi
 mkdir -p "$(dirname "$VENV")"
-uv venv "${UV_FLAGS[@]}" "$VENV" --python 3.13
+# uv >= 0.12 refuses to create a venv over an existing one (exit 2), which would
+# make every re-run of the installer fail. Reuse what is already there instead:
+# --clear would work too, but it throws away ~200 cached packages / several GB.
+if [[ -x "$VENV/bin/python" ]]; then
+  echo "Reusing the existing Python environment at $VENV"
+else
+  rm -rf "$VENV"   # nothing usable in there; a half-made venv would block uv too
+  uv venv "${UV_FLAGS[@]}" "$VENV" --python 3.13
+fi
 uv pip install "${UV_FLAGS[@]}" --python "$VENV/bin/python" \
   "vllm>=0.25.0" \
   "flashinfer-python>=0.6.13" \
