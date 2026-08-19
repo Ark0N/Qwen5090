@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# One-time setup inside WSL2 Ubuntu: uv + Python 3.13 venv + NVFP4-capable vLLM
+# + Qwen3.8-27B-NVFP4 model download. Normally invoked by install.ps1, but safe
+# to run directly from a WSL shell too. Re-running is idempotent.
+set -euo pipefail
+
+VENV="${QWEN5090_VENV:-$HOME/.qwen5090/venv}"
+MODEL="${MODEL:-unsloth/Qwen3.8-27B-NVFP4}"
+
+echo "== [1/4] Checking the GPU is visible inside WSL =="
+if ! command -v nvidia-smi >/dev/null 2>&1 || ! nvidia-smi >/dev/null 2>&1; then
+  echo "nvidia-smi failed inside WSL." >&2
+  echo "Install/update the *Windows* NVIDIA driver (>= 570; Game Ready or Studio)," >&2
+  echo "then run 'wsl --shutdown' from Windows and try again." >&2
+  echo "Never install a Linux NVIDIA driver inside WSL — it shadows the Windows one." >&2
+  exit 1
+fi
+nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader
+
+echo "== [2/4] Installing uv (Python package manager) =="
+export PATH="$HOME/.local/bin:$PATH"
+if ! command -v uv >/dev/null 2>&1; then
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+fi
+
+echo "== [3/4] Creating venv + installing vLLM (downloads CUDA wheels; takes a while) =="
+mkdir -p "$(dirname "$VENV")"
+uv venv "$VENV" --python 3.13
+uv pip install --python "$VENV/bin/python" \
+  "vllm>=0.25.0" \
+  "flashinfer-python>=0.6.13" \
+  "nvidia-cutlass-dsl>=4.5.2" \
+  "openai>=1.60" \
+  --torch-backend=auto
+
+echo "== [4/4] Downloading model weights: $MODEL (~17 GB) =="
+if [[ "${SKIP_DOWNLOAD:-0}" == "1" ]]; then
+  echo "SKIP_DOWNLOAD=1 set — skipping. vLLM will download on first serve instead."
+else
+  "$VENV/bin/python" - "$MODEL" <<'PY'
+import sys
+from huggingface_hub import snapshot_download
+snapshot_download(sys.argv[1])
+print("Model cached.")
+PY
+fi
+
+echo
+echo "Setup complete."
+echo "  Start the server from Windows:  .\\run.ps1"
+echo "  ...or from this WSL shell:      bash scripts/serve.sh"
