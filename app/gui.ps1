@@ -717,10 +717,12 @@ function Start-Install {
     Write-GuiLog "installer started | args: $psArgs"
     $script:SetupProc = Start-Process powershell -ArgumentList $psArgs -PassThru -WindowStyle Hidden `
         -RedirectStandardOutput $outLog -RedirectStandardError $errLog
+    $null = $script:SetupProc.Handle   # cache now or .ExitCode reads $null after exit (PS 5.1)
 }
 
 function Complete-Install {
     $code = $script:SetupProc.ExitCode
+    if ($null -eq $code) { $code = -1 }
     $script:SetupProc = $null
     $BtnInstall.IsEnabled = $true
     $BtnCleanup.IsEnabled = $true
@@ -781,10 +783,12 @@ function Invoke-Cleanup {
     Write-GuiLog "cleanup started | args: $psArgs"
     $script:CleanupProc = Start-Process powershell -ArgumentList $psArgs -PassThru -WindowStyle Hidden `
         -RedirectStandardOutput $outLog -RedirectStandardError $errLog
+    $null = $script:CleanupProc.Handle   # cache now or .ExitCode reads $null after exit (PS 5.1)
 }
 
 function Complete-Cleanup {
     $code = $script:CleanupProc.ExitCode
+    if ($null -eq $code) { $code = -1 }
     $script:CleanupProc = $null
     $BtnCleanup.IsEnabled = $true
     $BtnInstall.IsEnabled = $true
