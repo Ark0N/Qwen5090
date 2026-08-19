@@ -1,4 +1,4 @@
-#Requires -RunAsAdministrator
+﻿#Requires -RunAsAdministrator
 <#
 .SYNOPSIS
   One-shot installer for running Qwen3.8-27B (NVFP4) on Windows 11 + RTX 5090.
@@ -8,19 +8,72 @@
   missing; then runs the Linux-side setup (uv + Python 3.13 + vLLM + ~17 GB
   model download). Re-running after a reboot or a fixed prerequisite is safe.
 
+  In -Unattended mode (used by gui.ps1) the Ubuntu distro is provisioned
+  silently — a 'qwen' Linux user is created automatically, no prompts — and a
+  RunOnce entry re-opens the GUI after a required reboot.
+
+  Exit codes: 0 = success, 1 = failure, 3010 = reboot required (re-run after).
+
 .EXAMPLE
   .\install.ps1
   .\install.ps1 -SkipDownload   # set everything up but let vLLM fetch weights on first run
+  .\install.ps1 -Unattended     # no prompts; what gui.ps1 runs under the hood
 #>
 [CmdletBinding()]
 param(
     [string]$Distro = "Ubuntu-24.04",
-    [switch]$SkipDownload
+    [switch]$SkipDownload,
+    [switch]$Unattended,
+    [switch]$NoShortcut
 )
 $ErrorActionPreference = "Stop"
 
 function Step($msg) { Write-Host "`n== $msg ==" -ForegroundColor Cyan }
 function Fail($msg) { Write-Host "ERROR: $msg" -ForegroundColor Red; exit 1 }
+
+function Register-ResumeAfterReboot {
+    # Re-open the GUI at next logon so the user can continue with one click.
+    $launcher = Join-Path $PSScriptRoot "Qwen5090.cmd"
+    if (Test-Path $launcher) {
+        $cmd = "cmd /c start `"`" `"$launcher`""
+        New-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce" `
+            -Name "Qwen5090Resume" -Value $cmd -PropertyType String -Force | Out-Null
+        Write-Host "The Qwen 5090 app will re-open automatically after you log back in."
+    }
+}
+
+function Install-DistroUnattended {
+    # Silent provisioning: install the distro without OOBE, create a 'qwen'
+    # user with passwordless sudo, and make it the default. Returns $true on success.
+    & wsl --install -d $Distro --no-launch *>&1 | Out-Host
+    if ($LASTEXITCODE -ne 0) { return $false }
+    # The store launcher for "Ubuntu-24.04" is "ubuntu2404.exe".
+    $launcherName = (($Distro -replace '[-.]', '').ToLower()) + ".exe"
+    $launcher = Get-Command $launcherName -ErrorAction SilentlyContinue
+    if (-not $launcher) { return $false }
+    & $launcher.Source install --root *>&1 | Out-Host
+    if ($LASTEXITCODE -ne 0) { return $false }
+    & wsl -d $Distro -u root -- bash -c "id qwen >/dev/null 2>&1 || useradd -m -s /bin/bash qwen; usermod -aG sudo qwen; echo 'qwen ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/qwen; chmod 440 /etc/sudoers.d/qwen; printf '[user]\ndefault=qwen\n' > /etc/wsl.conf"
+    if ($LASTEXITCODE -ne 0) { return $false }
+    & wsl --terminate $Distro *> $null
+    return $true
+}
+
+function New-DesktopShortcut {
+    $launcher = Join-Path $PSScriptRoot "Qwen5090.cmd"
+    if (-not (Test-Path $launcher)) { return }
+    try {
+        $shell = New-Object -ComObject WScript.Shell
+        $lnk = $shell.CreateShortcut((Join-Path ([Environment]::GetFolderPath('Desktop')) "Qwen 5090.lnk"))
+        $lnk.TargetPath = $launcher
+        $lnk.WorkingDirectory = $PSScriptRoot
+        $lnk.Description = "Qwen3.8-27B local AI on your RTX 5090"
+        $lnk.Save()
+        Write-Host "Desktop shortcut created: Qwen 5090"
+    } catch {
+        Write-Host "WARNING: could not create a desktop shortcut ($($_.Exception.Message))" -ForegroundColor Yellow
+    }
+}
 
 Step "Checking Windows version"
 $build = [int](Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').CurrentBuildNumber
@@ -46,32 +99,50 @@ Step "Checking WSL2"
 if ($LASTEXITCODE -ne 0) {
     Write-Host "WSL is not installed yet - installing (this can take a few minutes)..."
     & wsl --install --no-distribution
-    Write-Host "`nWSL installed. REBOOT Windows now, then run .\install.ps1 again to continue." -ForegroundColor Yellow
-    exit 0
+    if ($Unattended) { Register-ResumeAfterReboot }
+    Write-Host "`nWSL installed. Windows needs ONE reboot, then setup continues." -ForegroundColor Yellow
+    if (-not $Unattended) { Write-Host "After rebooting, run .\install.ps1 again." -ForegroundColor Yellow }
+    exit 3010
 }
+Write-Host "Updating the WSL kernel (fast if already current)..."
+& wsl --update *> $null   # best-effort: Blackwell GPU support needs a recent kernel
 Write-Host "WSL2 - OK"
 
 Step "Checking Linux distro ($Distro)"
 # wsl.exe prints UTF-16; strip the interleaved nulls before comparing.
 $distros = (& wsl -l -q) -replace "`0", "" | Where-Object { $_ -ne "" }
 if ($distros -notcontains $Distro) {
-    Write-Host "Installing $Distro - you will be asked to create a Linux username and password."
-    Write-Host "When you land in the Linux shell, type 'exit' to come back here." -ForegroundColor Yellow
-    & wsl --install -d $Distro
-    if ($LASTEXITCODE -ne 0) { Fail "Failed to install $Distro. Run 'wsl --install -d $Distro' manually, then re-run this script." }
+    $installed = $false
+    Write-Host "Installing $Distro silently (no prompts)..."
+    $installed = Install-DistroUnattended
+    if (-not $installed) {
+        Write-Host "Silent install unavailable - falling back to the interactive Ubuntu setup." -ForegroundColor Yellow
+        Write-Host "A window will open asking you to create a Linux username and password;" -ForegroundColor Yellow
+        Write-Host "type 'exit' in the Linux shell when done." -ForegroundColor Yellow
+        Start-Process wsl -ArgumentList "--install -d $Distro" -Wait
+        $distros = (& wsl -l -q) -replace "`0", "" | Where-Object { $_ -ne "" }
+        if ($distros -notcontains $Distro) { Fail "Failed to install $Distro. Run 'wsl --install -d $Distro' manually, then re-run this script." }
+    }
 }
 Write-Host "$Distro - OK"
 
 Step "Running Linux-side setup (vLLM install + model download)"
 $repoWin = $PSScriptRoot -replace '\\', '/'
-$repoWsl = (& wsl -d $Distro -- wslpath -a "$repoWin") -replace "`0", ""
-$repoWsl = $repoWsl.Trim()
+$repoWsl = ((& wsl -d $Distro -- wslpath -a "$repoWin") -replace "`0", "").Trim()
 if (-not $repoWsl) { Fail "Could not translate the repo path into WSL. Is $Distro initialized? Try 'wsl -d $Distro' once, then re-run." }
-$envPrefix = if ($SkipDownload) { "SKIP_DOWNLOAD=1 " } else { "" }
+$envPrefix = ""
+if ($SkipDownload) { $envPrefix += "SKIP_DOWNLOAD=1 " }
+if ($Unattended) { $envPrefix += "NONINTERACTIVE=1 " }
 & wsl -d $Distro -- bash -c "${envPrefix}bash '$repoWsl/scripts/setup-wsl.sh'"
 if ($LASTEXITCODE -ne 0) { Fail "Linux-side setup failed - see the output above, then re-run .\install.ps1 (it resumes safely)." }
 
+if (-not $NoShortcut) {
+    Step "Creating desktop shortcut"
+    New-DesktopShortcut
+}
+
 Step "All done"
-Write-Host "Start the server :  .\run.ps1"
-Write-Host "Terminal chat    :  .\chat.ps1        (in a second terminal)"
+Write-Host "Open the app     :  double-click Qwen5090.cmd (or the 'Qwen 5090' desktop shortcut)"
+Write-Host "Command line     :  .\run.ps1 to serve, .\chat.ps1 to chat"
 Write-Host "API endpoint     :  http://localhost:8000/v1   (OpenAI-compatible, api_key can be anything)"
+exit 0

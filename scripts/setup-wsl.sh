@@ -24,9 +24,13 @@ if ! command -v uv >/dev/null 2>&1; then
 fi
 
 echo "== [3/4] Creating venv + installing vLLM (downloads CUDA wheels; takes a while) =="
+UV_FLAGS=()
+if [[ "${NONINTERACTIVE:-0}" == "1" ]]; then
+  UV_FLAGS+=(--no-progress)   # keep GUI logs readable (no \r progress bars)
+fi
 mkdir -p "$(dirname "$VENV")"
-uv venv "$VENV" --python 3.13
-uv pip install --python "$VENV/bin/python" \
+uv venv "${UV_FLAGS[@]}" "$VENV" --python 3.13
+uv pip install "${UV_FLAGS[@]}" --python "$VENV/bin/python" \
   "vllm>=0.25.0" \
   "flashinfer-python>=0.6.13" \
   "nvidia-cutlass-dsl>=4.5.2" \
@@ -36,6 +40,23 @@ uv pip install --python "$VENV/bin/python" \
 echo "== [4/4] Downloading model weights: $MODEL (~17 GB) =="
 if [[ "${SKIP_DOWNLOAD:-0}" == "1" ]]; then
   echo "SKIP_DOWNLOAD=1 set — skipping. vLLM will download on first serve instead."
+elif [[ "${NONINTERACTIVE:-0}" == "1" ]]; then
+  # No tqdm bars in GUI mode; report cache growth every 15s instead.
+  export HF_HUB_DISABLE_PROGRESS_BARS=1
+  CACHE_DIR="$HOME/.cache/huggingface/hub/models--${MODEL//\//--}"
+  "$VENV/bin/python" - "$MODEL" <<'PY' &
+import sys
+from huggingface_hub import snapshot_download
+snapshot_download(sys.argv[1])
+print("Model cached.")
+PY
+  DL_PID=$!
+  while kill -0 "$DL_PID" 2>/dev/null; do
+    SIZE=$(du -sh "$CACHE_DIR" 2>/dev/null | cut -f1)
+    echo "   ... downloaded ${SIZE:-0} of ~17G"
+    sleep 15
+  done
+  wait "$DL_PID"
 else
   "$VENV/bin/python" - "$MODEL" <<'PY'
 import sys
