@@ -51,7 +51,7 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, Sys
 $xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Qwen 5090 — Local AI Control Panel"
+        Title="Qwen3.8-27B 5090 — Local AI Control Panel"
         Width="960" Height="700" MinWidth="820" MinHeight="560"
         WindowStartupLocation="CenterScreen" Background="#FF0F1115"
         FontFamily="Segoe UI" FontSize="13"
@@ -480,7 +480,7 @@ $xaml = @'
                          HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-1,0,0"/>
             </Border>
             <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
-              <TextBlock Text="Qwen 5090" FontSize="16" FontWeight="SemiBold" Foreground="#EDF0F5"
+              <TextBlock Text="Qwen3.8-27B 5090" FontSize="16" FontWeight="SemiBold" Foreground="#EDF0F5"
                          TextTrimming="CharacterEllipsis"/>
               <TextBlock Text="Local AI control panel for your RTX 5090" FontSize="11" Foreground="#7C8494"
                          TextTrimming="CharacterEllipsis"/>
@@ -568,11 +568,13 @@ $xaml = @'
             <TextBlock Text="Port" Style="{StaticResource FieldLabel}"/>
             <TextBox x:Name="TxtPort" Text="8000" Width="64" Height="30" TextAlignment="Center" VerticalAlignment="Center" Margin="0,0,14,0"/>
             <TextBlock Text="Context" Style="{StaticResource FieldLabel}"/>
-            <ComboBox x:Name="CmbCtx" Width="110" VerticalAlignment="Center" SelectedIndex="1" Margin="0,0,14,0"
-                      ToolTip="Maximum context length in tokens - higher uses more VRAM">
-              <ComboBoxItem Content="65536"/>
-              <ComboBoxItem Content="131072"/>
-              <ComboBoxItem Content="262144"/>
+            <!-- Content is the label the user reads; Tag carries the exact token
+                 count that run.ps1 needs (Start-Server reads Tag, never Content). -->
+            <ComboBox x:Name="CmbCtx" Width="92" VerticalAlignment="Center" SelectedIndex="1" Margin="0,0,14,0"
+                      ToolTip="Maximum context length - higher uses more VRAM">
+              <ComboBoxItem Content="64K" Tag="65536" ToolTip="65,536 tokens"/>
+              <ComboBoxItem Content="128K" Tag="131072" ToolTip="131,072 tokens - recommended"/>
+              <ComboBoxItem Content="262K" Tag="262144" ToolTip="262,144 tokens - the model's native maximum"/>
             </ComboBox>
             <CheckBox x:Name="ChkMtp" Content="MTP speed boost" ToolTip="Speculative decoding (multi-token prediction) - faster, leave on" IsChecked="True" Margin="0,0,14,0"/>
             <CheckBox x:Name="ChkShare" Content="Share on network" ToolTip="Other devices on your Wi-Fi or tailnet (LAN/Tailscale) can use the API - asks for admin once per start"/>
@@ -892,7 +894,7 @@ function Start-Server {
         [Windows.MessageBox]::Show("Invalid port: $($TxtPort.Text)", "Qwen 5090") | Out-Null
         return
     }
-    $ctx = [int]$CmbCtx.SelectedItem.Content
+    $ctx = [int]$CmbCtx.SelectedItem.Tag
     $BtnStart.IsEnabled = $false
     $BtnStop.IsEnabled = $true
     $ts = Get-Date -Format "yyyyMMdd-HHmmss"
