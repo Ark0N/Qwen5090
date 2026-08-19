@@ -4,9 +4,11 @@ Work top-to-bottom: most failures are the driver, WSL state, or VRAM.
 
 ## GUI won't open / closes instantly
 - If you downloaded a ZIP (instead of `git clone`), Windows may block the
-  scripts: right-click `Qwen5090.cmd` → Properties → check **Unblock**, or run
-  `Unblock-File -Path .\* , .\scripts\*` in PowerShell from the repo folder.
-- SmartScreen may warn on first launch — choose "More info → Run anyway".
+  scripts: right-click the downloaded ZIP → Properties → check **Unblock**
+  *before* unzipping, or afterwards run
+  `Get-ChildItem -Recurse | Unblock-File` in PowerShell from the unzipped folder.
+- SmartScreen may warn on first launch of `Start Qwen 5090.cmd` — choose
+  "More info → Run anyway".
 
 ## Where the logs live
 Every run is logged automatically (kept 14 days):
@@ -19,8 +21,20 @@ Every run is logged automatically (kept 14 days):
 If the GUI itself crashes, the fatal error (with stack trace) is written to
 the newest `gui-*.log` and shown in a message box.
 
+## Other devices can't reach the API (LAN / Tailscale)
+- Sharing must be re-applied after every reboot — WSL's internal IP changes.
+  The GUI's **Share on network** checkbox does this on every server start;
+  CLI: `.\app\run.ps1 -Share`. Undo with `.\app\share.ps1 -Remove`.
+- Windows must classify your network as **Private** (Settings → Network &
+  internet) — the firewall rule deliberately excludes Public networks.
+  Tailscale's interface counts as private automatically.
+- Tailscale: both devices must be on the same tailnet; connect to the PC's
+  Tailscale IP (`tailscale ip -4` on the PC) or MagicDNS name, port 8000.
+- Alternative without sharing: `tailscale serve --bg 8000` on the PC proxies
+  `localhost:8000` to your tailnet over HTTPS.
+
 ## Reporting a problem
-Click **Collect diagnostics** in the GUI (or run `.\collect-logs.ps1`). It
+Click **Collect diagnostics** in the GUI (or run `.\app\collect-logs.ps1`). It
 bundles all of the above plus GPU/driver/WSL state and tool versions into
 `qwen5090-diagnostics-<timestamp>.zip` on your Desktop — attach that file.
 
@@ -68,7 +82,7 @@ GGUF.
 ## `bash\r: No such file or directory` or `$'\r': command not found`
 The shell scripts were checked out with CRLF line endings. This repo's
 `.gitattributes` prevents that; if you copied files by hand, fix them with
-`wsl -- dos2unix scripts/*.sh` (or re-clone).
+`wsl -- dos2unix app/scripts/*.sh` (or re-clone).
 
 ## Port 8000 already in use
 `.\run.ps1 -Port 8080` (then `.\chat.ps1 -Port 8080`).

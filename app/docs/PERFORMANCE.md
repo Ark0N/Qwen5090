@@ -10,7 +10,7 @@ Single-stream chat on one RTX 5090 (numbers vary with driver/vLLM version):
 | NVFP4, MTP off (`-NoMtp`) | ~60–80 tok/s |
 | BF16 reference (doesn't fit on one 5090) | ~1.5× slower than NVFP4 |
 
-Measure your own machine with the server running: `bash scripts/benchmark.sh`
+Measure your own machine with the server running: `bash app/scripts/benchmark.sh`
 from WSL (add `TOKENS=1024` for a longer run).
 
 ## Where the VRAM goes (32 GB card)

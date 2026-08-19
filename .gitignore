@@ -4,3 +4,7 @@ __pycache__/
 *.log
 models/
 .DS_Store
+
+# local dev environment only — never ship these
+CLAUDE.md
+.claude/

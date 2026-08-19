@@ -77,5 +77,5 @@ fi
 
 echo
 echo "Setup complete."
-echo "  Start the server from Windows:  .\\run.ps1"
-echo "  ...or from this WSL shell:      bash scripts/serve.sh"
+echo "  Start the server from Windows:  double-click 'Start Qwen 5090.cmd' (or .\\app\\run.ps1)"
+echo "  ...or from this WSL shell:      bash app/scripts/serve.sh"

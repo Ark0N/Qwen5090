@@ -9,7 +9,7 @@ subscription, no data leaving your machine.
 
 [![Download ZIP](https://img.shields.io/badge/⬇_Download_for_Windows_11-Qwen3.8--27B_NVFP4-76b900?style=for-the-badge&logo=nvidia&logoColor=white)](https://github.com/Ark0N/Qwen3.8-27B-NVFP4-RTX-5090/archive/refs/heads/main.zip)
 
-**Unzip → double-click `Qwen5090.cmd` → click Install. That's it.**
+**Unzip → double-click `Start Qwen 5090.cmd` → click Install. That's it.**
 
 </div>
 
@@ -23,7 +23,7 @@ subscription, no data leaving your machine.
    *Windows may flag the download: right-click the ZIP → Properties → tick
    **Unblock** before unzipping, and choose "More info → Run anyway" if
    SmartScreen asks.*
-2. **Double-click `Qwen5090.cmd`**, then click **Install / Repair** and approve
+2. **Double-click `Start Qwen 5090.cmd`**, then click **Install / Repair** and approve
    the admin prompt. Everything is automatic: WSL2, Ubuntu, the AI engine, and
    the ~17 GB model download (15–40 min total). If Windows asks to reboot once,
    the app re-opens by itself afterwards — just click Install again to resume.
@@ -52,7 +52,8 @@ Cline, ...) — API key can be anything.
 - **A control panel** (pure Windows, no Electron): one-button install with live
   progress, server start/stop with health light, and streaming chat where the
   model's "thinking" renders dim. Thinking mode and effort (low → xhigh) are
-  toggles.
+  toggles, and **Share on network** makes the API usable from your other
+  devices over Wi-Fi or [Tailscale](https://tailscale.com).
 - **Logs & diagnostics**: every run is logged (`%LOCALAPPDATA%\Qwen5090\logs`
   on Windows, `~/.qwen5090/logs` in WSL). If anything breaks, click
   **Collect diagnostics** — it zips all logs + system info to your Desktop for
@@ -74,24 +75,24 @@ Python 3.13 venv with `vllm`, `flashinfer`, and the CUTLASS DSL → downloads
 
 ## For power users
 
-**Command line** (elevated PowerShell for install):
+**Command line** (elevated PowerShell for install; scripts live in `app\`):
 
 ```powershell
-.\install.ps1        # everything the GUI does; add -SkipDownload / -Unattended
-.\run.ps1            # serve on http://localhost:8000/v1
-.\chat.ps1           # terminal chat (second terminal)
+.\app\install.ps1    # everything the GUI does; add -SkipDownload / -Unattended
+.\app\run.ps1        # serve on http://localhost:8000/v1
+.\app\chat.ps1       # terminal chat (second terminal)
 ```
 
 **Tuning:**
 
 | Knob | Default | Notes |
 |---|---|---|
-| `.\run.ps1 -Ctx` | `131072` | Context window. `262144` is the native max; drop to `65536` if you hit OOM while gaming. |
-| `.\run.ps1 -Port` | `8000` | API port. |
-| `.\run.ps1 -GpuUtil` | `0.90` | Fraction of VRAM vLLM may claim — the Windows desktop shares the GPU. |
-| `.\run.ps1 -NoMtp` | off | Disables speculative decoding if it misbehaves. |
-| `.\chat.ps1 -NoThink` | off | Direct answers, no reasoning tokens. |
-| `.\chat.ps1 -Effort low\|medium\|high\|xhigh` | model default | Qwen3.8's reasoning-effort dial. |
+| `run.ps1 -Ctx` | `131072` | Context window. `262144` is the native max; drop to `65536` if you hit OOM while gaming. |
+| `run.ps1 -Port` | `8000` | API port. |
+| `run.ps1 -GpuUtil` | `0.90` | Fraction of VRAM vLLM may claim — the Windows desktop shares the GPU. |
+| `run.ps1 -NoMtp` | off | Disables speculative decoding if it misbehaves. |
+| `chat.ps1 -NoThink` | off | Direct answers, no reasoning tokens. |
+| `chat.ps1 -Effort low\|medium\|high\|xhigh` | model default | Qwen3.8's reasoning-effort dial. |
 
 **API example** (sampling: temperature 0.7, top-p 0.8, top-k 20, presence 1.5):
 
@@ -107,7 +108,17 @@ print(resp.choices[0].message.content)
 ```
 
 Tool calling and the `qwen3` reasoning parser are enabled on the server.
-Quick benchmark while it runs (from WSL): `bash scripts/benchmark.sh`
+Quick benchmark while it runs (from WSL): `bash app/scripts/benchmark.sh`
+
+**Use it from your phone/laptop (LAN / Tailscale):** tick **Share on network**
+on the Server tab (one admin prompt per start), or run `.\app\run.ps1 -Share`.
+Any device on your Wi-Fi or tailnet can then use `http://<this-PC's-IP>:8000/v1`
+— for Tailscale, use the PC's Tailscale IP (`tailscale ip -4`) or MagicDNS
+name. Sharing forwards the port out of WSL and opens Windows Firewall on
+Private/Domain networks only (Tailscale counts as private; public Wi-Fi stays
+blocked). The API has no authentication, so only share on networks you trust.
+Undo anytime: `.\app\share.ps1 -Remove`. HTTPS alternative with zero setup:
+`tailscale serve --bg 8000`.
 
 **Why NVFP4 on a 5090:** the ~17 GB weights fit the 32 GB card with room for
 128K–262K context (FP8 KV cache + Qwen3.8's hybrid attention), it runs ~1.5×
@@ -117,24 +128,24 @@ keep accuracy close to the original checkpoint.
 ## Repo layout
 
 ```
-Qwen5090.cmd           ← double-click this
-gui.ps1                WPF control panel (install / server / chat)
-install.ps1            one-shot installer (also used headless by the GUI)
-run.ps1                start the vLLM server (CLI)
-chat.ps1               terminal chat client (CLI)
-collect-logs.ps1       zip all logs + system state for bug reports
-scripts/setup-wsl.sh   Linux-side setup (called by install.ps1)
-scripts/serve.sh       vllm serve with 5090-tuned flags
-scripts/chat.py        streaming chat client (runs in the WSL venv)
-scripts/benchmark.sh   single-stream tok/s check
-docs/                  troubleshooting + performance notes
+Start Qwen 5090.cmd        ← double-click this — it's all most people need
+README.md                  this file
+app/                       everything under the hood:
+  gui.ps1                    WPF control panel (install / server / chat)
+  install.ps1                one-shot installer (also used headless by the GUI)
+  run.ps1                    start the vLLM server (CLI)
+  chat.ps1                   terminal chat client (CLI)
+  share.ps1                  expose the API to LAN/Tailscale (used by -Share)
+  collect-logs.ps1           zip all logs + system state for bug reports
+  scripts/                   Linux-side setup, serve, chat, benchmark
+  docs/                      troubleshooting + performance notes
 ```
 
 ## Something not working?
 
-See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) and
-[docs/PERFORMANCE.md](docs/PERFORMANCE.md), or click **Collect diagnostics**
-in the app and share the ZIP it puts on your Desktop.
+See [app/docs/TROUBLESHOOTING.md](app/docs/TROUBLESHOOTING.md) and
+[app/docs/PERFORMANCE.md](app/docs/PERFORMANCE.md), or click
+**Collect diagnostics** in the app and share the ZIP it puts on your Desktop.
 
 ## Credits & license
 

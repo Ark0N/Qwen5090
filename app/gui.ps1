@@ -128,7 +128,8 @@ $xaml = @"
               <ComboBoxItem Content="131072"/>
               <ComboBoxItem Content="262144"/>
             </ComboBox>
-            <CheckBox x:Name="ChkMtp" Content="Speculative decoding (MTP)" IsChecked="True" VerticalAlignment="Center"/>
+            <CheckBox x:Name="ChkMtp" Content="MTP" ToolTip="Speculative decoding (multi-token prediction) - faster, leave on" IsChecked="True" VerticalAlignment="Center" Margin="0,0,12,0"/>
+            <CheckBox x:Name="ChkShare" Content="Share on network (LAN/Tailscale)" ToolTip="Other devices on your Wi-Fi or tailnet can use the API - asks for admin once per start" VerticalAlignment="Center"/>
           </StackPanel>
           <TextBox x:Name="TxtServerLog" Grid.Row="1" IsReadOnly="True" TextWrapping="Wrap"
                    VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="12"
@@ -177,7 +178,7 @@ $xaml = @"
 $Window = [Windows.Markup.XamlReader]::Parse($xaml)
 foreach ($name in 'TxtGpuS','TxtWslS','TxtModelS','TxtServerS','BtnRefresh','BtnLogs','BtnDiag',
                   'BtnInstall','ChkSkipDownload','TxtSetupLog',
-                  'BtnStart','BtnStop','TxtPort','CmbCtx','ChkMtp','TxtServerLog',
+                  'BtnStart','BtnStop','TxtPort','CmbCtx','ChkMtp','ChkShare','TxtServerLog',
                   'ChkThink','CmbEffort','BtnClear','RtbChat','TxtInput','BtnSend') {
     Set-Variable -Name $name -Value $Window.FindName($name)
 }
@@ -334,6 +335,10 @@ function Start-Server {
     Add-Tail $errLog $TxtServerLog
     $psArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$script:RepoRoot\run.ps1`" -Port $port -Ctx $ctx -Distro $Distro"
     if (-not $ChkMtp.IsChecked) { $psArgs += " -NoMtp" }
+    if ($ChkShare.IsChecked) {
+        $psArgs += " -Share"
+        Add-Log $TxtServerLog "Network sharing requested - approve the admin prompt that appears."
+    }
     Add-Log $TxtServerLog "Starting server on port $port (context $ctx)... first start takes a minute or two."
     Add-Log $TxtServerLog "Logging to $outLog"
     Write-GuiLog "server starting | args: $psArgs"

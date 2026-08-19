@@ -45,7 +45,8 @@ try { Write-Host ("WSL: " + (((& wsl --version 2>$null) -replace "`0", "" | Wher
 
 function Register-ResumeAfterReboot {
     # Re-open the GUI at next logon so the user can continue with one click.
-    $launcher = Join-Path $PSScriptRoot "Qwen5090.cmd"
+    # The launcher lives one level up from app\ (the repo root).
+    $launcher = Join-Path (Split-Path $PSScriptRoot -Parent) "Start Qwen 5090.cmd"
     if (Test-Path $launcher) {
         $cmd = "cmd /c start `"`" `"$launcher`""
         New-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce" `
@@ -72,13 +73,14 @@ function Install-DistroUnattended {
 }
 
 function New-DesktopShortcut {
-    $launcher = Join-Path $PSScriptRoot "Qwen5090.cmd"
+    $repoRoot = Split-Path $PSScriptRoot -Parent
+    $launcher = Join-Path $repoRoot "Start Qwen 5090.cmd"
     if (-not (Test-Path $launcher)) { return }
     try {
         $shell = New-Object -ComObject WScript.Shell
         $lnk = $shell.CreateShortcut((Join-Path ([Environment]::GetFolderPath('Desktop')) "Qwen 5090.lnk"))
         $lnk.TargetPath = $launcher
-        $lnk.WorkingDirectory = $PSScriptRoot
+        $lnk.WorkingDirectory = $repoRoot
         $lnk.Description = "Qwen3.8-27B local AI on your RTX 5090"
         $lnk.Save()
         Write-Host "Desktop shortcut created: Qwen 5090"
@@ -155,8 +157,8 @@ if (-not $NoShortcut) {
 }
 
 Step "All done"
-Write-Host "Open the app     :  double-click Qwen5090.cmd (or the 'Qwen 5090' desktop shortcut)"
-Write-Host "Command line     :  .\run.ps1 to serve, .\chat.ps1 to chat"
+Write-Host "Open the app     :  double-click 'Start Qwen 5090.cmd' (or the 'Qwen 5090' desktop shortcut)"
+Write-Host "Command line     :  .\app\run.ps1 to serve, .\app\chat.ps1 to chat"
 Write-Host "API endpoint     :  http://localhost:8000/v1   (OpenAI-compatible, api_key can be anything)"
 Stop-Log
 exit 0
