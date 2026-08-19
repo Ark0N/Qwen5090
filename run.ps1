@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Start the Qwen3.8-27B-NVFP4 vLLM server (runs inside WSL2, Ctrl+C stops it).
 

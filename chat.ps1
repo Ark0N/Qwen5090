@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Terminal chat against the local server started by run.ps1.
 
