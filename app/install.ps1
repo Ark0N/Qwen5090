@@ -39,6 +39,95 @@ function Stop-Log { try { Stop-Transcript | Out-Null } catch { } }
 function Step($msg) { Write-Host "`n== $msg ==" -ForegroundColor Cyan }
 function Fail($msg) { Write-Host "ERROR: $msg" -ForegroundColor Red; Stop-Log; exit 1 }
 
+function Format-Elapsed([TimeSpan]$Span) {
+    if ($Span.TotalMinutes -ge 1) { return ("{0}m {1:d2}s" -f [int][math]::Floor($Span.TotalMinutes), $Span.Seconds) }
+    return ("{0}s" -f $Span.Seconds)
+}
+
+function Read-ProcessOutput([string]$Path) {
+    # wsl.exe emits UTF-16 (interleaved NULs when decoded as ANSI/UTF-8) and
+    # rewrites progress lines with bare CRs; normalize both into plain lines.
+    if (-not (Test-Path $Path)) { return @() }
+    try {
+        $fs = [System.IO.File]::Open($Path, 'Open', 'Read', 'ReadWrite')
+        try {
+            $sr = New-Object System.IO.StreamReader($fs)
+            $raw = $sr.ReadToEnd()
+        } finally { $fs.Dispose() }
+    } catch { return @() }
+    $raw = $raw -replace "`0", ""
+    return @(($raw -split "[`r`n]+") | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+}
+
+function Invoke-Streamed {
+    <#
+      Runs an external command with stdout/stderr redirected to files, echoing
+      new output lines as they arrive and printing an elapsed-time heartbeat
+      after every ~10 s of silence, so long steps never look hung (the GUI
+      tails this script's stdout). Returns the process exit code.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Activity,
+        [Parameter(Mandatory)][string]$FilePath,
+        [string]$Arguments = "",
+        [int]$HeartbeatSec = 10
+    )
+    $stamp = Get-Date -Format "yyyyMMdd-HHmmss-fff"
+    $outFile = Join-Path $script:LogDir "step-$stamp.out.log"
+    $errFile = Join-Path $script:LogDir "step-$stamp.err.log"
+    $startArgs = @{
+        FilePath = $FilePath; PassThru = $true; NoNewWindow = $true
+        RedirectStandardOutput = $outFile; RedirectStandardError = $errFile
+    }
+    if ($Arguments) { $startArgs.ArgumentList = $Arguments }
+    $proc = Start-Process @startArgs
+
+    $total = [System.Diagnostics.Stopwatch]::StartNew()
+    $quiet = [System.Diagnostics.Stopwatch]::StartNew()
+    $shown = 0
+    $lastPrinted = ""
+    $prevTail = $null; $tailPolls = 0
+    while (-not $proc.HasExited) {
+        Start-Sleep -Milliseconds 500
+        $lines = @(Read-ProcessOutput $outFile)
+        # Lines before the newest one are complete - print them as they arrive.
+        $ready = @(); if ($lines.Count -gt 1) { $ready = @($lines[0..($lines.Count - 2)]) }
+        while ($shown -lt $ready.Count) {
+            if ($ready[$shown] -ne $lastPrinted) {
+                $lastPrinted = $ready[$shown]
+                Write-Host "   $lastPrinted"
+                $quiet.Restart()
+            }
+            $shown++
+        }
+        # The newest line may still be partial; print it once it stops changing.
+        $tail = $null; if ($lines.Count -gt 0) { $tail = $lines[$lines.Count - 1] }
+        if ($tail) {
+            if ($tail -eq $prevTail) { $tailPolls++ } else { $prevTail = $tail; $tailPolls = 0 }
+            if ($tailPolls -eq 2 -and $tail -ne $lastPrinted) {
+                $lastPrinted = $tail
+                Write-Host "   $tail"
+                $quiet.Restart()
+            }
+        }
+        if ($quiet.Elapsed.TotalSeconds -ge $HeartbeatSec) {
+            Write-Host ("   ... {0} is still running ({1} elapsed) - please wait" -f $Activity, (Format-Elapsed $total.Elapsed))
+            $quiet.Restart()
+        }
+    }
+    $proc.WaitForExit()
+    foreach ($line in @(Read-ProcessOutput $outFile) | Select-Object -Skip $shown) {
+        if ($line -ne $lastPrinted) { $lastPrinted = $line; Write-Host "   $line" }
+    }
+    foreach ($line in @(Read-ProcessOutput $errFile)) { Write-Host "   $line" }
+    if ($proc.ExitCode -eq 0) {
+        Write-Host ("   {0} finished in {1}." -f $Activity, (Format-Elapsed $total.Elapsed))
+    } else {
+        Write-Host ("   {0} exited with code {1} after {2}." -f $Activity, $proc.ExitCode, (Format-Elapsed $total.Elapsed)) -ForegroundColor Yellow
+    }
+    return $proc.ExitCode
+}
+
 Write-Host "Logging this run to: $script:LogFile"
 Write-Host ("Run context: time={0} | unattended={1} | skipDownload={2} | distro={3}" -f (Get-Date -Format o), [bool]$Unattended, [bool]$SkipDownload, $Distro)
 try { Write-Host ("WSL: " + (((& wsl --version 2>$null) -replace "`0", "" | Where-Object { $_ }) -join " | ")) } catch { Write-Host "WSL: not queryable yet" }
@@ -58,17 +147,24 @@ function Register-ResumeAfterReboot {
 function Install-DistroUnattended {
     # Silent provisioning: install the distro without OOBE, create a 'qwen'
     # user with passwordless sudo, and make it the default. Returns $true on success.
-    & wsl --install -d $Distro --no-launch *>&1 | Out-Host
-    if ($LASTEXITCODE -ne 0) { return $false }
+    Write-Host "Step 1/3: Downloading and registering $Distro (several hundred MB - progress below)..."
+    $code = Invoke-Streamed -Activity "the $Distro download" -FilePath "wsl" -Arguments "--install -d $Distro --no-launch"
+    if ($code -ne 0) { return $false }
     # The store launcher for "Ubuntu-24.04" is "ubuntu2404.exe".
     $launcherName = (($Distro -replace '[-.]', '').ToLower()) + ".exe"
     $launcher = Get-Command $launcherName -ErrorAction SilentlyContinue
-    if (-not $launcher) { return $false }
-    & $launcher.Source install --root *>&1 | Out-Host
-    if ($LASTEXITCODE -ne 0) { return $false }
+    if (-not $launcher) {
+        Write-Host "Could not find the $launcherName store launcher for silent setup." -ForegroundColor Yellow
+        return $false
+    }
+    Write-Host "Step 2/3: Unpacking the Linux filesystem (usually 1-2 minutes, produces little output)..."
+    $code = Invoke-Streamed -Activity "the $Distro first-time setup" -FilePath $launcher.Source -Arguments "install --root"
+    if ($code -ne 0) { return $false }
+    Write-Host "Step 3/3: Creating the 'qwen' Linux user account..."
     & wsl -d $Distro -u root -- bash -c "id qwen >/dev/null 2>&1 || useradd -m -s /bin/bash qwen; usermod -aG sudo qwen; echo 'qwen ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/qwen; chmod 440 /etc/sudoers.d/qwen; printf '[user]\ndefault=qwen\n' > /etc/wsl.conf" *>&1 | Out-Host
     if ($LASTEXITCODE -ne 0) { return $false }
     & wsl --terminate $Distro *> $null
+    Write-Host "User account ready."
     return $true
 }
 
@@ -111,16 +207,18 @@ if ($gpuName -notmatch '50\d0|RTX PRO \d+ Blackwell|B\d{3}') {
 Step "Checking WSL2"
 & wsl --status *> $null
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "WSL is not installed yet - installing (this can take a few minutes)..."
-    & wsl --install --no-distribution
+    Write-Host "WSL is not installed yet - downloading and installing it now."
+    Write-Host "This can take several minutes depending on your connection; progress appears below."
+    $null = Invoke-Streamed -Activity "the WSL installation" -FilePath "wsl" -Arguments "--install --no-distribution"
     if ($Unattended) { Register-ResumeAfterReboot }
     Write-Host "`nWSL installed. Windows needs ONE reboot, then setup continues." -ForegroundColor Yellow
     if (-not $Unattended) { Write-Host "After rebooting, run .\install.ps1 again." -ForegroundColor Yellow }
     Stop-Log
     exit 3010
 }
-Write-Host "Updating the WSL kernel (fast if already current)..."
-& wsl --update *> $null   # best-effort: Blackwell GPU support needs a recent kernel
+Write-Host "WSL is installed. Checking for WSL kernel updates (your Blackwell GPU needs a recent kernel)."
+Write-Host "This is quick if WSL is already current, but can take a few minutes the first time."
+$null = Invoke-Streamed -Activity "the WSL kernel update" -FilePath "wsl" -Arguments "--update"   # best-effort
 Write-Host "WSL2 - OK"
 
 Step "Checking Linux distro ($Distro)"
@@ -128,7 +226,7 @@ Step "Checking Linux distro ($Distro)"
 $distros = (& wsl -l -q) -replace "`0", "" | Where-Object { $_ -ne "" }
 if ($distros -notcontains $Distro) {
     $installed = $false
-    Write-Host "Installing $Distro silently (no prompts)..."
+    Write-Host "$Distro is not installed yet - setting it up now (three sub-steps, a few minutes total)."
     $installed = Install-DistroUnattended
     if (-not $installed) {
         Write-Host "Silent install unavailable - falling back to the interactive Ubuntu setup." -ForegroundColor Yellow
@@ -138,10 +236,14 @@ if ($distros -notcontains $Distro) {
         $distros = (& wsl -l -q) -replace "`0", "" | Where-Object { $_ -ne "" }
         if ($distros -notcontains $Distro) { Fail "Failed to install $Distro. Run 'wsl --install -d $Distro' manually, then re-run this script." }
     }
+} else {
+    Write-Host "$Distro is already installed."
 }
 Write-Host "$Distro - OK"
 
 Step "Running Linux-side setup (vLLM install + model download)"
+Write-Host "This is the longest step: Python + vLLM install, then the ~17 GB model download."
+Write-Host "Detailed progress streams below the whole time."
 $repoWin = $PSScriptRoot -replace '\\', '/'
 $repoWsl = ((& wsl -d $Distro -- wslpath -a "$repoWin") -replace "`0", "").Trim()
 if (-not $repoWsl) { Fail "Could not translate the repo path into WSL. Is $Distro initialized? Try 'wsl -d $Distro' once, then re-run." }
