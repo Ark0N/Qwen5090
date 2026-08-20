@@ -199,6 +199,13 @@ ignored, from the environment and from `settings.json` alike (measured against
 Claude Code 2.1.238). One side effect worth knowing: `/model sonnet` inside a
 session selects that alias too.
 
+Measured after the fix, on the 5090 at `-Ctx 131072`: a one-shot auto-mode
+session that runs a single mutating `Bash` call completes in **11 s**, tool
+included, and Claude Code reports the routing itself at startup —
+`[claude-code:unrecognized_model] {"model":"qwen5090-classifier",
+"query_source":"auto_mode"}`. Before the fix the same shape of call failed at
+60.05 s.
+
 If classification is still too slow — a long conversation pushes the prompt
 further up the prefill curve — turn auto mode off with `shift+tab` and approve
 tools yourself, or serve at `-Ctx 131072`, where prefill is far cheaper.
