@@ -22,6 +22,13 @@ exec > >(tee -a "$LOG_FILE") 2>&1
 trap 'echo "ERROR: serve.sh failed at line $LINENO (exit $?)"' ERR
 echo ">> logging to $LOG_FILE"
 
+# vLLM is exec'd below by absolute path rather than through an activated venv,
+# so the venv's bin/ never makes it onto PATH. FlashInfer's JIT shells out to
+# `ninja` by bare name, and ninja ships *in the venv* - without this the build
+# dies with "FileNotFoundError: [Errno 2] No such file or directory: 'ninja'"
+# even though the file is right there.
+export PATH="$VENV/bin:$PATH"
+
 if [[ ! -x "$VENV/bin/vllm" ]]; then
   echo "vLLM venv not found at $VENV — run install.ps1 (or scripts/setup-wsl.sh) first." >&2
   exit 1
@@ -33,6 +40,90 @@ fi
 # 60 s in, as a 200-line traceback ending in "Failed to find C compiler".
 # No-op once build-essential is there.
 ensure_build_tools || exit 1
+
+# Second half of the same problem, and the nastier half. build-essential gives
+# Triton its C compiler, but FlashInfer JITs *CUDA* kernels, and nvcc ships in
+# the CUDA toolkit - not in the driver. A stock Ubuntu WSL rootfs therefore has
+# no nvcc, and FlashInfer dies with:
+#
+#     RuntimeError: Could not find nvcc and default cuda_home='/usr/local/cuda'
+#     doesn't exist
+#
+# It bites twice, and the second one is easy to miss:
+#   1. the top-k/top-p sampler, during KV-cache sizing at startup;
+#   2. the batch *prefill* attention kernel, which is only built when the first
+#      real request arrives - so the server reaches "Application startup
+#      complete", answers /v1/models with 200, and then kills its own engine on
+#      the first chat message with a 500.
+#
+# Ubuntu's own toolkit is no use (24.04 ships CUDA 12.0, which cannot target
+# Blackwell), but nothing needs downloading: torch's CUDA wheels already vendor
+# a complete toolkit inside the venv, nvcc included. Point CUDA_HOME at it.
+# Two details keep that from working out of the box - the wheel lays libraries
+# out in lib/ while FlashInfer links -L$CUDA_HOME/lib64, and it ships
+# libcudart.so.NN with no bare .so symlink for -lcudart - so hand FlashInfer a
+# small directory of symlinks (including the driver's libcuda.so, which lives
+# under /usr/lib/wsl/lib and not in the wheel at all) via its own ldflags hook.
+ATTN_BACKEND="${ATTN_BACKEND-}"   # empty = let vLLM pick
+
+use_bundled_cuda_toolkit() {
+  # Already have a real toolkit? Leave everything alone. Written out longhand
+  # rather than as 'cmd && return': a trailing '&&' that fails would take the
+  # whole script down with it under 'set -e' if this is ever called outside an
+  # 'if' condition.
+  if command -v nvcc >/dev/null 2>&1; then
+    return 0
+  fi
+  if [[ -x "${CUDA_HOME:-/usr/local/cuda}/bin/nvcc" ]]; then
+    return 0
+  fi
+
+  # 'ls' of a non-matching glob fails, and under 'set -e' a bare assignment
+  # would inherit that status and abort the server: swallow it.
+  local cu
+  cu=$(ls -d "$VENV"/lib/python*/site-packages/nvidia/cu[0-9]* 2>/dev/null | head -1 || true)
+  [[ -n "$cu" && -x "$cu/bin/nvcc" ]] || return 1
+
+  local linkdir="$HOME/.qwen5090/cudalink"
+  mkdir -p "$linkdir" || return 1
+  local cudart
+  cudart=$(ls "$cu"/lib/libcudart.so.* 2>/dev/null | head -1 || true)
+  [[ -n "$cudart" ]] || return 1
+  ln -sf "$cudart" "$linkdir/libcudart.so"
+  local c
+  for c in /usr/lib/wsl/lib/libcuda.so /usr/lib/x86_64-linux-gnu/libcuda.so; do
+    if [[ -e "$c" ]]; then
+      ln -sf "$c" "$linkdir/libcuda.so"
+      break
+    fi
+  done
+  [[ -e "$linkdir/libcuda.so" ]] || return 1
+
+  export CUDA_HOME="$cu"
+  export FLASHINFER_EXTRA_LDFLAGS="-L$linkdir ${FLASHINFER_EXTRA_LDFLAGS:-}"
+  # The wheel's nvcc is a patch release ahead of the CUDA headers torch was
+  # built against (13.3 vs 13.2 at the time of writing), and CCCL hard-errors
+  # when the two differ - "CUDA compiler and CUDA toolkit headers are
+  # incompatible". It ships this exact switch for the case, and a patch-level
+  # skew is covered by CUDA's minor version compatibility.
+  export FLASHINFER_EXTRA_CFLAGS="-DCCCL_DISABLE_CTK_COMPATIBILITY_CHECK ${FLASHINFER_EXTRA_CFLAGS:-}"
+  export FLASHINFER_EXTRA_CUDAFLAGS="-DCCCL_DISABLE_CTK_COMPATIBILITY_CHECK ${FLASHINFER_EXTRA_CUDAFLAGS:-}"
+  echo ">> CUDA toolkit for FlashInfer's JIT: $cu ($("$cu/bin/nvcc" --version 2>/dev/null | tail -1 || true))"
+  return 0
+}
+
+if ! use_bundled_cuda_toolkit; then
+  # No toolkit anywhere. Fall back to the paths that only need the C compiler:
+  # vLLM's native sampler, and Triton attention. Note the backend has to go in
+  # as a vllm *flag* below - the VLLM_ATTENTION_BACKEND env var was removed in
+  # v0.27 and is now silently ignored, which looks exactly like a fix that does
+  # not work. This still leaves MTP's draft model on FlashInfer, so drop
+  # speculative decoding too rather than fail on the first message.
+  echo ">> no CUDA toolkit found - using the native sampler and Triton attention." >&2
+  export VLLM_USE_FLASHINFER_SAMPLER="${VLLM_USE_FLASHINFER_SAMPLER:-0}"
+  ATTN_BACKEND="${ATTN_BACKEND:-TRITON_ATTN}"
+  MTP=0
+fi
 
 check_wsl_memory() {
   # vLLM loads each weights shard through one private, writable mmap of the
@@ -134,6 +225,9 @@ ARGS=(
 if [[ -n "$KV_CACHE_DTYPE" ]]; then
   ARGS+=(--kv-cache-dtype "$KV_CACHE_DTYPE")
 fi
+if [[ -n "$ATTN_BACKEND" ]]; then
+  ARGS+=(--attention-backend "$ATTN_BACKEND")
+fi
 if [[ "$TRUST_REMOTE_CODE" == "1" ]]; then
   ARGS+=(--trust-remote-code)
 fi
@@ -141,6 +235,6 @@ if [[ "$MTP" == "1" ]]; then
   ARGS+=(--speculative-config "{\"method\":\"$SPEC_METHOD\",\"num_speculative_tokens\":$SPEC_TOKENS}")
 fi
 
-echo ">> model=$MODEL ctx=$CTX port=$PORT gpu_util=$GPU_UTIL mtp=$MTP kv=${KV_CACHE_DTYPE:-from-config}"
+echo ">> model=$MODEL ctx=$CTX port=$PORT gpu_util=$GPU_UTIL mtp=$MTP kv=${KV_CACHE_DTYPE:-from-config} attn=${ATTN_BACKEND:-auto}"
 echo ">> OpenAI-compatible endpoint: http://localhost:$PORT/v1"
 exec "$VENV/bin/vllm" "${ARGS[@]}"
