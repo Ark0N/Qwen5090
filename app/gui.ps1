@@ -600,11 +600,11 @@ $xaml = @'
             <TextBlock Text="Context" Style="{StaticResource FieldLabel}"/>
             <!-- Content is the label the user reads; Tag carries the exact token
                  count that run.ps1 needs (Start-Server reads Tag, never Content). -->
-            <ComboBox x:Name="CmbCtx" Width="104" VerticalAlignment="Center" SelectedIndex="2" Margin="0,0,14,6"
+            <ComboBox x:Name="CmbCtx" Width="104" VerticalAlignment="Center" SelectedIndex="1" Margin="0,0,14,6"
                       ToolTip="Maximum context length - higher uses more VRAM">
-              <ComboBoxItem Content="64K" Tag="65536" ToolTip="65,536 tokens"/>
-              <ComboBoxItem Content="128K" Tag="131072" ToolTip="131,072 tokens - drop to this if the server runs out of VRAM"/>
-              <ComboBoxItem Content="262K" Tag="262144" ToolTip="262,144 tokens - the model's native maximum (default)"/>
+              <ComboBoxItem Content="64K" Tag="65536" ToolTip="65,536 tokens - pick this if you are gaming at the same time"/>
+              <ComboBoxItem Content="128K" Tag="131072" ToolTip="131,072 tokens - the most that fits on a 32 GB card (default)"/>
+              <ComboBoxItem Content="262K" Tag="262144" ToolTip="262,144 tokens - the model's native maximum, but its KV cache does not fit in 32 GB: the server will refuse to start"/>
             </ComboBox>
             <CheckBox x:Name="ChkMtp" Content="MTP speed boost" ToolTip="Speculative decoding (multi-token prediction) - faster, leave on" IsChecked="True" Margin="0,0,14,6"/>
             <CheckBox x:Name="ChkShare" Content="Share on network" ToolTip="Other devices on your Wi-Fi or tailnet (LAN/Tailscale) can use the API - asks for admin once per start" Margin="0,0,0,6"/>

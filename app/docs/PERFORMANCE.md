@@ -17,7 +17,9 @@ from WSL (add `TOKENS=1024` for a longer run).
 
 - **Weights:** ~22 GB (NVFP4, 4-bit weights + FP8 lm_head)
 - **KV cache:** FP8, and Qwen3.8's hybrid attention (linear attention on 48 of
-  64 layers) keeps it small — that's why 128K–262K context fits at all
+  64 layers) keeps it small — that's why a 128K context fits at all. The native
+  262K does not: its KV cache needs ~9.1 GiB against the ~6.3 GiB left after the
+  weights, and vLLM refuses to start rather than truncating the window
 - **Headroom:** `GPU_UTIL=0.90` leaves ~3 GB for the Windows desktop, which
   shares the GPU under WSL
 

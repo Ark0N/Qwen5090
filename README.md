@@ -135,7 +135,7 @@ and which need `--trust-remote-code`.
 
 | Knob | Default | Notes |
 |---|---|---|
-| `run.ps1 -Ctx` | `262144` | Context window, defaulting to the model's native maximum. Drop to `131072` (or `65536` if you are gaming at the same time) should the server run out of VRAM at startup. |
+| `run.ps1 -Ctx` | `131072` | Context window. The model can do 262,144 tokens, but that window's KV cache needs ~9 GB and only ~6 GB is free once the weights are loaded, so 128K is the most a 32 GB card will start with. Drop to `65536` if you are gaming at the same time. |
 | `run.ps1 -Port` | `8000` | API port. |
 | `run.ps1 -GpuUtil` | `0.90` | Fraction of VRAM vLLM may claim — the Windows desktop shares the GPU. |
 | `run.ps1 -NoMtp` | off | Disables speculative decoding if it misbehaves. |
@@ -171,7 +171,7 @@ Undo anytime: `.\app\share.ps1 -Remove`. HTTPS alternative with zero setup:
 `tailscale serve --bg 8000`.
 
 **Why NVFP4 on a 5090:** the ~22 GB weights fit the 32 GB card with room for
-128K–262K context (FP8 KV cache + Qwen3.8's hybrid attention), it runs ~1.5×
+a 128K context (FP8 KV cache + Qwen3.8's hybrid attention), it runs ~1.5×
 faster than BF16 on Blackwell's FP4 tensor cores, and Unsloth's dynamic quants
 keep accuracy close to the original checkpoint.
 

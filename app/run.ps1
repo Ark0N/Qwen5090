@@ -3,8 +3,8 @@
   Start the Qwen3.8-27B-NVFP4 vLLM server (runs inside WSL2, Ctrl+C stops it).
 
 .EXAMPLE
-  .\run.ps1                     # full 262K context, port 8000, MTP on
-  .\run.ps1 -Ctx 131072         # halve the context if VRAM is tight
+  .\run.ps1                     # 128K context, port 8000, MTP on
+  .\run.ps1 -Ctx 65536          # smaller still, if you are gaming at the same time
   .\run.ps1 -Port 8080 -NoMtp
   .\run.ps1 -Uncensored         # serve the abliterated build instead
   .\run.ps1 -Share              # also reachable from LAN/Tailscale (one admin prompt)
@@ -12,7 +12,10 @@
 [CmdletBinding()]
 param(
     [string]$Distro = "Ubuntu-24.04",
-    [int]$Ctx = 262144,
+    # 128K, not the model's native 262K: the KV cache for a 262144-token window
+    # needs ~9.1 GiB and only ~6.3 GiB is left after the weights on a 32 GB card,
+    # so vLLM refuses to start. See the note in scripts/serve.sh.
+    [int]$Ctx = 131072,
     [int]$Port = 8000,
     [string]$Model = "unsloth/Qwen3.8-27B-NVFP4",
     # Download it first with:  .\install.ps1 -Uncensored

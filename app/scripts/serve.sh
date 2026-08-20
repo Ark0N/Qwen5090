@@ -9,7 +9,12 @@ source "$SCRIPT_DIR/lib-build-tools.sh"
 
 VENV="${QWEN5090_VENV:-$HOME/.qwen5090/venv}"
 MODEL="${MODEL:-unsloth/Qwen3.8-27B-NVFP4}"   # or sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4
-CTX="${CTX:-262144}"          # the model's native max; drop to 131072 if the KV cache will not fit
+# The model's native max is 262144, but that does not fit on a 32 GB card: the
+# weights take ~19.5 GiB, leaving ~6.3 GiB for the KV cache where a 262144-token
+# window wants 9.13 GiB. vLLM works that out only after a three-minute startup
+# and then exits with "the estimated maximum model length is 174400". 131072 is
+# the largest of the offered sizes that fits, with room for the MTP draft head.
+CTX="${CTX:-131072}"          # raise to 262144 only on a card with more VRAM
 PORT="${PORT:-8000}"
 GPU_UTIL="${GPU_UTIL:-0.90}"  # leave headroom: on WSL the same GPU drives the Windows desktop
 MTP="${MTP:-1}"               # multi-token prediction (speculative decoding); set 0 to disable
