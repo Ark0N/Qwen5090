@@ -51,6 +51,27 @@ MagicDNS name.
 
 Claude Code itself is installed with `npm install -g @anthropic-ai/claude-code`.
 
+## Put it on your PATH
+
+```bash
+bash app/scripts/claude-code.sh install
+```
+
+Copies the script to `~/.qwen5090/claude-code.sh` and drops a `qwen-claude`
+command in `~/.local/bin`, so a session can be opened from any directory
+without remembering where the repo is:
+
+```bash
+qwen-claude                 # interactive session, current directory
+qwen-claude -p "..."        # one-shot
+qwen-claude status|doctor|stop|restart
+```
+
+Whatever `QWEN_URL` was set when you ran `install` is baked into the command —
+install from a laptop with `QWEN_URL=http://<5090-ip>:8000` and `qwen-claude`
+keeps pointing there. `QWEN_URL=` still overrides per invocation, and
+`uninstall` removes the command again.
+
 ## Commands
 
 ```bash

@@ -203,7 +203,9 @@ QWEN_URL=http://<5090-ip>:8000 bash app/scripts/claude-code.sh run
 
 Claude Code speaks the Anthropic API and vLLM serves the OpenAI one, so this
 starts a small LiteLLM bridge between them, configured from whatever
-`/v1/models` reports. Full guide, settings and troubleshooting:
+`/v1/models` reports. `bash app/scripts/claude-code.sh install` adds a
+`qwen-claude` command to your PATH so you can open a session from any
+directory. Full guide, settings and troubleshooting:
 [app/docs/CLAUDE-CODE.md](app/docs/CLAUDE-CODE.md).
 
 **Use it from your phone/laptop (LAN / Tailscale):** tick **Share on network**
