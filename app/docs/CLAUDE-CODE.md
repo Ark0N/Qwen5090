@@ -129,7 +129,7 @@ The model id and context length are **not** settings: the bridge asks
 `/v1/models` at startup and configures itself, so it follows whichever
 checkpoint you are serving.
 
-## Three quirks this model has, and how the bridge handles them
+## Four quirks this model has, and how the bridge handles them
 
 These are not LiteLLM bugs; they are real properties of Qwen3.8's chat template
 that any Anthropic-API client would hit.
@@ -163,7 +163,30 @@ context window and starts compacting early. The bridge reads the real
 `CLAUDE_CODE_MAX_CONTEXT_TOKENS`. The cosmetic
 `[claude-code:unrecognized_model]` line at startup is expected.
 
+**4. `tool_choice` without `tools` is a hard error.** Claude Code's WebSearch is
+a *server-side* Anthropic tool: it arrives as
+`{"type": "web_search_20250305", "name": "web_search"}` with no `input_schema`,
+so there is no OpenAI function to translate it into and LiteLLM drops the tool.
+It does not drop `tool_choice`, and vLLM refuses the pair:
+
+```
+400 When using `tool_choice`, `tools` must be set. (parameter=tool_choice)
+```
+
+Only WebSearch trips this. Read, Edit, Bash and the rest are ordinary function
+tools that survive translation intact, so a session works normally right up
+until the model reaches for the web. The bridge generates `qwen_hooks.py` next
+to `config.yaml` (a LiteLLM `async_pre_call_hook`, wired in with `callbacks:`)
+which strips `tool_choice` only when no callable tool is left in the request.
+Dropping the parameter unconditionally would have been one config line, but it
+would also silently defang a genuinely forced tool call.
+
 ## Troubleshooting
+
+**`400 ... When using tool_choice, tools must be set`** on a WebSearch — the
+bridge predates the `qwen_hooks.py` fix, or is still running from before it.
+`bash app/scripts/claude-code.sh start` re-renders both files and restarts when
+they differ; confirm with `doctor`, which prints the hooks path.
 
 **`no Qwen server answering at ...`** — the model server is not running, or is
 not shared. Start it on the 5090 PC; for remote use run `.\app\share.ps1`.

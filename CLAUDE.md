@@ -236,15 +236,26 @@ The WPF dispatcher thread is never blocked. All patterns funnel through one 300 
   translating Anthropic `/v1/messages` to this server's OpenAI API. It is a *client-side* tool —
   it works against a remote server too (`QWEN_URL=`), and never touches the serving path.
   Self-configuring: model id and `max_model_len` come from `/v1/models`, so it follows whatever
-  checkpoint is being served. Three properties of the chat template drive its whole design, and
-  all three are already documented above under "Measured on the 5090":
+  checkpoint is being served. Four properties of this server drive its whole design, and
+  the first three are already documented above under "Measured on the 5090":
   **(a)** Claude Code sends `reasoning_effort: "high"`, which this template 400s on, so the bridge
   drops the client's value and injects `QWEN_EFFORT` (default `xhigh`) instead;
   **(b)** reasoning tokens count against `max_tokens`, so the `qwen5090-fast` alias that Claude
   Code uses for background chores disables thinking — otherwise those small-cap calls return
   empty behind a 200; **(c)** the model name is unknown to Claude Code, which would assume a 200K
-  window, so `CLAUDE_CODE_MAX_CONTEXT_TOKENS` is exported from the real value.
-  `start` re-renders the config and restarts if it differs from what is running — settings changes
+  window, so `CLAUDE_CODE_MAX_CONTEXT_TOKENS` is exported from the real value;
+  **(d)** `tool_choice` with an empty `tools` is a hard 400 from vLLM, and Claude Code's WebSearch
+  is a *server-side* Anthropic tool (`{"type": "web_search_20250305"}`, no `input_schema`) that
+  LiteLLM has no OpenAI function to translate it into, so it drops the tool and forwards
+  `tool_choice` anyway. Only WebSearch trips it; ordinary function tools survive translation, so
+  the session works until the model reaches for the web. The bridge generates `qwen_hooks.py`
+  beside `config.yaml` (a LiteLLM `async_pre_call_hook`, wired in with `callbacks:`) that strips
+  `tool_choice` only when no callable tool is left - dropping it unconditionally would be one
+  config line but would also silently defang a genuinely forced tool call. Verified 2026-08-21 on
+  a throwaway bridge on :4100: the WebSearch shape went 400 -> 200, and a real function tool still
+  came back as `tool_use`.
+  `start` re-renders the config *and the hooks module* and restarts if either differs from what is
+  running — settings changes
   must not be silently ignored — and `stop` waits for the port to close, or the next `start` sees a
   dying process as healthy and the session dies with "connection refused".
   **Dependency pin that must not be dropped**: `fastapi>=0.136.3,<0.140.7`. 0.140.7 removed
