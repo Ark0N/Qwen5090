@@ -20,6 +20,7 @@ param(
     # Download it first with:  .\install.ps1 -Uncensored
     # serve.sh keys its flags off the model id, so nothing else changes here.
     [switch]$Uncensored,
+    # Only forwarded when you actually pass it - see the note further down.
     [double]$GpuUtil = 0.90,
     [switch]$NoMtp,
     [switch]$Share
@@ -54,6 +55,16 @@ if ($Share) {
 }
 
 $mtp = if ($NoMtp) { 0 } else { 1 }
-$gpuUtilStr = $GpuUtil.ToString([System.Globalization.CultureInfo]::InvariantCulture)
+# Only forward GPU_UTIL when the caller actually asked for one. serve.sh
+# treats any value it receives as a deliberate override and then skips its
+# own per-KV-precision default - 0.85 on the 4-bit path, which is what keeps
+# the Windows desktop's VRAM out of the KV cache's way. Passing this
+# parameter's default unconditionally would silence that and hand back the
+# mid-allocation CUDA OOM it exists to prevent.
+$gpuUtilEnv = ""
+if ($PSBoundParameters.ContainsKey('GpuUtil')) {
+    $gpuUtilStr = $GpuUtil.ToString([System.Globalization.CultureInfo]::InvariantCulture)
+    $gpuUtilEnv = "GPU_UTIL=$gpuUtilStr "
+}
 Write-Host "Starting $Model on http://localhost:$Port/v1  (first load takes a minute; Ctrl+C stops)" -ForegroundColor Cyan
-& wsl -d $Distro -- bash -c "CTX=$Ctx PORT=$Port MODEL='$Model' GPU_UTIL=$gpuUtilStr MTP=$mtp bash '$repoWsl/scripts/serve.sh'"
+& wsl -d $Distro -- bash -c "CTX=$Ctx PORT=$Port MODEL='$Model' ${gpuUtilEnv}MTP=$mtp bash '$repoWsl/scripts/serve.sh'"

@@ -14,11 +14,8 @@ MODEL="${MODEL:-unsloth/Qwen3.8-27B-NVFP4}"   # or sakamakismile/Huihui-Qwen3.8-
 # so the KV precision is chosen further down to match the context asked for.
 CTX="${CTX:-262144}"
 PORT="${PORT:-8000}"
-GPU_UTIL="${GPU_UTIL:-0.90}"  # leave headroom: on WSL the same GPU drives the Windows desktop.
-                              # 0.90 leaves ~3 GB, which runs, but is not enough for a display-
-                              # driver reset to recover - that is how the test machine
-                              # bluescreened (0x116; see docs/TROUBLESHOOTING.md). 0.80 costs
-                              # KV cache, so it has to be paired with CTX=131072.
+GPU_UTIL_EXPLICIT="${GPU_UTIL+set}"
+GPU_UTIL="${GPU_UTIL:-0.90}"  # leave headroom: on WSL the same GPU drives the Windows desktop
 MTP="${MTP:-1}"               # multi-token prediction (speculative decoding); set 0 to disable
 # How many requests may be in flight at once. vLLM defaults to 256, which this
 # hybrid model cannot honour at a long context: its GDN/Mamba layers need one
@@ -233,14 +230,42 @@ esac
 # once the weights are in place - fine up to 128K, but the model's native
 # 262,144-token window needs ~9.1 GiB against the ~6.2 GiB actually free, and
 # vLLM only says so three minutes in. A 4-bit KV cache halves the per-token cost
-# and fits the full window with room to spare: measured 324,301 tokens of
-# capacity at GPU_UTIL 0.90 with MTP still enabled, and it runs *faster* than
-# fp8 (~120 vs ~80 tok/s) because decode moves less memory. Only applied to the
-# checkpoints that default to fp8 - the gated one carries its own scheme in
+# and fits the full window with room to spare: measured 2026-08-21 on the 5090,
+# 344,616 tokens of capacity at the 0.85 this path drops to (1.31x the window)
+# and 441,815 at 0.90 (1.69x). It costs speed rather than saving it - ~49 tok/s
+# against fp8+MTP's ~80 - because the switch also forces MTP off, see the
+# interlock below. Only applied to the checkpoints that default to fp8 - the
+# gated one carries its own scheme in
 # config.json, where passing --kv-cache-dtype at all is an error.
 if [[ -z "$KV_DTYPE_EXPLICIT" && "$KV_CACHE_DTYPE" == "fp8" && "$CTX" -gt 131072 ]]; then
   KV_CACHE_DTYPE="turboquant_4bit_nc"
 fi
+
+# ...and then hand a slice of that VRAM straight back. vLLM's profiler claims
+# *everything* inside gpu_memory_utilization for the KV cache: at 0.90 it sized
+# 7.21 GiB / 441,815 tokens, 1.7x more than a 262,144-token window can ever use,
+# and left the Windows desktop ~3.2 GiB. That margin is too thin. The desktop's
+# own VRAM footprint moves between vLLM's profiling pass and its allocation
+# pass, and when it grows in between, the allocation dies part-way through:
+#   Available KV cache memory: 7.21 GiB          <- profiling said it fit
+#   torch.OutOfMemoryError: ... Tried to allocate 462.00 MiB
+# The same command had started cleanly an hour earlier with byte-identical
+# profiling numbers, so this is a race against the desktop, not a bad setting.
+# 0.85 still sizes ~344,000 tokens (1.3x the full window) and leaves ~4.8 GiB
+# for Windows. Only on the 4-bit path - an fp8 cache at 131072 has no slack to
+# give up, it needs nearly all of the 0.90 budget to hold its 131,072 tokens.
+if [[ -z "$GPU_UTIL_EXPLICIT" ]]; then
+  case "$KV_CACHE_DTYPE" in
+    turboquant*) GPU_UTIL=0.85 ;;
+  esac
+fi
+
+# Recommended by the OOM message itself, and free of downsides here: expandable
+# segments let the caching allocator grow a mapping instead of needing a fresh
+# contiguous reserved block, which is exactly what a 462 MiB failure alongside
+# "8.40 GiB is free" looks like. (It is incompatible with --enable-sleep-mode,
+# which this script never passes.)
+export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
 
 # Interlock, and not a preference: a TurboQuant KV cache combined with MTP
 # speculative decoding makes this model emit garbage - empty content, or
