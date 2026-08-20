@@ -404,28 +404,38 @@ $xaml = @'
       </Setter>
     </Style>
     <Style TargetType="TabItem">
+      <!-- Text colour belongs on the TabItem, NOT on the ContentPresenter in the
+           template below. A header's logical parent is the TabItem, so inherited
+           properties (TextElement.Foreground/FontSize/FontWeight) flow from here
+           into the header's TextBlocks; anything set on the ContentPresenter is
+           simply bypassed. Setting it there rendered the tab labels in WPF's
+           default black on the #0F1115 window - about 1:1, i.e. invisible.
+           The header TextBlocks keep Style="{x:Null}" so the implicit TextBlock
+           style does not pin a colour and defeat the state triggers: a Style
+           setter outranks inheritance, which would freeze all three tabs at one
+           colour. Idle #AAB3C2 on #0F1115 measures ~8.9:1. -->
+      <Setter Property="Foreground" Value="#AAB3C2"/>
+      <Setter Property="FontSize" Value="13"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="TabItem">
-            <!-- Tabs sit straight on the window background, so an idle tab needs
-                 a genuinely light foreground: #8A93A5 measured ~6:1 here, which
-                 is thin for 13px text beside hairline icon glyphs. -->
             <Border x:Name="Bd" Background="Transparent" BorderThickness="0,0,0,2" BorderBrush="Transparent"
                     CornerRadius="8,8,0,0" Padding="16,8" Margin="0,0,4,0">
-              <ContentPresenter x:Name="Content" ContentSource="Header"
-                                TextElement.Foreground="#AAB3C2" TextElement.FontSize="13"/>
+              <ContentPresenter x:Name="Content" ContentSource="Header"/>
             </Border>
             <ControlTemplate.Triggers>
+              <!-- No TargetName: these set the property on the templated TabItem,
+                   which is what the header actually inherits from. -->
               <Trigger Property="IsMouseOver" Value="True">
                 <Setter TargetName="Bd" Property="Background" Value="#171B24"/>
-                <Setter TargetName="Content" Property="TextElement.Foreground" Value="#E6EAF1"/>
+                <Setter Property="Foreground" Value="#E6EAF1"/>
               </Trigger>
               <!-- After the hover trigger on purpose: selected wins when both apply. -->
               <Trigger Property="IsSelected" Value="True">
                 <Setter TargetName="Bd" Property="Background" Value="#1A1F29"/>
                 <Setter TargetName="Bd" Property="BorderBrush" Value="#76B900"/>
-                <Setter TargetName="Content" Property="TextElement.Foreground" Value="#F4F7FB"/>
-                <Setter TargetName="Content" Property="TextElement.FontWeight" Value="SemiBold"/>
+                <Setter Property="Foreground" Value="#F4F7FB"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
