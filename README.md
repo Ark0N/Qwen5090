@@ -170,7 +170,7 @@ and which need `--trust-remote-code`.
 | `run.ps1 -Uncensored` | off | Serves the abliterated build instead (install it first). |
 | `run.ps1 -Model` | `unsloth/Qwen3.8-27B-NVFP4` | Any Hugging Face repo id or a path inside WSL. |
 | `chat.ps1 -NoThink` | off | Direct answers, no reasoning tokens. |
-| `chat.ps1 -Effort low\|medium\|high\|xhigh` | model default | Qwen3.8's reasoning-effort dial. |
+| `chat.ps1 -Effort low\|medium\|xhigh` | model default | Qwen3.8's reasoning-effort dial. The chat template rejects every other value, `high` included. |
 
 **API example** (sampling: temperature 0.7, top-p 0.8, top-k 20, presence 1.5):
 
