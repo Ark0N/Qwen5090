@@ -84,6 +84,13 @@ if ($verb -eq "env") {
     Write-Host ""
     Write-Host "  claude" -ForegroundColor Green
     Write-Host ""
+    # Those exports apply to every 'claude' started from that window, cloud sessions
+    # included, so say so here rather than letting someone paste them into a profile.
+    Write-Host "Keep that window for Qwen only: the variables apply to every 'claude' you" -ForegroundColor Yellow
+    Write-Host "start from it. In a PowerShell profile they would hijack your normal cloud" -ForegroundColor Yellow
+    Write-Host "Claude Code permanently. Inside WSL, .\claude-code.ps1 without -Windows keeps" -ForegroundColor Yellow
+    Write-Host "the two apart by itself." -ForegroundColor Yellow
+    Write-Host ""
     exit 0
 }
 

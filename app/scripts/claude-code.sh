@@ -298,6 +298,13 @@ cmd_status() {
 # session cannot accidentally reach for something that is not there.
 emit_env() {
   cat <<ENV
+# WARNING: these override Claude Code for EVERY 'claude' started from the shell
+# you eval them in - including your normal cloud session, which will silently
+# run against Qwen instead. Never put them in ~/.bashrc, ~/.zshrc or a profile.
+# To keep the two apart, do not eval this at all: 'claude-code.sh run' (or the
+# 'qwen-claude' command that 'install' drops on your PATH) sets them inside its
+# own process and execs Claude Code there, leaving your shell - and plain
+# 'claude' - untouched.
 export ANTHROPIC_BASE_URL="$BRIDGE_URL"
 export ANTHROPIC_AUTH_TOKEN="$BRIDGE_KEY"
 export ANTHROPIC_MODEL="qwen5090"

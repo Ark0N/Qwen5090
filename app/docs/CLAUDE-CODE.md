@@ -91,6 +91,26 @@ bash app/scripts/claude-code.sh env       # print exports for your own shell
 `env` is the escape hatch — `eval "$(bash app/scripts/claude-code.sh env)"` sets
 up any Anthropic-API client, not just Claude Code.
 
+> **Do not eval it just to run Claude Code, and never put it in a profile.**
+> Those exports apply to *every* `claude` started from that shell, so your
+> normal cloud session silently starts answering from Qwen instead — and in
+> `~/.bashrc` or `~/.zshrc` it hijacks the cloud one permanently.
+>
+> `run` and the installed `qwen-claude` command exist precisely to avoid this:
+> they set the variables inside their own process and `exec` Claude Code there,
+> so the shell you launched them from — and plain `claude` — never sees them.
+> Keeping a local model and a cloud subscription side by side is the normal
+> case, not an edge case:
+>
+> ```bash
+> claude          # your cloud Claude Code, untouched
+> qwen-claude     # the same Claude Code, driven by the 5090
+> ```
+>
+> If plain `claude` ever connects to Qwen unexpectedly, an old `eval` is still
+> live in that shell — check with `echo $ANTHROPIC_BASE_URL` (it should be
+> empty) and `grep ANTHROPIC ~/.bashrc ~/.zshrc ~/.profile`.
+
 ## Settings
 
 All are environment variables for the `.sh`, and flags on the `.ps1`.
