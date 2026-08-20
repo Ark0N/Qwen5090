@@ -188,24 +188,59 @@ print(resp.choices[0].message.content)
 Tool calling and the `qwen3` reasoning parser are enabled on the server.
 Quick benchmark while it runs (from WSL): `bash app/scripts/benchmark.sh`
 
-**Use it as a coding agent (Claude Code):** point
-[Claude Code](https://claude.com/claude-code) at this server and it edits your
-files and runs commands with no account and no per-token bill:
+<a id="claude-code"></a>
+**Use it as a coding agent (Claude Code).** Point
+[Claude Code](https://claude.com/claude-code) at this server and it reads and
+writes your files, runs commands and edits code exactly as it normally does —
+with no Anthropic account, nothing billed, and nothing leaving your network.
+
+Claude Code speaks the **Anthropic** API; vLLM serves the **OpenAI** API and has
+no `/v1/messages` endpoint at all. Neither side bends, so a small
+[LiteLLM](https://github.com/BerriAI/litellm) process sits between them and
+translates in both directions — streaming, tool calls and token counting
+included:
+
+```
+claude ──Anthropic /v1/messages──> bridge :4000 ──OpenAI /v1──> vLLM :8000
+                                  (LiteLLM)                     (your 5090)
+```
+
+The bridge installs itself on first run and reads `/v1/models` to configure
+itself, so it follows whichever checkpoint you are serving — nothing to keep in
+sync. You supply Claude Code:
+`npm install -g @anthropic-ai/claude-code`.
+
+*On the same PC as the server.* Start the server first (the Run button, or
+`.\app\run.ps1`), then:
 
 ```powershell
-.\app\claude-code.ps1          # on the 5090 PC (start the server first)
+.\app\claude-code.ps1              # opens Claude Code inside WSL
+.\app\claude-code.ps1 -Windows     # prints the env vars for a Windows-native Claude Code
 ```
+
+*From another machine* — a laptop, a Mac, another WSL box — the API has to be
+reachable off localhost first, so tick **Share on network** or run
+`.\app\share.ps1` on the 5090 PC. Then, on the machine you want to code from:
 
 ```bash
-# or from any other machine, once the server is shared
-QWEN_URL=http://<5090-ip>:8000 bash app/scripts/claude-code.sh run
+QWEN_URL=http://<5090-ip>:8000 bash app/scripts/claude-code.sh install
+qwen-claude                        # from any directory, from now on
 ```
 
-Claude Code speaks the Anthropic API and vLLM serves the OpenAI one, so this
-starts a small LiteLLM bridge between them, configured from whatever
-`/v1/models` reports. `bash app/scripts/claude-code.sh install` adds a
-`qwen-claude` command to your PATH so you can open a session from any
-directory. Full guide, settings and troubleshooting:
+Over Tailscale, `<5090-ip>` is the PC's Tailscale IP (`tailscale ip -4`) or its
+MagicDNS name — so this works from anywhere, not just your own Wi-Fi. The client
+machine needs nothing from this repo except `app/scripts/claude-code.sh`.
+
+`install` bakes that URL into a `qwen-claude` command on your PATH; it is
+optional — `bash app/scripts/claude-code.sh run` does the same thing without
+installing anything, and `uninstall` reverses it. `qwen-claude status|stop|doctor`
+manage the bridge, and `doctor` fires a real end-to-end request when something
+looks off.
+
+Expect a capable local assistant rather than a frontier one: well-scoped edits,
+refactors and file spelunking go fine; long multi-step planning is weaker, and
+it thinks for a few seconds before each reply (`QWEN_EFFORT=medium` trades some
+of that back). Full guide, settings and troubleshooting:
 [app/docs/CLAUDE-CODE.md](app/docs/CLAUDE-CODE.md).
 
 **Use it from your phone/laptop (LAN / Tailscale):** tick **Share on network**
