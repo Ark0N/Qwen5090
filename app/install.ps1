@@ -300,6 +300,35 @@ function Test-DistroReady {
     return $false
 }
 
+function Confirm-DistroDefaultUser {
+    <#
+      A distro registered with '--no-launch' has never run Ubuntu's first-time
+      setup, so every console-attached 'wsl -d <distro>' re-opens it and asks
+      for a username - during an install that is supposed to be hands-off, and
+      again later whenever anyone runs a wsl command by hand.
+
+      Settling it means pinning a default user in /etc/wsl.conf. For a distro
+      that is already carrying an install, that user must stay root: its venv
+      and ~22 GB of weights live in /root, and handing the default to someone
+      else hides both behind a different $HOME. A local account is created too,
+      because Ubuntu's setup keeps prompting until one exists.
+    #>
+    & wsl -d $Distro -u root -- bash -c "grep -q '^default=' /etc/wsl.conf 2>/dev/null" *> $null
+    if ($LASTEXITCODE -eq 0) { return }
+    Write-Host "This distro never finished Ubuntu's first-time setup - settling it so nothing prompts later."
+    $cmd = "id qwen >/dev/null 2>&1 || useradd -m -s /bin/bash qwen; " +
+           "usermod -aG sudo qwen 2>/dev/null; " +
+           "echo 'qwen ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/qwen; chmod 440 /etc/sudoers.d/qwen; " +
+           "printf '[user]\ndefault=root\n' > /etc/wsl.conf"
+    & wsl -d $Distro -u root -- bash -c $cmd *> $null
+    if ($LASTEXITCODE -eq 0) {
+        & wsl --terminate $Distro *> $null
+        Write-Host "   Done - this distro keeps running as root, where everything is already installed."
+    } else {
+        Write-Host "   Could not write /etc/wsl.conf; a first-time-setup window may appear once more." -ForegroundColor Yellow
+    }
+}
+
 function Install-DistroUnattended {
     # Silent provisioning: register the distro without OOBE, create a 'qwen'
     # user with passwordless sudo, and make it the default. Returns $true on success.
@@ -465,6 +494,7 @@ if (-not $registered -and (Test-DistroReady -Retries 2)) {
 }
 if ($registered) {
     Write-Host "$Distro is already installed."
+    Confirm-DistroDefaultUser
 } else {
     Write-Host "$Distro is not installed yet - setting it up now (three sub-steps, a few minutes total)."
     if (-not (Install-DistroUnattended)) {
@@ -472,6 +502,7 @@ if ($registered) {
             # Registered but its OOBE never ran: it still works as root, and an
             # interactive setup window would only break an unattended install.
             Write-Host "$Distro answers as root - skipping the interactive first-time setup."
+            Confirm-DistroDefaultUser
         } else {
             Write-Host "Silent install unavailable - falling back to the interactive Ubuntu setup." -ForegroundColor Yellow
             Write-Host "A window will open asking you to create a Linux username and password;" -ForegroundColor Yellow
