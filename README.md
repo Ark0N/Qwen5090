@@ -77,8 +77,9 @@ your Windows NVIDIA driver powers the GPU inside WSL automatically. The
 PowerShell scripts hide all of it; `localhost:8000` just works.
 
 What `install.ps1` actually does: checks Windows 11 + driver ≥ 570 → enables
-WSL2 (one reboot max, auto-resumes) → provisions Ubuntu unattended → creates a
-Python 3.13 venv with `vllm`, `flashinfer`, and the CUTLASS DSL → downloads
+WSL2 (one reboot max, auto-resumes) → provisions Ubuntu unattended → installs
+`build-essential` (vLLM's kernel compiler needs a C compiler at runtime) →
+creates a Python 3.13 venv with `vllm`, `flashinfer`, and the CUTLASS DSL → downloads
 [`unsloth/Qwen3.8-27B-NVFP4`](https://huggingface.co/unsloth/Qwen3.8-27B-NVFP4)
 (~22 GB, skippable) → desktop shortcut. Re-running is always safe.
 

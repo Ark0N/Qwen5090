@@ -3,6 +3,10 @@
 # Every knob is env-overridable, e.g.:  CTX=262144 PORT=8080 bash scripts/serve.sh
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib-build-tools.sh
+source "$SCRIPT_DIR/lib-build-tools.sh"
+
 VENV="${QWEN5090_VENV:-$HOME/.qwen5090/venv}"
 MODEL="${MODEL:-unsloth/Qwen3.8-27B-NVFP4}"   # or sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4
 CTX="${CTX:-262144}"          # the model's native max; drop to 131072 if the KV cache will not fit
@@ -22,6 +26,13 @@ if [[ ! -x "$VENV/bin/vllm" ]]; then
   echo "vLLM venv not found at $VENV — run install.ps1 (or scripts/setup-wsl.sh) first." >&2
   exit 1
 fi
+
+# Triton compiles this model's kernels (and its own CUDA driver module) with a
+# C compiler, at runtime, the first time they are used. Machines set up before
+# the installer started installing one still have none, and the failure lands
+# 60 s in, as a 200-line traceback ending in "Failed to find C compiler".
+# No-op once build-essential is there.
+ensure_build_tools || exit 1
 
 check_wsl_memory() {
   # vLLM loads each weights shard through one private, writable mmap of the

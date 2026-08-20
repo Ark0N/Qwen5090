@@ -114,6 +114,28 @@ Your vLLM/flashinfer build predates Blackwell NVFP4 support. Re-run
 for this checkpoint: SGLang can't load its FP8 lm_head, llama.cpp only reads
 GGUF.
 
+## "Failed to find C compiler" / `triton` errors at startup
+
+```
+RuntimeError: Failed to find C compiler. Please specify via CC environment
+variable or set triton.knobs.build.impl.
+```
+
+vLLM compiles part of this model's kernels on the fly with Triton, which shells
+out to a real C compiler — and Ubuntu's WSL image ships without one. Installs
+made before the app started installing build tools hit this about a minute into
+the first server start, right after the weights finish loading.
+
+Starting the server now installs the compiler automatically. To do it by hand,
+from Windows PowerShell:
+
+```powershell
+wsl -d Ubuntu-24.04 -u root -- bash -c "apt-get update && apt-get install -y build-essential"
+```
+
+Clicking **Install / Repair** in the app does the same thing (and skips the
+download — the weights are already cached).
+
 ## Uncensored build: "gated repository" / 401 / "Access to model ... is restricted"
 
 Only the *Uncensored - OrcaRouter (sign-in)* entry needs an account. If you do

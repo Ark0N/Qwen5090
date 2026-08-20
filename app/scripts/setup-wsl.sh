@@ -4,6 +4,10 @@
 # to run directly from a WSL shell too. Re-running is idempotent.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib-build-tools.sh
+source "$SCRIPT_DIR/lib-build-tools.sh"
+
 VENV="${QWEN5090_VENV:-$HOME/.qwen5090/venv}"
 MODEL="${MODEL:-unsloth/Qwen3.8-27B-NVFP4}"   # or sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4
 # Most repos need no account. A gated one (orcarouter's) needs HF_TOKEN once; it
@@ -18,7 +22,7 @@ exec > >(tee -a "$LOG_FILE") 2>&1
 trap 'echo "ERROR: setup-wsl.sh failed at line $LINENO (exit $?)"' ERR
 echo "(logging to $LOG_FILE)"
 
-echo "== [1/5] Checking the GPU is visible inside WSL =="
+echo "== [1/6] Checking the GPU is visible inside WSL =="
 if ! command -v nvidia-smi >/dev/null 2>&1 || ! nvidia-smi >/dev/null 2>&1; then
   echo "nvidia-smi failed inside WSL." >&2
   echo "Install/update the *Windows* NVIDIA driver (>= 570; Game Ready or Studio)," >&2
@@ -28,7 +32,7 @@ if ! command -v nvidia-smi >/dev/null 2>&1 || ! nvidia-smi >/dev/null 2>&1; then
 fi
 nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader
 
-echo "== [2/5] Checking model access =="
+echo "== [2/6] Checking model access =="
 # The uncensored (abliterated) checkpoint is a gated Hugging Face repo. Catch a
 # missing token here, in five seconds, instead of after the ten-minute vLLM
 # install. Everything else is public and needs no account.
@@ -73,13 +77,16 @@ EOF
   exit 1
 fi
 
-echo "== [3/5] Installing uv (Python package manager) =="
+echo "== [3/6] Installing build tools (vLLM compiles GPU kernels at runtime) =="
+ensure_build_tools || exit 1
+
+echo "== [4/6] Installing uv (Python package manager) =="
 export PATH="$HOME/.local/bin:$PATH"
 if ! command -v uv >/dev/null 2>&1; then
   curl -LsSf https://astral.sh/uv/install.sh | sh
 fi
 
-echo "== [4/5] Creating venv + installing vLLM (downloads CUDA wheels; takes a while) =="
+echo "== [5/6] Creating venv + installing vLLM (downloads CUDA wheels; takes a while) =="
 UV_FLAGS=()
 if [[ "${NONINTERACTIVE:-0}" == "1" ]]; then
   UV_FLAGS+=(--no-progress)   # keep GUI logs readable (no \r progress bars)
@@ -101,7 +108,27 @@ uv pip install "${UV_FLAGS[@]}" --python "$VENV/bin/python" \
   "openai>=1.60" \
   --torch-backend=auto
 
-echo "== [5/5] Downloading model weights: $MODEL ($SIZE_HINT) =="
+# Prove Triton can actually build against this machine's CUDA driver now, and
+# warm its cache, rather than discovering a broken toolchain a minute into the
+# first server start. Warn only - the weights are still worth downloading, and
+# nothing here is fatal to the rest of the install.
+if ! "$VENV/bin/python" - <<'TRITON_PY'
+import sys
+try:
+    import triton
+    triton.runtime.driver.active.get_current_device()
+except Exception as exc:                      # noqa: BLE001 - report anything
+    sys.exit(f"{type(exc).__name__}: {exc}")
+print("Triton kernel compiler OK.")
+TRITON_PY
+then
+  echo "WARNING: Triton could not build its CUDA kernels (see the error above)." >&2
+  echo "         vLLM will fail at startup until that is fixed. Usual causes: no" >&2
+  echo "         C compiler (apt-get install build-essential) or a WSL that cannot" >&2
+  echo "         see the GPU (wsl --shutdown, then update the Windows driver)." >&2
+fi
+
+echo "== [6/6] Downloading model weights: $MODEL ($SIZE_HINT) =="
 if [[ -n "${HF_TOKEN:-}" ]]; then
   # Saved to ~/.cache/huggingface/token, which vLLM also reads at serve time.
   "$VENV/bin/python" - <<'TOKEN_PY'
