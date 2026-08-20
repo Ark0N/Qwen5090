@@ -9,15 +9,19 @@ source "$SCRIPT_DIR/lib-build-tools.sh"
 
 VENV="${QWEN5090_VENV:-$HOME/.qwen5090/venv}"
 MODEL="${MODEL:-unsloth/Qwen3.8-27B-NVFP4}"   # or sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4
-# The model's native max is 262144, but that does not fit on a 32 GB card: the
-# weights take ~19.5 GiB, leaving ~6.3 GiB for the KV cache where a 262144-token
-# window wants 9.13 GiB. vLLM works that out only after a three-minute startup
-# and then exits with "the estimated maximum model length is 174400". 131072 is
-# the largest of the offered sizes that fits, with room for the MTP draft head.
-CTX="${CTX:-131072}"          # raise to 262144 only on a card with more VRAM
+# The model's native maximum. It does not fit with an fp8 KV cache on a 32 GB
+# card (that window wants ~9.1 GiB against the ~6.2 GiB free after the weights),
+# so the KV precision is chosen further down to match the context asked for.
+CTX="${CTX:-262144}"
 PORT="${PORT:-8000}"
 GPU_UTIL="${GPU_UTIL:-0.90}"  # leave headroom: on WSL the same GPU drives the Windows desktop
 MTP="${MTP:-1}"               # multi-token prediction (speculative decoding); set 0 to disable
+# How many requests may be in flight at once. vLLM defaults to 256, which this
+# hybrid model cannot honour at a long context: its GDN/Mamba layers need one
+# cache block per decode sequence, and a big KV cache leaves few spare blocks -
+# "max_num_seqs (256) exceeds available Mamba cache blocks" aborts the start.
+# This is a personal server; a handful of concurrent chats is plenty.
+MAX_SEQS="${MAX_SEQS:-16}"
 
 # Mirror all output (vLLM included) to a persistent log for diagnostics.
 LOG_DIR="${QWEN5090_LOG_DIR:-$HOME/.qwen5090/logs}"
@@ -196,6 +200,11 @@ check_wsl_memory
 # need something unusual are matched by their exact repo id; anything else that
 # looks abliterated gets the llm-compressor defaults, which is what the
 # community NVFP4 re-quants of the abliterated weights all use.
+# Whether the caller pinned the KV precision themselves. Checked before the
+# case block below fills in a default, so the automatic 4-bit switch further
+# down never overrides an explicit choice.
+KV_DTYPE_EXPLICIT="${KV_CACHE_DTYPE+set}"
+
 case "$MODEL" in
   orcarouter/Qwen3.8-27B-Uncensored-NVFP4)
     # Carries its own KV-cache scheme in config.json (passing --kv-cache-dtype
@@ -215,6 +224,36 @@ case "$MODEL" in
     TRUST_REMOTE_CODE="${TRUST_REMOTE_CODE:-0}"
     ;;
 esac
+# Pick the KV precision that makes the requested context fit, rather than
+# refusing to start. An fp8 KV cache holds about 171,000 tokens on a 32 GB card
+# once the weights are in place - fine up to 128K, but the model's native
+# 262,144-token window needs ~9.1 GiB against the ~6.2 GiB actually free, and
+# vLLM only says so three minutes in. A 4-bit KV cache halves the per-token cost
+# and fits the full window with room to spare: measured 324,301 tokens of
+# capacity at GPU_UTIL 0.90 with MTP still enabled, and it runs *faster* than
+# fp8 (~120 vs ~80 tok/s) because decode moves less memory. Only applied to the
+# checkpoints that default to fp8 - the gated one carries its own scheme in
+# config.json, where passing --kv-cache-dtype at all is an error.
+if [[ -z "$KV_DTYPE_EXPLICIT" && "$KV_CACHE_DTYPE" == "fp8" && "$CTX" -gt 131072 ]]; then
+  KV_CACHE_DTYPE="turboquant_4bit_nc"
+fi
+
+# Interlock, and not a preference: a TurboQuant KV cache combined with MTP
+# speculative decoding makes this model emit garbage - empty content, or
+# "The final answer: : : : : :" until it hits the token limit - while still
+# returning HTTP 200, so it looks like it works. Verified both ways at 262144:
+# with MTP on, 0 of 3 trivial questions came back sane; with MTP off, 3 of 3
+# ("Tokyo", "408", "red, blue, yellow"). Correctness wins over the speed-up.
+case "$KV_CACHE_DTYPE" in
+  turboquant*)
+    if [[ "$MTP" == "1" ]]; then
+      echo ">> MTP disabled: it produces corrupt output with a $KV_CACHE_DTYPE KV cache." >&2
+      echo "   (drop the context to 131072 or lower to get fp8 + MTP back)" >&2
+      MTP=0
+    fi
+    ;;
+esac
+
 # vLLM resolves "mtp" to this architecture's MTP head; some cards spell it
 # qwen3_5_mtp. Override with SPEC_METHOD if a checkpoint insists on the latter.
 SPEC_METHOD="${SPEC_METHOD:-mtp}"
@@ -226,6 +265,7 @@ ARGS=(
   --gpu-memory-utilization "$GPU_UTIL"
   --reasoning-parser qwen3
   --enable-auto-tool-choice --tool-call-parser qwen3_coder
+  --max-num-seqs "$MAX_SEQS"
 )
 if [[ -n "$KV_CACHE_DTYPE" ]]; then
   ARGS+=(--kv-cache-dtype "$KV_CACHE_DTYPE")

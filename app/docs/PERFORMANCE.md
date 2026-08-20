@@ -17,9 +17,15 @@ from WSL (add `TOKENS=1024` for a longer run).
 
 - **Weights:** ~22 GB (NVFP4, 4-bit weights + FP8 lm_head)
 - **KV cache:** FP8, and Qwen3.8's hybrid attention (linear attention on 48 of
-  64 layers) keeps it small — that's why a 128K context fits at all. The native
-  262K does not: its KV cache needs ~9.1 GiB against the ~6.3 GiB left after the
-  weights, and vLLM refuses to start rather than truncating the window
+  64 layers) keeps it small — that's why long contexts fit at all. The precision
+  is chosen to match the window: fp8 up to 128K (~171,000 tokens of capacity),
+  and 4-bit (`turboquant_4bit_nc`) above that, which is what makes the native
+  262K window fit — 9.1 GiB of fp8 cache would not, against the ~6.3 GiB free
+- **Long context costs the MTP speed-up**: a TurboQuant KV cache and speculative
+  decoding together corrupt this model's output (empty replies, or `: : : :`
+  until the token limit, all behind an HTTP 200), so serve.sh turns MTP off
+  whenever it picks a 4-bit cache. 262K runs ~49 tok/s; 131072 keeps fp8 + MTP
+  and runs ~80 tok/s. Pick the window you actually need
 - **Headroom:** `GPU_UTIL=0.90` leaves ~3 GB for the Windows desktop, which
   shares the GPU under WSL
 

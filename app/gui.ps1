@@ -610,13 +610,15 @@ $xaml = @'
             <TextBlock Text="Context" Style="{StaticResource FieldLabel}"/>
             <!-- Content is the label the user reads; Tag carries the exact token
                  count that run.ps1 needs (Start-Server reads Tag, never Content). -->
-            <ComboBox x:Name="CmbCtx" Width="104" VerticalAlignment="Center" SelectedIndex="1" Margin="0,0,14,6"
+            <ComboBox x:Name="CmbCtx" Width="104" VerticalAlignment="Center" SelectedIndex="2" Margin="0,0,14,6"
                       ToolTip="Maximum context length - higher uses more VRAM">
+              <!-- 262K needs a 4-bit KV cache to fit in 32 GB; serve.sh switches to
+                   one automatically above 128K, so every entry here really starts. -->
               <ComboBoxItem Content="64K" Tag="65536" ToolTip="65,536 tokens - pick this if you are gaming at the same time"/>
-              <ComboBoxItem Content="128K" Tag="131072" ToolTip="131,072 tokens - the most that fits on a 32 GB card (default)"/>
-              <ComboBoxItem Content="262K" Tag="262144" ToolTip="262,144 tokens - the model's native maximum, but its KV cache does not fit in 32 GB: the server will refuse to start"/>
+              <ComboBoxItem Content="128K" Tag="131072" ToolTip="131,072 tokens - uses the higher-precision fp8 KV cache"/>
+              <ComboBoxItem Content="262K" Tag="262144" ToolTip="262,144 tokens - the model's native maximum (default). Above 128K the KV cache drops to 4-bit to fit, which is also faster"/>
             </ComboBox>
-            <CheckBox x:Name="ChkMtp" Content="MTP speed boost" ToolTip="Speculative decoding (multi-token prediction) - faster, leave on" IsChecked="True" Margin="0,0,14,6"/>
+            <CheckBox x:Name="ChkMtp" Content="MTP speed boost" ToolTip="Speculative decoding (multi-token prediction) - faster, leave on. Ignored above 128K context: it corrupts output when the KV cache is 4-bit, so the server turns it off for you." IsChecked="True" Margin="0,0,14,6"/>
             <CheckBox x:Name="ChkShare" Content="Share on network" ToolTip="Other devices on your Wi-Fi or tailnet (LAN/Tailscale) can use the API - asks for admin once per start" Margin="0,0,0,6"/>
           </WrapPanel>
           <TextBox x:Name="TxtServerLog" Grid.Row="1" Style="{StaticResource LogBox}"

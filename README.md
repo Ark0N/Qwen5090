@@ -135,7 +135,7 @@ and which need `--trust-remote-code`.
 
 | Knob | Default | Notes |
 |---|---|---|
-| `run.ps1 -Ctx` | `131072` | Context window. The model can do 262,144 tokens, but that window's KV cache needs ~9 GB and only ~6 GB is free once the weights are loaded, so 128K is the most a 32 GB card will start with. Drop to `65536` if you are gaming at the same time. |
+| `run.ps1 -Ctx` | `262144` | Context window, the model's native maximum. Above 128K the KV cache switches to 4-bit so it fits in 32 GB, which also turns MTP off (the two together corrupt the output) — so the full window runs at ~49 tok/s. Choose `131072` for ~80 tok/s with the higher-precision fp8 cache and MTP on, or `65536` if you are gaming at the same time. |
 | `run.ps1 -Port` | `8000` | API port. |
 | `run.ps1 -GpuUtil` | `0.90` | Fraction of VRAM vLLM may claim — the Windows desktop shares the GPU. |
 | `run.ps1 -NoMtp` | off | Disables speculative decoding if it misbehaves. |
@@ -171,7 +171,7 @@ Undo anytime: `.\app\share.ps1 -Remove`. HTTPS alternative with zero setup:
 `tailscale serve --bg 8000`.
 
 **Why NVFP4 on a 5090:** the ~22 GB weights fit the 32 GB card with room for
-a 128K context (FP8 KV cache + Qwen3.8's hybrid attention), it runs ~1.5×
+the full 262K context (4-bit KV cache + Qwen3.8's hybrid attention), it runs ~1.5×
 faster than BF16 on Blackwell's FP4 tensor cores, and Unsloth's dynamic quants
 keep accuracy close to the original checkpoint.
 
