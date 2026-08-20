@@ -22,7 +22,8 @@ def main():
     p.add_argument("--port", type=int, default=8000)
     p.add_argument("--no-think", action="store_true",
                    help="disable thinking mode (direct answers)")
-    p.add_argument("--effort", choices=["low", "medium", "high", "xhigh"],
+    # "high" is not a level this model's chat template accepts - it 400s.
+    p.add_argument("--effort", choices=["low", "medium", "xhigh"],
                    help="reasoning effort for thinking mode")
     p.add_argument("--system", help="optional system prompt")
     p.add_argument("--temperature", type=float, default=0.7)
@@ -75,7 +76,10 @@ def main():
                 if not chunk.choices:
                     continue
                 delta = chunk.choices[0].delta
-                reasoning = getattr(delta, "reasoning_content", None)
+                # vLLM 0.27.1 calls it `reasoning`; other builds use
+                # `reasoning_content`. Reading only one silently drops it.
+                reasoning = (getattr(delta, "reasoning", None)
+                             or getattr(delta, "reasoning_content", None))
                 if reasoning:
                     if not thinking:
                         print("\033[2m", end="")

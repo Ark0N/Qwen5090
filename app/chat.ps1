@@ -5,14 +5,14 @@
 .EXAMPLE
   .\chat.ps1                    # thinking mode on (dim text = reasoning)
   .\chat.ps1 -NoThink           # direct answers
-  .\chat.ps1 -Effort high       # crank the reasoning dial
+  .\chat.ps1 -Effort xhigh      # crank the reasoning dial
 #>
 [CmdletBinding()]
 param(
     [string]$Distro = "Ubuntu-24.04",
     [int]$Port = 8000,
     [switch]$NoThink,
-    [ValidateSet("low", "medium", "high", "xhigh")]
+    [ValidateSet("low", "medium", "xhigh")]
     [string]$Effort
 )
 $ErrorActionPreference = "Stop"

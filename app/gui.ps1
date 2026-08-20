@@ -615,8 +615,8 @@ $xaml = @'
               <!-- 262K needs a 4-bit KV cache to fit in 32 GB; serve.sh switches to
                    one automatically above 128K, so every entry here really starts. -->
               <ComboBoxItem Content="64K" Tag="65536" ToolTip="65,536 tokens - pick this if you are gaming at the same time"/>
-              <ComboBoxItem Content="128K" Tag="131072" ToolTip="131,072 tokens - uses the higher-precision fp8 KV cache"/>
-              <ComboBoxItem Content="262K" Tag="262144" ToolTip="262,144 tokens - the model's native maximum (default). Above 128K the KV cache drops to 4-bit to fit, which is also faster"/>
+              <ComboBoxItem Content="128K" Tag="131072" ToolTip="131,072 tokens - the sweet spot: fp8 KV cache, MTP stays on, about 80 tok/s"/>
+              <ComboBoxItem Content="262K" Tag="262144" ToolTip="262,144 tokens - the model's native maximum. Needs a 4-bit KV cache to fit, which costs speed: about 49 tok/s instead of 80, and pasting a very long document in can take minutes before the reply starts. Pick 128K unless you actually need the room."/>
             </ComboBox>
             <CheckBox x:Name="ChkMtp" Content="MTP speed boost" ToolTip="Speculative decoding (multi-token prediction) - faster, leave on. Ignored above 128K context: it corrupts output when the KV cache is 4-bit, so the server turns it off for you." IsChecked="True" Margin="0,0,14,6"/>
             <CheckBox x:Name="ChkShare" Content="Share on network" ToolTip="Other devices on your Wi-Fi or tailnet (LAN/Tailscale) can use the API - asks for admin once per start" Margin="0,0,0,6"/>
@@ -650,7 +650,6 @@ $xaml = @'
                 <ComboBoxItem Content="default"/>
                 <ComboBoxItem Content="low"/>
                 <ComboBoxItem Content="medium"/>
-                <ComboBoxItem Content="high"/>
                 <ComboBoxItem Content="xhigh"/>
               </ComboBox>
             </StackPanel>
@@ -1108,9 +1107,16 @@ $chatWorker = {
             try { $obj = $payload | ConvertFrom-Json } catch { continue }
             if (-not $obj.choices -or $obj.choices.Count -eq 0) { continue }
             $delta = $obj.choices[0].delta
-            if ($delta.PSObject.Properties['reasoning_content'] -and $delta.reasoning_content) {
-                $queue.Enqueue(@{ t = 'think'; s = [string]$delta.reasoning_content })
+            # vLLM 0.27.1 streams the thinking text as 'reasoning'; other builds
+            # use 'reasoning_content'. Accept either - reading only the latter
+            # drops the entire thinking phase and the UI just sits there silent.
+            $think = $null
+            if ($delta.PSObject.Properties['reasoning'] -and $delta.reasoning) {
+                $think = [string]$delta.reasoning
+            } elseif ($delta.PSObject.Properties['reasoning_content'] -and $delta.reasoning_content) {
+                $think = [string]$delta.reasoning_content
             }
+            if ($think) { $queue.Enqueue(@{ t = 'think'; s = $think }) }
             if ($delta.PSObject.Properties['content'] -and $delta.content) {
                 $queue.Enqueue(@{ t = 'text'; s = [string]$delta.content })
             }
