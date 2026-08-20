@@ -124,19 +124,44 @@ Keep ~8 GB for Windows itself. On a 16 GB PC leave `memory` alone and give
 `swap=20GB` instead — loading is slower but it works. `wsl --shutdown` is
 required for any `.wslconfig` change to take effect.
 
-## Bluescreen (0x116 VIDEO_TDR_ERROR) while the server starts
+## Bluescreen (0x116 VIDEO_TDR_ERROR)
 
-The machine bluescreens about a minute into loading the model, or freezes with
-the GPU fans at full speed and the screen dark. `C:\Windows\Minidump` has a
-fresh `.dmp`, and Event Viewer → System shows `nvlddmkm` / `Kernel-Power 41`.
+The machine bluescreens, or freezes with the GPU fans at full speed and the
+screen dark. `C:\Windows\Minidump` has a fresh `.dmp`, and Event Viewer →
+System shows bugcheck `0x00000116` next to a burst of `nvlddmkm` events.
 
-Windows watches the display driver and resets the GPU if a single kernel holds
-it longer than **TdrDelay** seconds — 2 by default, a figure meant for games.
-vLLM's startup profiling runs well past that, so the watchdog fires. The reset
-then needs VRAM that the server is already holding, fails, and Windows
-bugchecks instead of recovering.
+**Raising the watchdog timeout is not enough.** An earlier version of this file
+said it was; a measured run disproved it. On the 5090 test machine, with
+`TdrDelay` confirmed at 10 seconds and Windows freshly booted so the value was
+live, the PC bluescreened anyway — while serving requests no larger than 2048
+tokens, nowhere near the startup profiling the timeout was raised for.
 
-The installer fixes this, but **the values are only read at boot**:
+What the event log actually recorded, in the 34 seconds before the bugcheck:
+
+| what | evidence |
+|---|---|
+| ~10 GPU resets per second | 322 × `nvlddmkm` event 153, `GpuRcReset TDR occurred on GPUID:100` |
+| engine command errors alongside them | 55 × `nvlddmkm` event 14, `CMDre …` |
+| the bugcheck itself | `0x116`, third argument `0xc000009a` = `STATUS_INSUFFICIENT_RESOURCES` |
+
+A ten-second timeout cannot fire ten times a second, so these are not timeouts —
+they are error-driven driver resets. And that third argument says what finally
+kills Windows: the *recovery* fails for lack of resources. VRAM was at 29.7 of
+32.6 GB when it happened, leaving 2.9 GB for the desktop.
+
+So the order of defence is the reverse of what this file used to advise:
+
+**1. Give the reset room to succeed.** Run with headroom, and a context that
+fits in it. This also drops the 4-bit KV cache and the GDN path in favour of
+fp8, which turns MTP back on — so it is the faster configuration anyway
+(~80 tok/s against ~49), at the cost of the 262K window:
+
+```powershell
+.\app\run.ps1 -Ctx 131072 -GpuUtil 0.80
+```
+
+**2. Keep the watchdog raise.** It is harmless and rules out one failure mode.
+The installer sets it, and **the values are only read at boot**:
 
 ```powershell
 .\app\install.ps1     # raises TdrDelay / TdrDdiDelay to 10s
@@ -151,16 +176,18 @@ Set-ItemProperty $k -Name TdrDelay    -Value 10 -Type DWord
 Set-ItemProperty $k -Name TdrDdiDelay -Value 10 -Type DWord
 ```
 
-The timeout is the fix. VRAM headroom is the second line of defence — a reset
-needs free VRAM to succeed — but on a 32 GB card the 262K window already uses
-nearly all of it, so lowering `-GpuUtil` means lowering `-Ctx` to match:
+**3. Suspect the display driver.** Check whether your PC has crashed this way
+before it ever ran this toolkit:
 
 ```powershell
-.\app\run.ps1 -GpuUtil 0.80 -Ctx 131072
+Get-WinEvent -FilterHashtable @{LogName='System'; Id=1001} -MaxEvents 20 |
+  Select-Object TimeCreated, Message
 ```
 
-Only reach for that if the machine still bluescreens after the timeout change
-and a restart.
+On the test machine one `0x116` with the identical signature predates the
+install by four days, which puts the driver — or the card — in the frame
+independently of anything here. If yours does the same, a clean display-driver
+reinstall is the thing to try before blaming a setting in this file.
 
 ## Out of memory (CUDA OOM) at startup
 The 5090's 32 GB is shared with the Windows desktop, so vLLM can't take it all.

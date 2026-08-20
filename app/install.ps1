@@ -269,14 +269,18 @@ function Set-TdrDelay {
     <#
       Windows watches the display driver and resets the GPU when one kernel
       holds it longer than TdrDelay seconds. The default is 2 - a figure tuned
-      for games, not for a 27B model. vLLM's startup profiling and CUDA-graph
-      capture run well past 2 s, so the watchdog fires, Windows tries to reset
-      nvlddmkm.sys, and the reset needs VRAM that the server is already holding.
-      The recovery then fails with STATUS_INSUFFICIENT_RESOURCES and the machine
-      bugchecks: 0x116 VIDEO_TDR_ERROR, roughly 85 s into the load, with no
-      warning beyond the fans going to full speed. (Seen twice on the 5090 test
-      machine, identical parameters both times; -GpuUtil is the other half of
-      the fix - it keeps a failed reset survivable.)
+      for games, not for a 27B model - so this raises it to 10.
+
+      Worth doing, but on its own it does NOT stop the 0x116 VIDEO_TDR_ERROR
+      bluescreens. Measured on the 5090 test machine with 10s confirmed live
+      after a reboot: the PC bugchecked anyway, while serving 2048-token
+      requests, after nvlddmkm logged 322 GpuRcReset events in 34 seconds -
+      about ten per second, which no ten-second timeout can explain. Those are
+      error-driven resets, and the bugcheck's third argument
+      (STATUS_INSUFFICIENT_RESOURCES) says it is the recovery that fails: at
+      -GpuUtil 0.90 only ~3 GB of VRAM is left for a reset to work with.
+      Headroom is the primary defence, not this - see the 0x116 section of
+      docs/TROUBLESHOOTING.md.
 
       Raise-only, like the .wslconfig sizing: a machine already tuned higher is
       left alone. Returns $true if anything changed. The values are read at boot,
@@ -623,8 +627,9 @@ if ($script:TdrRebootNeeded) {
     Write-Host ""
     Write-Host "RESTART WINDOWS BEFORE STARTING THE SERVER." -ForegroundColor Yellow
     Write-Host "This run raised the GPU watchdog timeout, and Windows only reads that value at" -ForegroundColor Yellow
-    Write-Host "boot. Until you restart, starting the server can still bluescreen the machine" -ForegroundColor Yellow
-    Write-Host "(0x116 VIDEO_TDR_ERROR) about a minute into loading the model." -ForegroundColor Yellow
+    Write-Host "boot. Starting the server before you restart can bluescreen the machine" -ForegroundColor Yellow
+    Write-Host "(0x116 VIDEO_TDR_ERROR) about a minute into loading the model. If it still does" -ForegroundColor Yellow
+    Write-Host "after the restart, run:  .\app\run.ps1 -Ctx 131072 -GpuUtil 0.80" -ForegroundColor Yellow
     Write-Host ""
 }
 Write-Host "Open the app     :  double-click 'Start Qwen 5090.cmd' (or the 'Qwen 5090' desktop shortcut)"

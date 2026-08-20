@@ -15,9 +15,10 @@ MODEL="${MODEL:-unsloth/Qwen3.8-27B-NVFP4}"   # or sakamakismile/Huihui-Qwen3.8-
 CTX="${CTX:-262144}"
 PORT="${PORT:-8000}"
 GPU_UTIL="${GPU_UTIL:-0.90}"  # leave headroom: on WSL the same GPU drives the Windows desktop.
-                              # Lowering this also makes a display-driver reset survivable
-                              # (see the 0x116 note in docs/TROUBLESHOOTING.md), but it costs
-                              # KV cache: at 262144 the window stops fitting below ~0.90.
+                              # 0.90 leaves ~3 GB, which runs, but is not enough for a display-
+                              # driver reset to recover - that is how the test machine
+                              # bluescreened (0x116; see docs/TROUBLESHOOTING.md). 0.80 costs
+                              # KV cache, so it has to be paired with CTX=131072.
 MTP="${MTP:-1}"               # multi-token prediction (speculative decoding); set 0 to disable
 # How many requests may be in flight at once. vLLM defaults to 256, which this
 # hybrid model cannot honour at a long context: its GDN/Mamba layers need one

@@ -27,13 +27,13 @@ from WSL (add `TOKENS=1024` for a longer run).
   whenever it picks a 4-bit cache. 262K runs ~49 tok/s; 131072 keeps fp8 + MTP
   and runs ~80 tok/s. Pick the window you actually need
 - **Headroom:** `GPU_UTIL=0.90` leaves ~3 GB for the Windows desktop, which
-  shares the GPU under WSL. It cannot go much lower without losing the 262K
-  window — the 4-bit cache measured 324,301 tokens of capacity at 0.90, and
-  0.80 would roughly halve the KV budget. If this machine ever bluescreens
-  while the server starts, raise the GPU watchdog timeout instead of lowering
-  this (see
-  [TROUBLESHOOTING](TROUBLESHOOTING.md#bluescreen-0x116-video_tdr_error-while-the-server-starts));
-  lowering both `-GpuUtil` and `-Ctx` together is the fallback.
+  shares the GPU under WSL. Enough to run — but not enough for the display
+  driver to recover if it resets, which is how the test machine bluescreened
+  (see
+  [TROUBLESHOOTING](TROUBLESHOOTING.md#bluescreen-0x116-video_tdr_error)).
+  `0.80` roughly halves the KV budget, so it has to be paired with
+  `-Ctx 131072` — and that pair restores fp8 + MTP, making it the faster
+  setup as well as the safer one
 
 Rule of thumb: OOM at startup → drop `-Ctx` first, then `-GpuUtil`.
 
