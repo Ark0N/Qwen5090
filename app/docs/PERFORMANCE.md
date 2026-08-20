@@ -26,6 +26,13 @@ from WSL (add `TOKENS=1024` for a longer run).
   until the token limit, all behind an HTTP 200), so serve.sh turns MTP off
   whenever it picks a 4-bit cache. 262K runs ~49 tok/s; 131072 keeps fp8 + MTP
   and runs ~80 tok/s. Pick the window you actually need
+- **Repeated prompts are nearly free above 128K**: the 4-bit path turns on
+  prefix caching, so a request that shares its opening tokens with an earlier
+  one skips re-reading them. Measured on a 32,422-token prefix: 3.80 s cold,
+  then 0.31 s and 0.27 s. That is the difference between usable and painful for
+  Claude Code and other agents, which resend one long system prompt every turn.
+  It costs ~15,000 tokens of KV capacity and one 60 s recompile the first time
+  it is enabled; `PREFIX_CACHE=0` (or `-PrefixCache:$false`) opts out
 - **Headroom:** `GPU_UTIL=0.90` leaves ~3 GB for the Windows desktop, which
   shares the GPU under WSL. Above 128K the server uses `0.85` instead: the 4-bit
   cache would otherwise be sized ~1.7x larger than the window can ever use, and

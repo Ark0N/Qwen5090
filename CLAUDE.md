@@ -211,7 +211,9 @@ The WPF dispatcher thread is never blocked. All patterns funnel through one 300 
 - **serve.sh env knobs** (set by run.ps1): `MODEL`, `CTX` (default 262144, the native max), `PORT`,
   `GPU_UTIL` (0.90, dropped to **0.85 on the 4-bit KV path** — see below; run.ps1 forwards it only
   when `-GpuUtil` is actually bound, because any value suppresses that default), `MTP`,
-  `KV_CACHE_DTYPE`, `ATTN_BACKEND` (empty = let vLLM pick), `MAX_SEQS` (16).
+  `KV_CACHE_DTYPE`, `ATTN_BACKEND` (empty = let vLLM pick), `MAX_SEQS` (16),
+  `PREFIX_CACHE` (0/1, **defaults on with the 4-bit cache** — same only-when-bound forwarding
+  from run.ps1's `-PrefixCache` as `-GpuUtil` gets).
   `NONINTERACTIVE=1`/`SKIP_DOWNLOAD=1` for setup-wsl.sh.
 - **KV precision follows the context, and MTP follows the KV precision.** fp8 holds ~171,000 tokens
   on a 32 GB card, so `CTX > 131072` switches to `turboquant_4bit_nc` (441,815 tokens of capacity at

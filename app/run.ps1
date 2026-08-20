@@ -23,6 +23,10 @@ param(
     # Only forwarded when you actually pass it - see the note further down.
     [double]$GpuUtil = 0.90,
     [switch]$NoMtp,
+    # Reuse the KV of a shared prompt prefix across requests. On by default
+    # with the 4-bit cache; -PrefixCache:$false forces it off. Same
+    # only-when-bound handling as -GpuUtil.
+    [switch]$PrefixCache,
     [switch]$Share
 )
 $ErrorActionPreference = "Stop"
@@ -66,5 +70,11 @@ if ($PSBoundParameters.ContainsKey('GpuUtil')) {
     $gpuUtilStr = $GpuUtil.ToString([System.Globalization.CultureInfo]::InvariantCulture)
     $gpuUtilEnv = "GPU_UTIL=$gpuUtilStr "
 }
+# Same rule for the prefix cache: silence unless asked, so serve.sh keeps its
+# own per-KV-precision default.
+$prefixCacheEnv = ""
+if ($PSBoundParameters.ContainsKey('PrefixCache')) {
+    $prefixCacheEnv = "PREFIX_CACHE=$(if ($PrefixCache) { 1 } else { 0 }) "
+}
 Write-Host "Starting $Model on http://localhost:$Port/v1  (first load takes a minute; Ctrl+C stops)" -ForegroundColor Cyan
-& wsl -d $Distro -- bash -c "CTX=$Ctx PORT=$Port MODEL='$Model' ${gpuUtilEnv}MTP=$mtp bash '$repoWsl/scripts/serve.sh'"
+& wsl -d $Distro -- bash -c "CTX=$Ctx PORT=$Port MODEL='$Model' ${gpuUtilEnv}${prefixCacheEnv}MTP=$mtp bash '$repoWsl/scripts/serve.sh'"

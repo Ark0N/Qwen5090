@@ -17,7 +17,9 @@ PORT="${PORT:-8000}"
 GPU_UTIL_EXPLICIT="${GPU_UTIL+set}"
 GPU_UTIL="${GPU_UTIL:-0.90}"  # leave headroom: on WSL the same GPU drives the Windows desktop
 MTP="${MTP:-1}"               # multi-token prediction (speculative decoding); set 0 to disable
-PREFIX_CACHE="${PREFIX_CACHE:-0}"  # 1 = reuse the KV of a shared prompt prefix across requests
+PREFIX_CACHE_EXPLICIT="${PREFIX_CACHE+set}"
+PREFIX_CACHE="${PREFIX_CACHE:-0}"  # 1 = reuse the KV of a shared prompt prefix across requests;
+                              # defaults on with the 4-bit cache, see below
 # How many requests may be in flight at once. vLLM defaults to 256, which this
 # hybrid model cannot honour at a long context: its GDN/Mamba layers need one
 # cache block per decode sequence, and a big KV cache leaves few spare blocks -
@@ -261,6 +263,27 @@ if [[ -z "$GPU_UTIL_EXPLICIT" ]]; then
   esac
 fi
 
+# Prefix caching, on the same terms. This is the path where prefill is slow
+# enough to matter - it collapses super-linearly above ~30K tokens - so reusing
+# a prompt prefix instead of recomputing it is worth most exactly here. Measured
+# on a 32,422-token prefix: 3.80s cold, then 0.31s and 0.27s, a 12-14x saving on
+# every turn after the first. An agent client makes that the common case rather
+# than a lucky one; Claude Code resends the same ~38K system-and-tools prefix on
+# every turn and in every new session.
+#
+# The cost is one recompile: enabling it puts the Mamba cache in 'align' mode,
+# which is a different graph, so the first start after the switch spends ~60s in
+# torch.compile. Starts after that are back to ~71s with 3.7s of compilation.
+# KV capacity drops from 477,160 to 461,601 tokens, still 1.76x the window.
+# vLLM calls align-mode prefix caching for Mamba layers experimental; the full
+# probe suite passes with it on, including the checks for this model's
+# garbage-output failure mode. PREFIX_CACHE=0 turns it back off.
+if [[ -z "$PREFIX_CACHE_EXPLICIT" ]]; then
+  case "$KV_CACHE_DTYPE" in
+    turboquant*) PREFIX_CACHE=1 ;;
+  esac
+fi
+
 # Recommended by the OOM message itself, and free of downsides here: expandable
 # segments let the caching allocator grow a mapping instead of needing a fresh
 # contiguous reserved block, which is exactly what a 462 MiB failure alongside
@@ -320,6 +343,6 @@ if [[ "$PREFIX_CACHE" == "1" ]]; then
   ARGS+=(--enable-prefix-caching)
 fi
 
-echo ">> model=$MODEL ctx=$CTX port=$PORT gpu_util=$GPU_UTIL mtp=$MTP kv=${KV_CACHE_DTYPE:-from-config} attn=${ATTN_BACKEND:-auto}"
+echo ">> model=$MODEL ctx=$CTX port=$PORT gpu_util=$GPU_UTIL mtp=$MTP kv=${KV_CACHE_DTYPE:-from-config} attn=${ATTN_BACKEND:-auto} prefix_cache=$PREFIX_CACHE"
 echo ">> OpenAI-compatible endpoint: http://localhost:$PORT/v1"
 exec "$VENV/bin/vllm" "${ARGS[@]}"

@@ -182,6 +182,7 @@ and which need `--trust-remote-code`.
 | `run.ps1 -Port` | `8000` | API port. |
 | `run.ps1 -GpuUtil` | `0.90`, or `0.85` above 128K | Fraction of VRAM the server may claim. The Windows desktop shares the GPU, and at the full 262K window the 4-bit cache has capacity to spare — so it keeps a little more back for Windows there. Only pass this if you know you need to. |
 | `run.ps1 -NoMtp` | off | Disables speculative decoding if it misbehaves. |
+| `run.ps1 -PrefixCache` | on above 128K | Reuses the KV of a repeated prompt prefix instead of recomputing it. Above 128K a second request sharing a 32K prefix answered in 0.31 s against 3.80 s cold — worth most to agent tools like Claude Code, which resend the same long system prompt every turn. `-PrefixCache:$false` turns it off. |
 | `run.ps1 -Uncensored` | off | Serves the abliterated build instead (install it first). |
 | `run.ps1 -Model` | `unsloth/Qwen3.8-27B-NVFP4` | Any Hugging Face repo id or a path inside WSL. |
 | `chat.ps1 -NoThink` | off | Direct answers, no reasoning tokens. |
