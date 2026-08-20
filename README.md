@@ -1,13 +1,17 @@
-# Qwen3.8-27B on your RTX 5090 — Windows 11
+# Qwen5090
 
-Your own private ChatGPT-class AI, running 100% on your gaming PC. No cloud, no
-subscription, no data leaving your machine.
+**Frontier-class coding AI, running entirely on your own RTX 5090.** No cloud,
+no subscription, no rate limits, and nothing you type ever leaves your PC.
+
+The model is Qwen3.8-27B, and it is not a toy: on real-world bug fixing it
+scores **61.7 against Claude Opus 4.6 Max's 53.4** — see
+[How good is it?](#how-good-is-it) for the full table and the honest caveats.
 
 <div align="center">
 
-### [⬇️ &nbsp;DOWNLOAD ZIP&nbsp; ⬇️](https://github.com/Ark0N/Qwen3.8-27B-NVFP4-RTX-5090/archive/refs/heads/main.zip)
+### [⬇️ &nbsp;DOWNLOAD ZIP&nbsp; ⬇️](https://github.com/Ark0N/Qwen5090/archive/refs/heads/main.zip)
 
-[![Download ZIP](https://img.shields.io/badge/⬇_Download_for_Windows_11-Qwen3.8--27B_NVFP4-76b900?style=for-the-badge&logo=nvidia&logoColor=white)](https://github.com/Ark0N/Qwen3.8-27B-NVFP4-RTX-5090/archive/refs/heads/main.zip)
+[![Download ZIP](https://img.shields.io/badge/⬇_Download_for_Windows_11-Qwen3.8--27B_NVFP4-76b900?style=for-the-badge&logo=nvidia&logoColor=white)](https://github.com/Ark0N/Qwen5090/archive/refs/heads/main.zip)
 
 **Unzip → double-click `Start Qwen 5090.cmd` → click Install. That's it.**
 
@@ -18,7 +22,7 @@ subscription, no data leaving your machine.
 
 ## Get started (3 steps)
 
-1. **[Download the ZIP](https://github.com/Ark0N/Qwen3.8-27B-NVFP4-RTX-5090/archive/refs/heads/main.zip)**
+1. **[Download the ZIP](https://github.com/Ark0N/Qwen5090/archive/refs/heads/main.zip)**
    and unzip it anywhere (Desktop is fine).
    *Windows may flag the download: right-click the ZIP → Properties → tick
    **Unblock** before unzipping, and choose "More info → Run anyway" if
@@ -33,6 +37,29 @@ subscription, no data leaving your machine.
 You also get a **Qwen 5090** desktop shortcut, and an OpenAI-compatible API at
 `http://localhost:8000/v1` that works with any AI app (Open WebUI, Continue,
 Cline, ...) — API key can be anything.
+
+## How good is it?
+
+Qwen3.8-27B trades blows with the frontier commercial models on coding and
+computer-use benchmarks — while being Apache 2.0 and running on hardware you
+already own:
+
+| Benchmark | Qwen3.8-27B | Claude Opus 4.6 Max |
+|---|---|---|
+| **SWE-bench Pro** — fixing real bugs in real repos | **61.7** | 53.4 |
+| **LiveCodeBench v6** — competitive programming | **90.3** | 88.8 |
+| **Terminal-Bench 2.1** — driving a shell | 73.0 | **78.2** |
+| **OSWorld-Verified** — using a desktop | **84.3** | 72.7 |
+| **AndroidWorld** — using a phone | **81.9** | 62.0 |
+
+Scores are from the [official Qwen model card](https://huggingface.co/Qwen/Qwen3.8-27B).
+Two things worth being straight about:
+
+- **Opus still wins Terminal-Bench.** "Challenges the frontier" is the honest
+  claim here, not "beats it at everything".
+- **Those numbers are for the full-precision model.** This app ships the 4-bit
+  NVFP4 quantisation, which is what makes 27B fit in 32 GB of VRAM at all — it
+  costs some accuracy. Treat the table as the ceiling, not a promise.
 
 ## What you need
 
@@ -54,7 +81,8 @@ Cline, ...) — API key can be anything.
 - **The model**: Qwen3.8-27B — Alibaba's Apache-2.0, 27B multimodal model
   (released 2026-08-14) with 262K context and a reasoning dial, in NVIDIA's
   NVFP4 4-bit format built for your 5090's Blackwell tensor cores. Expect
-  ~80–100 tokens/s.
+  ~49 tokens/s at the default 262K context, or ~80 at 128K — see
+  [PERFORMANCE.md](app/docs/PERFORMANCE.md).
 - **A control panel** (pure Windows, no Electron): one-button install with live
   progress, server start/stop with health light, and streaming chat where the
   model's "thinking" renders dim. Thinking mode and effort (low → xhigh) are

@@ -5,7 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 A Windows 11 end-user toolkit that runs Qwen3.8-27B (NVFP4 4-bit, Blackwell-only) locally on an
-RTX 5090. Remote: https://github.com/Ark0N/Qwen3.8-27B-NVFP4-RTX-5090 (private). Users get it as a
+RTX 5090. Remote: https://github.com/Ark0N/Qwen5090 (private, renamed from
+Qwen3.8-27B-NVFP4-RTX-5090 on 2026-08-20; GitHub redirects the old URL). Users get it as a
 ZIP; the entire UX is: unzip → double-click `Start Qwen 5090.cmd` → click Install.
 
 **This file is tracked** (it was gitignored until 2026-08-20, when the owner asked for it to be
