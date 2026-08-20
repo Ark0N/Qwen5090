@@ -99,11 +99,27 @@ ensure_bridge_installed() {
   say "installing the LiteLLM bridge into $VENV (one time, ~1 min)"
   mkdir -p "$BRIDGE_HOME"
 
+  # setup-wsl.sh puts uv in ~/.local/bin, and uv's own installer only appends
+  # that to ~/.bashrc - which `bash -c` never reads, because it is not a login
+  # or interactive shell. Every route into this script is a `bash -c` (the GUI,
+  # claude-code.ps1, the generated launcher), so without this line `command -v
+  # uv` misses a uv that is sitting right there, and we fall through to the
+  # python3 -m venv branch - which cannot work either. Same line setup-wsl.sh
+  # uses before its own uv check.
+  export PATH="$HOME/.local/bin:$PATH"
+
   if command -v uv >/dev/null 2>&1; then
     uv venv --python 3.12 "$VENV" >/dev/null
     VIRTUAL_ENV="$VENV" uv pip install --quiet "${BRIDGE_PINS[@]}"
   else
     command -v python3 >/dev/null 2>&1 || die "need python3 (or uv) to install the bridge"
+    # Ubuntu's WSL rootfs ships python3 without ensurepip, so `python3 -m venv`
+    # dies half-way and leaves a venv with no pip in it. Say so here rather than
+    # letting venv's own "ensurepip is not available" wall of text be the answer.
+    python3 -c 'import ensurepip' >/dev/null 2>&1 || die "python3 here cannot create a virtualenv (no ensurepip), and uv was not found.
+Install either one and re-run:
+    curl -LsSf https://astral.sh/uv/install.sh | sh      # what the installer uses
+    sudo apt install -y python3-venv                     # or the distro package"
     python3 -m venv "$VENV"
     "$VENV/bin/pip" install --quiet --upgrade pip
     "$VENV/bin/pip" install --quiet "${BRIDGE_PINS[@]}"
