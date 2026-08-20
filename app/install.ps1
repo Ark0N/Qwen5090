@@ -217,9 +217,13 @@ function Set-WslMemoryLimit {
         return $false
     }
 
-    # Leave Windows at least 8 GB; make up any shortfall with swap, which is a
+    # Leave Windows at least 12 GB; make up any shortfall with swap, which is a
     # sparse file and costs nothing until the loader actually needs it.
-    $newMem = [int][math]::Min([double]$needGB, [math]::Max([double]($hostGB - 8), [double]$curMem))
+    # 8 GB was measured to be too thin: with memory=24GB on a 32 GB PC the host
+    # dropped to 1.89 GB free while the weights mapped in, and vLLM itself warned
+    # "checkpoint size (19.15 GiB) exceeds 90% of available RAM (19.44 GiB)".
+    # 20 GB + 8 GB swap still clears $needGB, and leaves the desktop a real budget.
+    $newMem = [int][math]::Min([double]$needGB, [math]::Max([double]($hostGB - 12), [double]$curMem))
     $newSwap = [int][math]::Max([double]$curSwap, [math]::Max([double]($needGB - $newMem), 8.0))
     $memLine = "memory=${newMem}GB"
     $swapLine = "swap=${newSwap}GB"
