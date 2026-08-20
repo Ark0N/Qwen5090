@@ -27,9 +27,16 @@ from WSL (add `TOKENS=1024` for a longer run).
   whenever it picks a 4-bit cache. 262K runs ~49 tok/s; 131072 keeps fp8 + MTP
   and runs ~80 tok/s. Pick the window you actually need
 - **Headroom:** `GPU_UTIL=0.90` leaves ~3 GB for the Windows desktop, which
-  shares the GPU under WSL
+  shares the GPU under WSL. Above 128K the server uses `0.85` instead: the 4-bit
+  cache would otherwise be sized ~1.7x larger than the window can ever use, and
+  a ~3 GB margin is thin enough that a desktop VRAM spike between vLLM's
+  profiling pass and its allocation pass aborts the start with a CUDA OOM
+  *after* it has already reported the cache as fitting
 
-Rule of thumb: OOM at startup → drop `-Ctx` first, then `-GpuUtil`.
+Rule of thumb: OOM at startup → drop `-Ctx` first, then `-GpuUtil`. If it OOMs
+having just printed `Available KV cache memory: N GiB`, the profiling was fine
+and something else on the GPU grew — close the browser and retry before
+changing any setting.
 
 ## Levers, in order of impact
 

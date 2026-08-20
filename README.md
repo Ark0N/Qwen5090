@@ -165,7 +165,7 @@ and which need `--trust-remote-code`.
 |---|---|---|
 | `run.ps1 -Ctx` | `262144` | Context window, the model's native maximum. Above 128K the KV cache switches to 4-bit so it fits in 32 GB, which also turns MTP off (the two together corrupt the output) — so the full window runs at ~49 tok/s. Choose `131072` for ~80 tok/s with the higher-precision fp8 cache and MTP on, or `65536` if you are gaming at the same time. |
 | `run.ps1 -Port` | `8000` | API port. |
-| `run.ps1 -GpuUtil` | `0.90` | Fraction of VRAM vLLM may claim — the Windows desktop shares the GPU. |
+| `run.ps1 -GpuUtil` | `0.90`, or `0.85` above 128K | Fraction of VRAM the server may claim. The Windows desktop shares the GPU, and at the full 262K window the 4-bit cache has capacity to spare — so it keeps a little more back for Windows there. Only pass this if you know you need to. |
 | `run.ps1 -NoMtp` | off | Disables speculative decoding if it misbehaves. |
 | `run.ps1 -Uncensored` | off | Serves the abliterated build instead (install it first). |
 | `run.ps1 -Model` | `unsloth/Qwen3.8-27B-NVFP4` | Any Hugging Face repo id or a path inside WSL. |

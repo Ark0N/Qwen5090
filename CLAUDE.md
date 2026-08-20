@@ -207,12 +207,21 @@ The WPF dispatcher thread is never blocked. All patterns funnel through one 300 
   default via `/etc/wsl.conf` + `wsl --terminate`. Falls back to the interactive OOBE window if the
   store launcher is missing. Re-running install is always safe (idempotent by design).
 - **serve.sh env knobs** (set by run.ps1): `MODEL`, `CTX` (default 262144, the native max), `PORT`,
-  `GPU_UTIL` (0.90 — the Windows desktop shares the GPU), `MTP` (speculative decoding on/off),
+  `GPU_UTIL` (0.90, dropped to **0.85 on the 4-bit KV path** — see below; run.ps1 forwards it only
+  when `-GpuUtil` is actually bound, because any value suppresses that default), `MTP`,
   `KV_CACHE_DTYPE`, `ATTN_BACKEND` (empty = let vLLM pick), `MAX_SEQS` (16).
   `NONINTERACTIVE=1`/`SKIP_DOWNLOAD=1` for setup-wsl.sh.
 - **KV precision follows the context, and MTP follows the KV precision.** fp8 holds ~171,000 tokens
   on a 32 GB card, so `CTX > 131072` switches to `turboquant_4bit_nc` (441,815 tokens of capacity at
-  262144). That switch then *forces MTP off*: TurboQuant + speculative decoding makes this model
+  262144) **and drops GPU_UTIL to 0.85**. The profiler claims every byte inside the utilisation
+  budget for the KV cache, so at 0.90 it sized 7.21 GiB / 441,815 tokens — 1.7× more than a 262,144
+  window can use — and left Windows ~3.2 GiB. Too thin: the desktop's own footprint moves between
+  vLLM's profiling pass and its allocation pass, and when it grows in between the allocation dies
+  part-way (`Available KV cache memory: 7.21 GiB`, then `OutOfMemoryError: Tried to allocate
+  462.00 MiB`) — measured on 2026-08-20, with a run an hour earlier succeeding on byte-identical
+  profiling numbers, so it is a race, not a misconfiguration. 0.85 still sizes ~344,000 tokens.
+  serve.sh also sets `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` (both overridable).
+  That switch then *forces MTP off*: TurboQuant + speculative decoding makes this model
   emit empty content or `: : : :` to the token limit while still answering HTTP 200 — measured 0/3
   sane trivial answers with MTP on, 3/3 with it off. Cost of the full window: ~49 tok/s vs ~80 at
   131072 with fp8 + MTP. `MAX_SEQS=16` because the GDN/Mamba layers need one cache block per decode
