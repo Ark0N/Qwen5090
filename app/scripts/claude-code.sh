@@ -135,8 +135,16 @@ render_config() {
   # anything else, which surfaces mid-session as a dead conversation. There is
   # no rename primitive in LiteLLM config, so the client's value is dropped and
   # QWEN_EFFORT is injected in its place.
+  #
+  # It has to go in via chat_template_kwargs, NOT as a top-level field:
+  # additional_drop_params runs AFTER extra_body merges, so a top-level
+  # reasoning_effort is stripped right back out again and nothing reaches vLLM
+  # (measured <absent> for every value). Inside chat_template_kwargs the drop
+  # list cannot see it. Measured against the real model 2026-08-21: medium
+  # yields 497 chars of thinking by either route vs 151 for the xhigh default,
+  # so the template honours it there exactly as it does top-level.
   local drop='      additional_drop_params: ["reasoning_effort"]'
-  local main_extra="      extra_body: {\"reasoning_effort\": \"$QWEN_EFFORT\"}"
+  local main_extra="      extra_body: {\"chat_template_kwargs\": {\"reasoning_effort\": \"$QWEN_EFFORT\"}}"
 
   # The fast alias turns thinking off entirely instead - reasoning tokens count
   # against max_tokens, and Claude Code's background calls use a small cap, so
