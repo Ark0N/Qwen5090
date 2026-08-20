@@ -219,7 +219,8 @@ The WPF dispatcher thread is never blocked. All patterns funnel through one 300 
   vLLM's profiling pass and its allocation pass, and when it grows in between the allocation dies
   part-way (`Available KV cache memory: 7.21 GiB`, then `OutOfMemoryError: Tried to allocate
   462.00 MiB`) — measured on 2026-08-20, with a run an hour earlier succeeding on byte-identical
-  profiling numbers, so it is a race, not a misconfiguration. 0.85 still sizes ~344,000 tokens.
+  profiling numbers, so it is a race, not a misconfiguration. 0.85 still sizes far more than the
+  window needs — 379,961 tokens on a freshly rebooted PC (see "the 0.85 path, revalidated" below).
   serve.sh also sets `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` (both overridable).
   That switch then *forces MTP off*: TurboQuant + speculative decoding makes this model
   emit empty content or `: : : :` to the token limit while still answering HTTP 200 — measured 0/3
@@ -270,6 +271,16 @@ A full-window run — server started by `serve.sh`, a real code-generation task 
   serve.sh picks when `CTX > 131072`. Symptom to recognise: GPU at 100% util but
   only ~128 W, and no scheduler stats line for minutes. It reads as a hang and is
   not one. Not yet measured: whether fp8 at 131072 clears the same prompt faster.
+- **The 0.85 path, revalidated after a reboot** (2026-08-20 16:02, `run.ps1 -Uncensored`,
+  nothing else on the GPU — 770 MiB used at launch). The profiler sized
+  `Available KV cache memory: 6.2 GiB` → **379,961 tokens**, startup completed with no
+  allocation OOM, and VRAM settled at 28,084 of 32,607 MiB, i.e. **4.4 GiB still free for
+  Windows** where the 0.90 run left ~3.2 GiB. Then: "Paris" in 0.9 s at `low` (no cold-start
+  penalty — TurboQuant's flash_attn v2 pin means there is no JIT to pay for), a code task at
+  `xhigh` at 291 tokens in 5.6 s (**~52 tok/s**, `finish_reason: stop`), and a streamed reply
+  of 160 SSE chunks whose deltas carry `reasoning`. Content was sane every time, which is the
+  MTP interlock working. Startup logs two `[ERROR]` lines about undocumented `min_frames` /
+  `max_frames` kwargs in transformers' Qwen3-VL video processor — noise, not a fault.
 - **Startup, for reference**: weights 18.74 GiB in 8.6 s warm / ~60 s cold, engine
   init 10.8 s, MM warmup 12.2 s, "Application startup complete" ~78 s in, first
   request 1.03 s. TurboQuant pins `flash_attn_version=2`, so the FlashInfer prefill
