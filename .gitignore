@@ -10,3 +10,7 @@ models/
 
 # local screenshots pasted into the agent session
 .claude-images/
+
+# crash dumps / logs copied in for analysis — never ship these
+logs/
+*.dmp

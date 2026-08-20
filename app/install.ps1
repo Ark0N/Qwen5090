@@ -37,6 +37,7 @@ param(
 )
 $ErrorActionPreference = "Stop"
 
+$script:TdrRebootNeeded = $false
 $script:ModelStandard = "unsloth/Qwen3.8-27B-NVFP4"
 $script:ModelUncensored = "sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4"
 $script:ModelUncensoredGated = "orcarouter/Qwen3.8-27B-Uncensored-NVFP4"
@@ -264,6 +265,57 @@ function Set-WslMemoryLimit {
     return $true
 }
 
+function Set-TdrDelay {
+    <#
+      Windows watches the display driver and resets the GPU when one kernel
+      holds it longer than TdrDelay seconds. The default is 2 - a figure tuned
+      for games, not for a 27B model. vLLM's startup profiling and CUDA-graph
+      capture run well past 2 s, so the watchdog fires, Windows tries to reset
+      nvlddmkm.sys, and the reset needs VRAM that the server is already holding.
+      The recovery then fails with STATUS_INSUFFICIENT_RESOURCES and the machine
+      bugchecks: 0x116 VIDEO_TDR_ERROR, roughly 85 s into the load, with no
+      warning beyond the fans going to full speed. (Seen twice on the 5090 test
+      machine, identical parameters both times; -GpuUtil is the other half of
+      the fix - it keeps a failed reset survivable.)
+
+      Raise-only, like the .wslconfig sizing: a machine already tuned higher is
+      left alone. Returns $true if anything changed. The values are read at boot,
+      so a change only takes effect after a restart.
+    #>
+    $key = 'HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers'
+    $wantSeconds = 10
+    # Windows' own defaults when the values are absent, used only for the message.
+    $shipped = @{ TdrDelay = 2; TdrDdiDelay = 5 }
+    $changed = $false
+    if (-not (Test-Path -LiteralPath $key)) {
+        try { New-Item -Path $key -Force | Out-Null } catch {
+            Write-Host "   WARNING: $key is missing and could not be created ($($_.Exception.Message))." -ForegroundColor Yellow
+            return $false
+        }
+    }
+    foreach ($name in 'TdrDelay', 'TdrDdiDelay') {
+        $current = $null
+        try { $current = (Get-ItemProperty -LiteralPath $key -Name $name -ErrorAction Stop).$name } catch { }
+        if ($null -ne $current -and [int]$current -ge $wantSeconds) {
+            Write-Host "   $name is already ${current}s - leaving it alone."
+            continue
+        }
+        try {
+            New-ItemProperty -LiteralPath $key -Name $name -Value $wantSeconds -PropertyType DWord -Force | Out-Null
+            if ($null -eq $current) {
+                Write-Host "   $name set to ${wantSeconds}s (was unset, so Windows was using $($shipped[$name])s)."
+            } else {
+                Write-Host "   $name raised from ${current}s to ${wantSeconds}s."
+            }
+            $changed = $true
+        } catch {
+            Write-Host "   WARNING: could not set $name ($($_.Exception.Message))." -ForegroundColor Yellow
+            Write-Host "            The server can still bugcheck the machine during startup." -ForegroundColor Yellow
+        }
+    }
+    return $changed
+}
+
 function Register-ResumeAfterReboot {
     # Re-open the GUI at next logon so the user can continue with one click.
     # The launcher lives one level up from app\ (the repo root).
@@ -423,6 +475,16 @@ if ($gpuName -notmatch '50\d0|RTX PRO \d+ Blackwell|B\d{3}') {
     Write-Host "WARNING: '$gpuName' does not look like a Blackwell GPU. NVFP4 needs an RTX 50-series card; continuing anyway." -ForegroundColor Yellow
 }
 
+Step "Giving the GPU watchdog time for the model to start"
+# The same card draws the Windows desktop, so Windows' 2-second display
+# watchdog also applies to vLLM's startup kernels. See Set-TdrDelay.
+if (Set-TdrDelay) {
+    $script:TdrRebootNeeded = $true
+    Write-Host "   Windows reads these at boot, so restart before starting the server."
+} else {
+    Write-Host "   Already set - nothing to change."
+}
+
 Step "Checking CPU virtualization (required for WSL2)"
 # Three states matter here:
 #  - hypervisor already running            -> fine
@@ -557,6 +619,14 @@ if (-not $NoShortcut) {
 }
 
 Step "All done"
+if ($script:TdrRebootNeeded) {
+    Write-Host ""
+    Write-Host "RESTART WINDOWS BEFORE STARTING THE SERVER." -ForegroundColor Yellow
+    Write-Host "This run raised the GPU watchdog timeout, and Windows only reads that value at" -ForegroundColor Yellow
+    Write-Host "boot. Until you restart, starting the server can still bluescreen the machine" -ForegroundColor Yellow
+    Write-Host "(0x116 VIDEO_TDR_ERROR) about a minute into loading the model." -ForegroundColor Yellow
+    Write-Host ""
+}
 Write-Host "Open the app     :  double-click 'Start Qwen 5090.cmd' (or the 'Qwen 5090' desktop shortcut)"
 Write-Host "Command line     :  .\app\run.ps1 to serve, .\app\chat.ps1 to chat"
 if ($Model -ne $script:ModelStandard) { Write-Host "Serve this model :  .\app\run.ps1 -Model $Model" }

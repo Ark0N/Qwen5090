@@ -104,7 +104,9 @@ completely silently: no Linux prompts, a `qwen` user is created for you, and
 your Windows NVIDIA driver powers the GPU inside WSL automatically. The
 PowerShell scripts hide all of it; `localhost:8000` just works.
 
-What `install.ps1` actually does: checks Windows 11 + driver ≥ 570 → enables
+What `install.ps1` actually does: checks Windows 11 + driver ≥ 570 → gives the
+GPU watchdog time to let a 27B model start (Windows' 2-second default bluescreens
+otherwise; needs one restart) → enables
 WSL2 (one reboot max, auto-resumes) → provisions Ubuntu unattended → installs
 `build-essential` (vLLM's kernel compiler needs a C compiler at runtime) →
 creates a Python 3.13 venv with `vllm`, `flashinfer`, and the CUTLASS DSL → downloads
@@ -177,7 +179,7 @@ and which need `--trust-remote-code`.
 |---|---|---|
 | `run.ps1 -Ctx` | `262144` | Context window, the model's native maximum. Above 128K the KV cache switches to 4-bit so it fits in 32 GB, which also turns MTP off (the two together corrupt the output) — so the full window runs at ~49 tok/s. Choose `131072` for ~80 tok/s with the higher-precision fp8 cache and MTP on, or `65536` if you are gaming at the same time. |
 | `run.ps1 -Port` | `8000` | API port. |
-| `run.ps1 -GpuUtil` | `0.90` | Fraction of VRAM vLLM may claim — the Windows desktop shares the GPU. |
+| `run.ps1 -GpuUtil` | `0.90` | Fraction of VRAM vLLM may claim — the Windows desktop shares the GPU. Lowering it needs a matching `-Ctx` drop: the 262K window only fits at ~0.90. |
 | `run.ps1 -NoMtp` | off | Disables speculative decoding if it misbehaves. |
 | `run.ps1 -Uncensored` | off | Serves the abliterated build instead (install it first). |
 | `run.ps1 -Model` | `unsloth/Qwen3.8-27B-NVFP4` | Any Hugging Face repo id or a path inside WSL. |

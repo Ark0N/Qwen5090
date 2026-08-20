@@ -124,11 +124,49 @@ Keep ~8 GB for Windows itself. On a 16 GB PC leave `memory` alone and give
 `swap=20GB` instead — loading is slower but it works. `wsl --shutdown` is
 required for any `.wslconfig` change to take effect.
 
+## Bluescreen (0x116 VIDEO_TDR_ERROR) while the server starts
+
+The machine bluescreens about a minute into loading the model, or freezes with
+the GPU fans at full speed and the screen dark. `C:\Windows\Minidump` has a
+fresh `.dmp`, and Event Viewer → System shows `nvlddmkm` / `Kernel-Power 41`.
+
+Windows watches the display driver and resets the GPU if a single kernel holds
+it longer than **TdrDelay** seconds — 2 by default, a figure meant for games.
+vLLM's startup profiling runs well past that, so the watchdog fires. The reset
+then needs VRAM that the server is already holding, fails, and Windows
+bugchecks instead of recovering.
+
+The installer fixes this, but **the values are only read at boot**:
+
+```powershell
+.\app\install.ps1     # raises TdrDelay / TdrDdiDelay to 10s
+# restart Windows, then start the server
+```
+
+By hand, in an elevated PowerShell:
+
+```powershell
+$k = 'HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers'
+Set-ItemProperty $k -Name TdrDelay    -Value 10 -Type DWord
+Set-ItemProperty $k -Name TdrDdiDelay -Value 10 -Type DWord
+```
+
+The timeout is the fix. VRAM headroom is the second line of defence — a reset
+needs free VRAM to succeed — but on a 32 GB card the 262K window already uses
+nearly all of it, so lowering `-GpuUtil` means lowering `-Ctx` to match:
+
+```powershell
+.\app\run.ps1 -GpuUtil 0.80 -Ctx 131072
+```
+
+Only reach for that if the machine still bluescreens after the timeout change
+and a restart.
+
 ## Out of memory (CUDA OOM) at startup
 The 5090's 32 GB is shared with the Windows desktop, so vLLM can't take it all.
 In order of preference:
 1. Lower the context: `.\run.ps1 -Ctx 65536`.
-2. Lower VRAM share: `.\run.ps1 -GpuUtil 0.85`.
+2. Lower VRAM share: `.\run.ps1 -GpuUtil 0.75`.
 3. Close VRAM-hungry apps (games, browsers with many tabs, wallpaper engines).
 
 ## "no kernel image is available" / NVFP4 kernel errors
