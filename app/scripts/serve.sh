@@ -17,6 +17,7 @@ PORT="${PORT:-8000}"
 GPU_UTIL_EXPLICIT="${GPU_UTIL+set}"
 GPU_UTIL="${GPU_UTIL:-0.90}"  # leave headroom: on WSL the same GPU drives the Windows desktop
 MTP="${MTP:-1}"               # multi-token prediction (speculative decoding); set 0 to disable
+PREFIX_CACHE="${PREFIX_CACHE:-0}"  # 1 = reuse the KV of a shared prompt prefix across requests
 # How many requests may be in flight at once. vLLM defaults to 256, which this
 # hybrid model cannot honour at a long context: its GDN/Mamba layers need one
 # cache block per decode sequence, and a big KV cache leaves few spare blocks -
@@ -307,6 +308,16 @@ if [[ "$TRUST_REMOTE_CODE" == "1" ]]; then
 fi
 if [[ "$MTP" == "1" ]]; then
   ARGS+=(--speculative-config "{\"method\":\"$SPEC_METHOD\",\"num_speculative_tokens\":$SPEC_TOKENS}")
+fi
+# Off by default because vLLM keeps it opt-in for hybrid models like this one
+# ("Hybrid models support prefix caching but keep it opt-in for now while the
+# feature matures", engine/arg_utils.py) - not because it is unsupported. The
+# nearby "may crash or produce incorrect outputs" warning is gated on pooling
+# models and does not apply here. Worth turning on for agent clients: Claude
+# Code resends an identical ~38K-token system-and-tools prefix on every turn
+# and every new session, and re-prefilling it costs ~13-17 s each time.
+if [[ "$PREFIX_CACHE" == "1" ]]; then
+  ARGS+=(--enable-prefix-caching)
 fi
 
 echo ">> model=$MODEL ctx=$CTX port=$PORT gpu_util=$GPU_UTIL mtp=$MTP kv=${KV_CACHE_DTYPE:-from-config} attn=${ATTN_BACKEND:-auto}"
