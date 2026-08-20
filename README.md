@@ -123,6 +123,18 @@ creates a Python 3.13 venv with `vllm`, `flashinfer`, and the CUTLASS DSL → do
 .\app\uninstall.ps1  # remove the distro, env, and model (what the Cleanup button runs)
 ```
 
+> **First time in a PowerShell window?** Windows blocks these scripts with
+> *"…is not digitally signed"* — GitHub's ZIP marks every file as
+> downloaded-from-the-internet. The double-click launcher passes
+> `-ExecutionPolicy Bypass` so it never sees this; run them by hand and you do.
+> Once per window:
+>
+> ```powershell
+> Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+> ```
+>
+> Or permanently, from the unzipped folder: `Get-ChildItem -Recurse | Unblock-File`.
+
 <a id="uncensored-build"></a>
 **Uncensored build.** Pick *Uncensored (abliterated)* in the Setup tab's
 **Model** dropdown, or from PowerShell:

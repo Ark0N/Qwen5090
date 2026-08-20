@@ -39,6 +39,10 @@ That starts the bridge inside WSL and opens Claude Code there. If Claude Code
 is installed on the Windows side instead, use `-Windows` and it prints the
 three environment variables to paste into your PowerShell window.
 
+If that errors with *"is not digitally signed"*, run
+`Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force` first — see
+[TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+
 **From another machine** (Linux, macOS, or WSL elsewhere) — share the server
 first (`.\app\share.ps1` on the 5090 PC, or tick *Share on network*), then:
 

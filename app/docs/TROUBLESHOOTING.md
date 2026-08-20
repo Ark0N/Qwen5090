@@ -10,6 +10,30 @@ Work top-to-bottom: most failures are the driver, WSL state, or VRAM.
 - SmartScreen may warn on first launch of `Start Qwen 5090.cmd` — choose
   "More info → Run anyway".
 
+## `.\app\something.ps1` says "is not digitally signed"
+
+Only happens when you run a script **by hand** in a PowerShell window. The
+launcher and the GUI always pass `-ExecutionPolicy Bypass`, so the one-click
+path never hits it; typing `.\app\share.ps1` yourself does.
+
+GitHub's "Download ZIP" marks every extracted file as downloaded-from-the-
+internet, and the default execution policy refuses to run unsigned scripts
+carrying that mark. Two fixes:
+
+```powershell
+# this window only, gone when you close it
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+
+# or permanently, from the unzipped folder - strips the mark
+Get-ChildItem -Recurse | Unblock-File
+```
+
+Note that scripts needing admin (`install.ps1`, `share.ps1`, `uninstall.ps1`)
+need **both**: an elevated window *and* the policy dealt with. A non-elevated
+run of `share.ps1` exits immediately and, if you launched it by double-clicking,
+the window closes before you can read why — no output at all means it never ran,
+not that it ran and did nothing.
+
 ## Where the logs live
 Every run is logged automatically (kept 14 days):
 - **Windows side**: `%LOCALAPPDATA%\Qwen5090\logs` — GUI events (`gui-*.log`),
