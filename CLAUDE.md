@@ -46,6 +46,36 @@ clicked. Prefer real runs over static validation — parse-checking a `.ps1` pro
 launching it doesn't prove better. `.claude/` was left behind on purpose (it was Codeman harness
 config, Linux-only); `.git` came along, so history and `origin` are intact.
 
+### Validating here (there is no test suite)
+
+Validation is lint plus a smoke test against a live server — there are no unit tests, and
+nothing to run a single test *of*. The toolchain on this PC is narrower than the Linux table
+above assumes: `powershell.exe` is Windows PowerShell **5.1**, there is no `pwsh` and no
+PSScriptAnalyzer installed, and the Windows `python3` is the Microsoft Store stub that only
+prints an ad — Python lives inside WSL. What actually works:
+
+| Task | How |
+|------|-----|
+| Parse every `.ps1` | PS 5.1 has the parser built in: `[System.Management.Automation.Language.Parser]::ParseFile($f,[ref]$t,[ref]$e)`. No pwsh download needed. |
+| Check BOM + line endings | first three bytes must be `EF BB BF`, and a regex for a newline not preceded by a carriage return must match zero times |
+| Validate the GUI's XAML | `Add-Type -AssemblyName PresentationFramework`, extract the `$xaml = @'…'@` heredoc, `[System.Windows.Markup.XamlReader]::Parse($x)`. `$w.FindName('CmbEffort')` then reads dropdown contents and `SelectedIndex` **without launching the GUI** — this is how the effort/context lists were checked. |
+| Lint bash / python | inside WSL: `bash -n app/scripts/*.sh`, `python3 -m py_compile app/scripts/chat.py` |
+| Smoke-test the API | run `serve.sh`, then curl `/v1/chat/completions` — see "Measured on the 5090" for the probes that matter |
+
+**The wsl.exe quoting trap is worse than the rule above suggests.** A `bash -c "…"` string
+handed to `wsl.exe` from the Bash tool loses `$var` expansions *silently*: a
+`for e in low medium; do … "$e" …; done` one-liner runs with `$e` empty and prints blanks
+rather than failing, and `tail -n2` comes out the far side as
+`tail: option used in invalid context`. Heredocs carrying regexes or `$1` arrive mangled.
+The pattern that always works: **write the script to a file in the scratchpad, strip CRLF
+with `sed -i 's/\r$//'`, then run `wsl -d $Distro -- bash -c "bash '/mnt/c/…/script.sh'"`.**
+Same for editing repo files — write a Python patch script to a file and run it with WSL's
+`python3`; never inline it. This cost four separate debugging detours in one session.
+
+When editing `.ps1` from here, remember the Write tool emits no BOM and LF line endings, so
+patch through a script that preserves both (read bytes, detect the BOM, join with CRLF,
+write the BOM back) rather than with a plain text write.
+
 Smoke tests, as of 2026-08-20 03:30 (all run on the 5090 itself):
 
 1. **PASSED** — WSL setup (`scripts/setup-wsl.sh`, the GUI's `NONINTERACTIVE=1` branch): step 3/6
