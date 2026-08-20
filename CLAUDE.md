@@ -1,0 +1,225 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What this is
+
+A Windows 11 end-user toolkit that runs Qwen3.8-27B (NVFP4 4-bit, Blackwell-only) locally on an
+RTX 5090. Remote: https://github.com/Ark0N/Qwen3.8-27B-NVFP4-RTX-5090 (private). Users get it as a
+ZIP; the entire UX is: unzip → double-click `Start Qwen 5090.cmd` → click Install.
+
+**This file is tracked** (it was gitignored until 2026-08-20, when the owner asked for it to be
+committed and synced). `.claude/` stays ignored — it is only harness runtime state.
+
+## The core constraint: cross-platform development
+
+*(Applies when developing from Linux. If you are on the RTX 5090 PC itself, this constraint is
+lifted — skip to "Continuing on the Windows 11 machine" below.)*
+
+The original dev machine is **Linux**, but everything ships for **Windows 11 + WSL2**. PowerShell
+cannot execute there, so nothing GUI/installer-side is ever runtime-tested locally — validate hard,
+then tell the user what still needs a smoke test on the real machine.
+
+| Task | Command |
+|------|---------|
+| Lint bash | `bash -n app/scripts/*.sh` |
+| Lint python | `python3 -m py_compile app/scripts/chat.py` |
+| Parse PowerShell | portable pwsh (download tarball to scratchpad if missing): `[System.Management.Automation.Language.Parser]::ParseFile(...)` over `app/*.ps1` |
+| Lint PowerShell | `Invoke-ScriptAnalyzer -Path app/ -Severity Error` in that pwsh (`Install-Module PSScriptAnalyzer -Force -Scope CurrentUser`) |
+
+Runtime-test bash patterns locally when possible (e.g. the tee/trap logging and backgrounded-heredoc
+constructs were verified by executing replicas in the scratchpad).
+
+When a user reports a failure, first pin down **which build they ran**: the ZIP on their
+machine is often several commits stale, and install.ps1's progress wording changes between
+commits — `git log -S'<exact phrase from their transcript>' -- app/install.ps1` dates it
+precisely. Then reproduce the failing shell construct as a replica in the scratchpad before
+theorizing; a bash `ERR` trap reports the *line*, which is usually not the line that looks
+guilty (a progress-reporting line can kill a download step).
+
+## Continuing on the Windows 11 machine
+
+This tree was handed over as a ZIP to the RTX 5090 PC itself, so on **that** machine the core
+constraint above is lifted: `powershell.exe` runs, WSL2 is right there, and the GUI can actually be
+clicked. Prefer real runs over static validation — parse-checking a `.ps1` proves nothing that
+launching it doesn't prove better. `.claude/` was left behind on purpose (it was Codeman harness
+config, Linux-only); `.git` came along, so history and `origin` are intact.
+
+Smoke tests, as of 2026-08-20 03:30 (all run on the 5090 itself):
+
+1. **PASSED** — WSL setup (`scripts/setup-wsl.sh`, the GUI's `NONINTERACTIVE=1` branch): step 3/6
+   apt-installed `build-essential`, and the Triton check printed "Triton kernel compiler OK."
+   The *Windows* half of install.ps1 was not re-run (it needs UAC and its work was already done:
+   distro registered, `.wslconfig` already memory=24GB/swap=8GB on this 32 GB PC).
+2. **PASSED** — `.\app\run.ps1 -Uncensored`, after three fixes. Cold request 18 s (the FlashInfer
+   JIT happens on the first message, not at startup), warm ~80 tok/s, FlashInfer + MTP both active.
+   The vision-tower open question is **answered**: the encoder profile run completes normally
+   ("Initial profiling/warmup run took ~36 s") and was never the problem.
+3. **PARTIAL** — the GUI launches, the window title renders its em dash correctly, and the status
+   pills populate (GPU/driver, "Ubuntu-24.04 + vLLM ready", model, server). The health ping was
+   verified end to end: with a server started *outside* the GUI, the SERVER pill flipped
+   "stopped" → "running on port 8000" on its own. Not click-tested: Setup-tab install, the Run
+   button, streamed chat, Cleanup — WPF does not realize TabItem content in the UI Automation tree
+   for a window driven headlessly, so the buttons cannot be reached programmatically. That part
+   still needs a human at the keyboard.
+
+### What the three fixes were (19927f9, 94326c6)
+
+`build-essential` was only the first layer. vLLM's FlashInfer path JIT-compiles **CUDA** kernels,
+and nvcc lives in the CUDA toolkit, not the driver:
+
+- It fails **twice**, and the second is easy to misread: the sampler kernel dies during KV-cache
+  sizing at startup, and the batch *prefill* kernel is not built until the first real request — so
+  the server logs "Application startup complete", serves `/v1/models` with 200, then kills its own
+  engine with a 500 on the first chat message.
+- Ubuntu's toolkit is useless (24.04 ships CUDA 12.0, no sm120). Nothing needs downloading:
+  **torch's CUDA wheels already vendor a full toolkit** at
+  `$VENV/lib/python3.13/site-packages/nvidia/cu13`, nvcc included. Three snags: `ninja` lives in
+  the venv's `bin/` which was never on `PATH` (FlashInfer shells out to it by bare name); the wheel
+  uses `lib/` where FlashInfer links `-L$CUDA_HOME/lib64` and ships no bare `libcudart.so` symlink;
+  and its nvcc is a patch ahead of torch's headers (13.3 vs 13.2), which CCCL rejects outright
+  unless `-DCCCL_DISABLE_CTK_COMPATIBILITY_CHECK` is passed.
+- `--attention-backend` is a **vllm flag**; the `VLLM_ATTENTION_BACKEND` env var was removed in
+  v0.27 and is now silently ignored — it looks exactly like a fix that does not work. Note it only
+  reaches the main model: MTP's draft model re-selects FlashInfer regardless, so the no-toolkit
+  fallback has to drop MTP too.
+- **262144 context cannot start on a 32 GB card**: weights ~19.5 GiB leave ~6.3 GiB, and that
+  window's KV cache wants 9.13 GiB (vLLM's own estimate of the ceiling is 174400). The default is
+  now 131072 in serve.sh, run.ps1 and the GUI dropdown.
+
+Loose ends worth a look, none blocking: the HF cache holds a stale 1.73 GB `.incomplete` blob from
+the aborted first download (harmless, but it is why setup prints "downloaded 21G of ~19 GB"); and
+the GUI's MODEL pill tracks the dropdown rather than what is actually serving, so it can read
+"not downloaded" while a different checkpoint answers requests.
+
+## Hard rules that will break the product if violated
+
+- **PowerShell targets Windows PowerShell 5.1** (`powershell.exe`, what the launcher invokes). No
+  PS7-only syntax. Every `.ps1` must keep its **UTF-8 BOM** (5.1 reads BOM-less files as ANSI and
+  mangles non-ASCII, e.g. the em dash in the GUI window title). The Write tool emits no BOM — re-add
+  it (`printf '\xef\xbb\xbf'`) after creating a new `.ps1`.
+- **Line endings are load-bearing**: `.gitattributes` forces LF for `*.sh`/`*.py` (CRLF breaks bash
+  inside WSL) and CRLF for `*.ps1`. The "LF will be replaced by CRLF" warnings on commit are
+  expected, not errors.
+- **WSL invocation pattern**: always `wsl -d $Distro -- bash -c "<one string>"`. Never pass
+  multi-arg commands directly after `--` (wsl.exe re-joins the raw command-line tail through the
+  default shell; quoting only survives reliably via a single `bash -c` string). Escape `$` as
+  `` `$ `` in PS double-quoted strings so bash expands it, and prefer single quotes inside the bash
+  string over nested double quotes.
+- **Root layout is a product decision**: only `Start Qwen 5090.cmd`, `README.md`, `LICENSE` (plus
+  dotfiles) at the root; all code under `app/`. Don't add root files — ZIP users must see one thing
+  to click. The launcher name, the desktop shortcut, and install.ps1's RunOnce entry all reference
+  each other by path; change one, change all.
+- **`set -euo pipefail` + assignment is a landmine** in the `.sh` scripts: a bare
+  `X=$(cmd | cmd)` inherits the pipeline's status, so a single failing `du`/`grep`
+  aborts the whole install. Wrap fallible substitutions in `|| true`. This exact
+  pattern killed the 17 GB download seconds after it started (setup-wsl.sh:64),
+  and only in the GUI path — `NONINTERACTIVE=1` takes a *different branch* of
+  setup-wsl.sh than a manual `bash setup-wsl.sh`, so hand-testing never hit it.
+  When touching either branch, exercise both.
+- **The weights need RAM, not just VRAM**: vLLM maps each shard with one private,
+  *writable* mmap, and Linux heuristic overcommit refuses a mapping larger than
+  `MemAvailable + swap`. WSL2 defaults to half the host's RAM (quarter of that as
+  swap), so unsloth's single 21 GiB shard fails with `Cannot allocate memory (12)`
+  on a 32 GB PC. `install.ps1` sizes `%USERPROFILE%\.wslconfig` from
+  `Win32_ComputerSystem.TotalPhysicalMemory` (raise-only, backs the file up,
+  `wsl --shutdown` after); `-WslMemoryOnly` runs just that step; `serve.sh`
+  preflights the same arithmetic. Reproduce the failure locally with a sparse
+  file + `mmap(PROT_READ|PROT_WRITE, MAP_PRIVATE)` — read-only/shared succeed.
+- **Ubuntu's WSL rootfs ships no C compiler**, and Triton (the JIT vLLM compiles kernels with)
+  shells out to one on the first CUDA call: `RuntimeError: Failed to find C compiler`, ~60 s into
+  startup, *after* the weights have loaded, so it reads like a model problem and isn't.
+  `scripts/lib-build-tools.sh` defines `ensure_build_tools` (apt-get build-essential; root or
+  passwordless-sudo, `-n` so nothing hangs on a password) and is sourced by **both** setup-wsl.sh
+  (step 3/6) and serve.sh, so pre-fix installs self-heal on the next Run. Setup then smoke-tests
+  `triton.runtime.driver.active.get_current_device()` — warn-only — to surface a broken toolchain
+  at install time instead of at first chat.
+- `$args` is a reserved automatic variable in PowerShell — use `$psArgs` etc.
+- `Start-Process -ArgumentList` gets a single pre-quoted string (array form doesn't quote paths
+  with spaces on PS 5.1).
+
+## Architecture (three layers, one direction)
+
+1. **Launcher/GUI** — `Start Qwen 5090.cmd` → `app/gui.ps1`: a single-file WPF app (XAML string +
+   `XamlReader`). It never does work itself; it shells out to the layer below.
+2. **Windows scripts** — `app/install.ps1` (also run headless by the GUI with `-Unattended`),
+   `run.ps1`, `chat.ps1`, `share.ps1`, `uninstall.ps1` (GUI Cleanup button; unregisters the distro
+   incl. model, removes share rules/shortcut/RunOnce), `collect-logs.ps1`. All GUI-spawned children
+   run hidden with stdout/stderr redirected to log files.
+3. **WSL side (where everything real happens)** — vLLM is Linux-only, so `install.ps1` provisions
+   Ubuntu-24.04 and `app/scripts/*.sh` run inside it: `setup-wsl.sh` (uv + Python 3.13 venv at
+   `~/.qwen5090/venv` + model download), `serve.sh` (`vllm serve` with 5090-tuned flags),
+   `chat.py`/`benchmark.sh` (clients against the OpenAI-compatible endpoint).
+
+### GUI concurrency model (gui.ps1) — don't fight it
+
+The WPF dispatcher thread is never blocked. All patterns funnel through one 300 ms DispatcherTimer:
+- **Child processes** (install/server/diagnostics): spawned via `Start-Process -PassThru` with
+  output redirected to timestamped files under `%LOCALAPPDATA%\Qwen5090\logs`; the timer tails those
+  files into the UI text boxes and polls `HasExited`.
+- **Chat streaming**: a background runspace does the SSE read and pushes chunks into a
+  `ConcurrentQueue`; the timer drains it into the RichTextBox (reasoning tokens = dim italic runs).
+- **Server health**: an async `HttpClient.GetAsync` task is started on one tick and its result
+  consumed on a later tick — pinged unconditionally so servers started outside the GUI are detected.
+- Fatal script errors are caught by a top-level `trap`; event-handler exceptions by a
+  `Dispatcher.UnhandledException` hook. Both log to `gui-*.log` and show a MessageBox.
+
+### Contracts between layers
+
+- **install.ps1 exit codes**: 0 = done, 1 = failed, **3010 = reboot required** (GUI offers reboot;
+  a RunOnce entry re-opens the launcher after logon).
+- **Unattended Ubuntu provisioning**: `wsl --install -d <distro> --no-launch` +
+  `ubuntu2404.exe install --root`, then create a `qwen` user (passwordless sudo) and set it as
+  default via `/etc/wsl.conf` + `wsl --terminate`. Falls back to the interactive OOBE window if the
+  store launcher is missing. Re-running install is always safe (idempotent by design).
+- **serve.sh env knobs** (set by run.ps1): `MODEL`, `CTX` (default 131072 — 262144 is the model's
+  native max but its KV cache does not fit in 32 GB), `PORT`, `GPU_UTIL` (0.90 — the Windows desktop
+  shares the GPU), `MTP` (speculative decoding on/off), `ATTN_BACKEND` (empty = let vLLM pick).
+  `NONINTERACTIVE=1`/`SKIP_DOWNLOAD=1` for setup-wsl.sh.
+- **Sharing (LAN/Tailscale)**: `share.ps1` = netsh portproxy into WSL + firewall rule scoped to
+  Private/Domain profiles only. WSL's IP changes every reboot, so `-Share`/the GUI checkbox
+  re-applies it on each server start.
+- **Logging**: Windows side `%LOCALAPPDATA%\Qwen5090\logs` (pruned after 14 days), WSL side
+  `~/.qwen5090/logs` (scripts tee everything + ERR trap). `collect-logs.ps1` bundles both plus
+  system state into a Desktop ZIP — that's the designated bug-report artifact.
+
+## Model/stack facts (post-cutoff; verified via web 2026-08)
+
+Two checkpoints ship as a user choice (GUI Setup tab dropdown; `-Uncensored` on
+install.ps1/run.ps1; `MODEL=` for the .sh scripts):
+
+| | standard | uncensored (default) | uncensored (gated) |
+|---|---|---|---|
+| repo | `unsloth/Qwen3.8-27B-NVFP4` | `sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4` | `orcarouter/Qwen3.8-27B-Uncensored-NVFP4` |
+| size | 21.81 GiB, one 21 GiB shard | 19.1 GiB (18.4 GiB shard + bf16 MTP head) | ~23 GB, 5+1 shards ≤5 GB |
+| access | public | **public** | **gated** — accepted licence + `HF_TOKEN` |
+| quant | compressed-tensors nvfp4 | compressed-tensors nvfp4-pack (llm-compressor, W4A4 g16, from huihui-ai's abliteration) | mixed nvfp4+fp8 |
+| serve flags | `--kv-cache-dtype fp8`, 3 MTP tokens | same + `--trust-remote-code` | dtype from `config.json` (passing it is an error), 2 MTP tokens, `--trust-remote-code` |
+
+`-Uncensored` on install.ps1/run.ps1 means the middle column — no account. The
+gated one is reachable only via `-Model`/the third GUI dropdown entry. Other
+ungated NVFP4 abliterations exist (`Blackfrost-AI/…-ABLITERATED-NVFP4` 28 GB no
+MTP, `sakamakismile/…AEON-ULTIMATE…-NVFP4`, `joshebbs/…-modelopt`); GGUF ones
+(huihui-ai, 0bserverx, …) are useless here — llama.cpp only.
+
+`serve.sh` derives those flags from the model id (exact match for the gated one,
+then a generic `*[Aa]bliterated*|*[Uu]ncensored*` case, else standard);
+`setup-wsl.sh` checks gated access in step 2/6 (before the 10-minute vLLM install)
+and `huggingface_hub.login()`s the token into `~/.cache/huggingface/token` so vLLM
+reuses it. The GUI stages the token through a file across the UAC relaunch —
+never the logs folder, `collect-logs.ps1` zips that up.
+
+Qwen3.8-27B released 2026-08-14 (Apache 2.0, 262K ctx). NVFP4 quant `unsloth/Qwen3.8-27B-NVFP4`
+(21.81 GiB) runs **only on vLLM** (`vllm>=0.25.0` + `flashinfer-python>=0.6.13` +
+`nvidia-cutlass-dsl>=4.5.2`, Python 3.13) — SGLang can't load the FP8 lm_head, llama.cpp is
+GGUF-only. Driver ≥ 570 required for Blackwell. Recommended instruct sampling: temp 0.7, top-p 0.8,
+top-k 20, presence 1.5. Re-verify pins on the web before bumping them.
+
+## Workflow
+
+- Full permissions are granted: read, write, edit, and execute without asking.
+- Commit after every meaningful change; never batch unrelated work.
+- Use conventional commits (`feat:` `fix:` `docs:` `refactor:` `test:` `chore:`); the message says what changed and why.
+- Run the linters above before declaring any task done.
+- Keep README and docs in sync — README is written for non-technical ZIP users first (the download
+  button is the hero); technical content goes in the power-users section or `app/docs/`.

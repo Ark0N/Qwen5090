@@ -6,7 +6,6 @@ models/
 .DS_Store
 
 # local dev environment only — never ship these
-CLAUDE.md
 .claude/
 
 # local screenshots pasted into the agent session
