@@ -244,6 +244,18 @@ The WPF dispatcher thread is never blocked. All patterns funnel through one 300 
   Code uses for background chores disables thinking — otherwise those small-cap calls return
   empty behind a 200; **(c)** the model name is unknown to Claude Code, which would assume a 200K
   window, so `CLAUDE_CODE_MAX_CONTEXT_TOKENS` is exported from the real value.
+  **A fourth alias exists for auto mode, and it is not optional.** Auto mode classifies every
+  tool call that is not plainly read-only in a *separate* request: non-streaming, ~115 KB of
+  rules in the system prompt (~30K tokens, i.e. the prefill cliff), and a hard **60-second**
+  client-side timeout. It asks for `claude-sonnet-5`, so `ANTHROPIC_DEFAULT_SONNET_MODEL` is the
+  only lever that reaches it — `CLAUDE_CODE_AUTO_MODE_MODEL` exists in the bundle but is ignored,
+  from the environment and from `settings.json` alike (measured against 2.1.238 with a mock
+  Anthropic server). Left on the main alias, every classification is an xhigh thinking pass
+  against that 60 s budget and *every* tool fails with `qwen5090 is temporarily unavailable
+  (timed out), so auto mode cannot determine the safety of …` — which reads as broken tool
+  calling and is not: the model's own turns take ~2 s and its `tool_use` blocks are well-formed.
+  Hence `qwen5090-classifier`: same weights, thinking off, cap 16384 for the classifier's
+  two-stage retry. `FAST_THINKING=1` must not reach it. Side effect: `/model sonnet` picks it too.
   `start` re-renders the config and restarts if it differs from what is running — settings changes
   must not be silently ignored — and `stop` waits for the port to close, or the next `start` sees a
   dying process as healthy and the session dies with "connection refused".
