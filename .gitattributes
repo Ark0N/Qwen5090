@@ -4,3 +4,8 @@
 *.py text eol=lf
 *.md text eol=lf
 *.ps1 text eol=crlf
+
+# Dev notes live in the repo (and in clones), but must not reach end users: the
+# ZIP root is a product decision - one thing to click. GitHub builds its
+# "Download ZIP" with git archive, which honours export-ignore.
+CLAUDE.md export-ignore
