@@ -151,7 +151,38 @@ kills Windows: the *recovery* fails for lack of resources. VRAM was at 29.7 of
 
 So the order of defence is the reverse of what this file used to advise:
 
-**1. Give the reset room to succeed.** Run with headroom, and a context that
+**1. Suspect the display driver first.** Check whether your PC has already been
+crashing this way, and how long it has been doing it:
+
+```powershell
+Get-WinEvent -FilterHashtable @{LogName='System'; Id=1001} -MaxEvents 20 |
+  Select-Object TimeCreated, Message
+Get-WinEvent -FilterHashtable @{LogName='System'; ProviderName='nvlddmkm'} -MaxEvents 4000 |
+  Group-Object {$_.TimeCreated.ToString('yyyy-MM-dd')} | Select-Object Name, Count
+```
+
+On the test machine that history goes back to **June**, months before this
+toolkit existed — including a storm two minutes after a boot, at an idle
+desktop, with nothing on the GPU at all. A workload like vLLM provokes the
+fault reliably, but does not cause it.
+
+NVIDIA has a matching bug on file
+([forum report](https://forums.developer.nvidia.com/t/bug-report-rtx-5090-gpu-lost-0x116-tdr-and-failed-warm-reboot-after-pcie-sram-ecc-events-windows-11-610-62/378873),
+NVIDIA Bug 6546168): RTX 5090, `0x116` with the same `0xC000009A` argument,
+hundreds of event 153 resets alongside event 14 command errors. **It was fixed
+by a driver update — 610.62 → 610.74.** So check what you are on:
+
+```powershell
+nvidia-smi --query-gpu=driver_version --format=csv
+```
+
+If that is below 610.74, install the current Game Ready driver (610.88 WHQL or
+later) using the **clean install** option — or DDU in safe mode if it comes
+back. Two further levers from the same report: turn off PCIe Link State Power
+Management in the power plan, and set `HwSchMode` to `0` under the
+`GraphicsDrivers` key to disable hardware-accelerated GPU scheduling.
+
+**2. Give the reset room to succeed.** Run with headroom, and a context that
 fits in it. This also drops the 4-bit KV cache and the GDN path in favour of
 fp8, which turns MTP back on — so it is the faster configuration anyway
 (~80 tok/s against ~49), at the cost of the 262K window:
@@ -160,7 +191,7 @@ fp8, which turns MTP back on — so it is the faster configuration anyway
 .\app\run.ps1 -Ctx 131072 -GpuUtil 0.80
 ```
 
-**2. Keep the watchdog raise.** It is harmless and rules out one failure mode.
+**3. Keep the watchdog raise.** It is harmless and rules out one failure mode.
 The installer sets it, and **the values are only read at boot**:
 
 ```powershell
@@ -175,19 +206,6 @@ $k = 'HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers'
 Set-ItemProperty $k -Name TdrDelay    -Value 10 -Type DWord
 Set-ItemProperty $k -Name TdrDdiDelay -Value 10 -Type DWord
 ```
-
-**3. Suspect the display driver.** Check whether your PC has crashed this way
-before it ever ran this toolkit:
-
-```powershell
-Get-WinEvent -FilterHashtable @{LogName='System'; Id=1001} -MaxEvents 20 |
-  Select-Object TimeCreated, Message
-```
-
-On the test machine one `0x116` with the identical signature predates the
-install by four days, which puts the driver — or the card — in the frame
-independently of anything here. If yours does the same, a clean display-driver
-reinstall is the thing to try before blaming a setting in this file.
 
 ## Out of memory (CUDA OOM) at startup
 The 5090's 32 GB is shared with the Windows desktop, so vLLM can't take it all.
