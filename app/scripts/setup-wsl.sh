@@ -163,6 +163,14 @@ except (GatedRepoError, RepositoryNotFoundError):
 print("Model cached.")
 DOWNLOAD_PY
 
+# An aborted download leaves its partial blob behind as <sha>.<id>.incomplete.
+# It wastes gigabytes and it is counted by the 'du' progress line below, which is
+# why that line could read "downloaded 21G of ~19 GB". huggingface_hub *resumes*
+# from these files, so only remove ones no live download could still be writing:
+# untouched for an hour. The '|| true' matters - under 'set -euo pipefail' a
+# find over a missing cache dir would otherwise abort the whole install.
+find "$HOME/.cache/huggingface/hub" -name '*.incomplete' -mmin +60 -delete 2>/dev/null || true
+
 if [[ "${SKIP_DOWNLOAD:-0}" == "1" ]]; then
   echo "SKIP_DOWNLOAD=1 set - skipping. vLLM will download on first serve instead."
 elif [[ "${NONINTERACTIVE:-0}" == "1" ]]; then

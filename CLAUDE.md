@@ -89,10 +89,12 @@ and nvcc lives in the CUDA toolkit, not the driver:
   rather than refuse, so 262144 is the default again everywhere — see the KV-precision contract
   below, and the prefill cliff under "Measured on the 5090".
 
-Loose ends worth a look, none blocking: the HF cache holds a stale 1.73 GB `.incomplete` blob from
-the aborted first download (harmless, but it is why setup prints "downloaded 21G of ~19 GB"); and
-the GUI's MODEL pill tracks the dropdown rather than what is actually serving, so it can read
-"not downloaded" while a different checkpoint answers requests.
+Both of the loose ends recorded here have since been fixed. The stale `.incomplete` blob (the reason
+setup printed "downloaded 21G of ~19 GB") is now cleared by setup-wsl.sh before each download - by
+mtime, `-mmin +60`, because huggingface_hub *resumes* from those files and the live download carries
+the same suffix, so a blanket delete or a `du --exclude` would break the transfer or zero the
+progress line. And the MODEL pill now reports the served model whenever a server is up, falling back
+to the dropdown only when nothing is answering.
 
 ## Hard rules that will break the product if violated
 

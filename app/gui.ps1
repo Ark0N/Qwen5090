@@ -723,10 +723,15 @@ function Get-SelectedModel {
     return $script:ModelStandard
 }
 
-function Get-SelectedModelLabel {
+function Get-ModelLabel([string]$id) {
     # The repo name without the owner: short enough for the status pill, but it
     # says which checkpoint - "uncensored" alone did not.
-    return ((Get-SelectedModel) -split '/')[-1]
+    if (-not $id) { return "" }
+    return ($id -split '/')[-1]
+}
+
+function Get-SelectedModelLabel {
+    return Get-ModelLabel (Get-SelectedModel)
 }
 
 function Update-ModelChoice {
@@ -830,12 +835,22 @@ function Update-Status {
         & wsl -d $Distro -- bash -c "test -x `$HOME/.qwen5090/venv/bin/vllm" 2>$null
         if ($LASTEXITCODE -eq 0) { $TxtWslS.Text = "$Distro + vLLM ready"; Set-Dot $DotWsl "#FF76B900" }
         else { $TxtWslS.Text = "$Distro (vLLM not installed)"; Set-Dot $DotWsl "#FFE0B84C" }
-        $label = Get-SelectedModelLabel
-        $TxtModelS.ToolTip = Get-SelectedModel
-        $cachePath = "`$HOME/.cache/huggingface/hub/models--$((Get-SelectedModel) -replace '/','--')"
-        & wsl -d $Distro -- bash -c "test -d $cachePath" 2>$null
-        if ($LASTEXITCODE -eq 0) { $TxtModelS.Text = "$label - downloaded"; Set-Dot $DotModel "#FF76B900" }
-        else { $TxtModelS.Text = "$label - not downloaded"; Set-Dot $DotModel "#FF4A5261" }
+        # A live server outranks the dropdown. The two disagree whenever the
+        # user changes the selection while a server is up, or when the server was
+        # started outside the GUI - and a pill reading "not downloaded" while a
+        # different checkpoint is answering requests is the confusing case.
+        if ($script:ServerUp -and $script:ModelId) {
+            $TxtModelS.Text = "$(Get-ModelLabel $script:ModelId) - serving"
+            $TxtModelS.ToolTip = $script:ModelId
+            Set-Dot $DotModel "#FF76B900"
+        } else {
+            $label = Get-SelectedModelLabel
+            $TxtModelS.ToolTip = Get-SelectedModel
+            $cachePath = "`$HOME/.cache/huggingface/hub/models--$((Get-SelectedModel) -replace '/','--')"
+            & wsl -d $Distro -- bash -c "test -d $cachePath" 2>$null
+            if ($LASTEXITCODE -eq 0) { $TxtModelS.Text = "$label - downloaded"; Set-Dot $DotModel "#FF76B900" }
+            else { $TxtModelS.Text = "$label - not downloaded"; Set-Dot $DotModel "#FF4A5261" }
+        }
     } else {
         $TxtWslS.Text = "not installed";   Set-Dot $DotWsl "#FF4A5261"
         $TxtModelS.ToolTip = Get-SelectedModel
