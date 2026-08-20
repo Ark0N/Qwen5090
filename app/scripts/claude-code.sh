@@ -329,15 +329,24 @@ print("   usage:", d.get("usage"))' || warn "the test request failed"
   fi
 }
 
-case "${1:-run}" in
-  start)  shift; cmd_start "$@" ;;
-  stop)   shift; cmd_stop "$@" ;;
-  restart) shift; cmd_stop; cmd_start "$@" ;;
-  status) shift; cmd_status "$@" ;;
-  env)    shift; cmd_env "$@" ;;
-  doctor) shift; cmd_doctor "$@" ;;
-  run)    shift; cmd_run "$@" ;;
+# `shift` returns non-zero when there are no positional parameters, and under
+# `set -e` that kills the script before it prints anything - so a bare
+# `claude-code.sh` (the most common way to run it) exited 1 in silence. Resolve
+# the verb first, and only shift when there is actually something to shift.
+cmd="${1:-run}"
+if (( $# > 0 )); then shift; fi
+
+case "$cmd" in
+  start)   cmd_start "$@" ;;
+  stop)    cmd_stop "$@" ;;
+  restart) cmd_stop; cmd_start "$@" ;;
+  status)  cmd_status "$@" ;;
+  env)     cmd_env "$@" ;;
+  doctor)  cmd_doctor "$@" ;;
+  run)     cmd_run "$@" ;;
   -h|--help|help)
-    sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//' ;;
-  *)      cmd_run "$@" ;;
+    # print the header block, stopping at the first line that is not a comment
+    sed -n '2,${/^#/!q;p;}' "$0" | sed 's/^# \{0,1\}//' ;;
+  # Anything else is a Claude Code flag: put it back and launch.
+  *)       cmd_run "$cmd" "$@" ;;
 esac
