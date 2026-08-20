@@ -272,6 +272,23 @@ function Register-ResumeAfterReboot {
     }
 }
 
+function Get-InstalledDistros {
+    <#
+      wsl.exe prints UTF-16 (NUL-interleaved when read as ANSI) and, for a few
+      seconds after 'wsl --shutdown', prints nothing at all while the service
+      restarts. Believing that empty list would re-provision a machine that
+      already has a working distro - and re-home it, orphaning ~22 GB of
+      weights - so retry before accepting "no distros".
+    #>
+    param([int]$Retries = 5)
+    for ($i = 0; $i -lt $Retries; $i++) {
+        $out = @((& wsl -l -q) -replace "`0", "" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+        if ($out.Count -gt 0) { return $out }
+        Start-Sleep -Seconds 2
+    }
+    return @()
+}
+
 function Test-DistroReady {
     param([int]$Retries = 10)
     # A freshly registered rootfs can take a few seconds to accept commands.
@@ -340,7 +357,8 @@ function New-DesktopShortcut {
 
 if ($WslMemoryOnly) {
     # Escape hatch for a machine that is installed but cannot load the weights:
-    # size the VM from this PC's RAM and get out, no prerequisite checks.
+    # size the VM from this PC's RAM and get out, no prerequisite checks. Safe to
+    # shut WSL down here - nothing else in this run inspects the distro list.
     Step "Sizing the WSL virtual machine"
     if (Set-WslMemoryLimit) {
         Write-Host "   Restarting WSL so the new limits take effect (this stops any running server)..."
@@ -435,37 +453,47 @@ Write-Host "This is quick if WSL is already current, but can take a few minutes 
 $null = Invoke-Streamed -Activity "the WSL kernel update" -FilePath "wsl" -Arguments "--update"   # best-effort
 Write-Host "WSL2 - OK"
 
+Step "Checking Linux distro ($Distro)"
+$distros = Get-InstalledDistros
+$registered = ($distros -contains $Distro)
+if (-not $registered -and (Test-DistroReady -Retries 2)) {
+    # The listing was still coming back up but the distro plainly works.
+    # Provisioning it again would create a user, change the default, and hide
+    # everything the previous install put under the old home directory.
+    Write-Host "$Distro did not show up in 'wsl -l -q' yet, but it answers commands - treating it as installed."
+    $registered = $true
+}
+if ($registered) {
+    Write-Host "$Distro is already installed."
+} else {
+    Write-Host "$Distro is not installed yet - setting it up now (three sub-steps, a few minutes total)."
+    if (-not (Install-DistroUnattended)) {
+        if (Test-DistroReady -Retries 3) {
+            # Registered but its OOBE never ran: it still works as root, and an
+            # interactive setup window would only break an unattended install.
+            Write-Host "$Distro answers as root - skipping the interactive first-time setup."
+        } else {
+            Write-Host "Silent install unavailable - falling back to the interactive Ubuntu setup." -ForegroundColor Yellow
+            Write-Host "A window will open asking you to create a Linux username and password;" -ForegroundColor Yellow
+            Write-Host "type 'exit' in the Linux shell when done." -ForegroundColor Yellow
+            # If it is already registered, '--install' is a no-op - opening a
+            # shell is what actually runs the first-time setup.
+            if ((Get-InstalledDistros) -contains $Distro) { Start-Process wsl -ArgumentList "-d $Distro" -Wait }
+            else { Start-Process wsl -ArgumentList "--install -d $Distro" -Wait }
+            if ((Get-InstalledDistros) -notcontains $Distro) { Fail "Failed to install $Distro. Run 'wsl --install -d $Distro' manually, then re-run this script." }
+        }
+    }
+}
+Write-Host "$Distro - OK"
+
 Step "Sizing the WSL virtual machine"
-# The model is loaded through a single ~22 GB memory mapping; a default-sized
-# WSL VM (half the PC's RAM) cannot back it and the server dies at load time.
+# The weights are loaded through one huge memory mapping and a default-sized WSL
+# VM (half the PC's RAM) cannot back it. This has to happen after the distro
+# check: 'wsl --shutdown' blinds 'wsl -l -q' for a few seconds afterwards.
 if (Set-WslMemoryLimit) {
     Write-Host "   Restarting WSL so the new limits take effect (this stops any running server)..."
     & wsl --shutdown *> $null
 }
-
-Step "Checking Linux distro ($Distro)"
-# wsl.exe prints UTF-16; strip the interleaved nulls before comparing.
-$distros = (& wsl -l -q) -replace "`0", "" | Where-Object { $_ -ne "" }
-if ($distros -notcontains $Distro) {
-    $installed = $false
-    Write-Host "$Distro is not installed yet - setting it up now (three sub-steps, a few minutes total)."
-    $installed = Install-DistroUnattended
-    if (-not $installed) {
-        Write-Host "Silent install unavailable - falling back to the interactive Ubuntu setup." -ForegroundColor Yellow
-        Write-Host "A window will open asking you to create a Linux username and password;" -ForegroundColor Yellow
-        Write-Host "type 'exit' in the Linux shell when done." -ForegroundColor Yellow
-        # If it is already registered, '--install' is a no-op - opening a shell
-        # is what actually runs the first-time setup.
-        $distros = (& wsl -l -q) -replace "`0", "" | Where-Object { $_ -ne "" }
-        if ($distros -contains $Distro) { Start-Process wsl -ArgumentList "-d $Distro" -Wait }
-        else { Start-Process wsl -ArgumentList "--install -d $Distro" -Wait }
-        $distros = (& wsl -l -q) -replace "`0", "" | Where-Object { $_ -ne "" }
-        if ($distros -notcontains $Distro) { Fail "Failed to install $Distro. Run 'wsl --install -d $Distro' manually, then re-run this script." }
-    }
-} else {
-    Write-Host "$Distro is already installed."
-}
-Write-Host "$Distro - OK"
 
 Step "Running Linux-side setup (vLLM install + model download)"
 Write-Host "Model: $Model"
