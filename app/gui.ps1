@@ -549,23 +549,25 @@ $xaml = @'
                     Style="{StaticResource DangerButton}" Margin="0"
                     ToolTip="Remove everything this app installed: the Ubuntu distro, the Python environment, and the downloaded model (~20+ GB freed)"/>
           </DockPanel>
-          <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,12">
+          <WrapPanel Grid.Row="1" Margin="0,0,0,6">
             <TextBlock Text="Model" Style="{StaticResource FieldLabel}"/>
-            <ComboBox x:Name="CmbModel" Width="252" SelectedIndex="0" VerticalAlignment="Center" Margin="0,0,14,0"
-                      ToolTip="Which checkpoint to download and serve">
+            <ComboBox x:Name="CmbModel" Width="228" SelectedIndex="0" VerticalAlignment="Center" Margin="0,0,14,6"
+                      ToolTip="Which checkpoint to download and serve - hover an entry for details">
               <ComboBoxItem Content="Standard" Tag="unsloth/Qwen3.8-27B-NVFP4"
-                            ToolTip="The official Qwen3.8-27B release in NVFP4 - about 22 GB, no account needed"/>
-              <ComboBoxItem Content="Uncensored (abliterated)" Tag="sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4"
-                            ToolTip="huihui-ai's abliterated Qwen3.8-27B re-quantized to NVFP4 - about 19 GB, public download, no account needed. Refusals removed."/>
-              <ComboBoxItem Content="Uncensored - OrcaRouter (sign-in)" Tag="orcarouter/Qwen3.8-27B-Uncensored-NVFP4"
-                            ToolTip="OrcaRouter's abliterated build - about 23 GB. Gated on Hugging Face: accept its terms there and paste a read token."/>
+                            ToolTip="unsloth/Qwen3.8-27B-NVFP4 - the official Qwen3.8-27B release in NVFP4, about 22 GB, no account needed"/>
+              <ComboBoxItem Content="Uncensored (no account)" Tag="sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4"
+                            ToolTip="sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4 - huihui-ai's abliterated Qwen3.8-27B re-quantized to NVFP4, about 19 GB, public download. Refusals removed."/>
+              <ComboBoxItem Content="Uncensored (sign-in)" Tag="orcarouter/Qwen3.8-27B-Uncensored-NVFP4"
+                            ToolTip="orcarouter/Qwen3.8-27B-Uncensored-NVFP4 - a different abliterated build, about 23 GB. Gated on Hugging Face: accept its terms there and paste a read token."/>
             </ComboBox>
             <TextBlock Text="HF token" Style="{StaticResource FieldLabel}"/>
-            <TextBox x:Name="TxtHfToken" Width="220" Height="30" VerticalAlignment="Center" IsEnabled="False"
-                     ToolTip="Only needed for the uncensored build: a READ token from huggingface.co/settings/tokens. It is stored inside WSL, so you paste it once."/>
+            <!-- Tag is the shared TextBox style's placeholder text (shown while empty). -->
+            <TextBox x:Name="TxtHfToken" Width="200" Height="30" VerticalAlignment="Center" IsEnabled="False"
+                     Tag="hf_..." Margin="0,0,12,6"
+                     ToolTip="Only needed for the sign-in build: a READ token from huggingface.co/settings/tokens. It is stored inside WSL, so you paste it once."/>
             <TextBlock x:Name="TxtModelHint" Text="" FontSize="11" Foreground="#FFE0B84C"
-                       VerticalAlignment="Center" Margin="12,0,0,0" TextWrapping="Wrap" MaxWidth="230"/>
-          </StackPanel>
+                       VerticalAlignment="Center" Margin="0,0,0,6" TextWrapping="Wrap" MaxWidth="240"/>
+          </WrapPanel>
           <TextBox x:Name="TxtSetupLog" Grid.Row="2" Style="{StaticResource LogBox}"
                    Text="Ready when you are.&#10;&#10;Click  Install / Repair  to set everything up automatically:&#10;   1. WSL2 + Ubuntu 24.04 (silent, no prompts)&#10;   2. Python 3.13 + vLLM inside Linux&#10;   3. The Qwen3.8-27B model (~22 GB download)&#10;&#10;Every step streams live progress here. Re-running is always safe - finished steps are skipped.&#10;One reboot may be requested; the app re-opens automatically after you log back in.&#10;"/>
         </Grid>
@@ -584,23 +586,29 @@ $xaml = @'
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
           </Grid.RowDefinitions>
-          <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,12">
+          <!-- WrapPanel, not StackPanel: at the 820 px minimum width these
+               controls are wider than the window and a StackPanel would clip
+               the last one instead of moving it to a second line. -->
+          <WrapPanel Grid.Row="0" Margin="0,0,0,6">
             <Button x:Name="BtnStart" Content="Start server" Style="{StaticResource AccentButton}"/>
-            <Button x:Name="BtnStop" Content="Stop" IsEnabled="False" Margin="0,0,16,0"/>
+            <Button x:Name="BtnStop" Content="Stop" IsEnabled="False" Margin="0,0,16,6"/>
             <TextBlock Text="Port" Style="{StaticResource FieldLabel}"/>
-            <TextBox x:Name="TxtPort" Text="8000" Width="64" Height="30" TextAlignment="Center" VerticalAlignment="Center" Margin="0,0,14,0"/>
+            <!-- 92 px: the shared TextBox style adds 10 px of padding a side, so
+                 a 64 px box left ~42 px of text area and clipped "8000". -->
+            <TextBox x:Name="TxtPort" Text="8000" Width="92" Height="30" Padding="6,0" TextAlignment="Center"
+                     VerticalAlignment="Center" Margin="0,0,14,6" ToolTip="API port (1-65535)"/>
             <TextBlock Text="Context" Style="{StaticResource FieldLabel}"/>
             <!-- Content is the label the user reads; Tag carries the exact token
                  count that run.ps1 needs (Start-Server reads Tag, never Content). -->
-            <ComboBox x:Name="CmbCtx" Width="92" VerticalAlignment="Center" SelectedIndex="2" Margin="0,0,14,0"
+            <ComboBox x:Name="CmbCtx" Width="104" VerticalAlignment="Center" SelectedIndex="2" Margin="0,0,14,6"
                       ToolTip="Maximum context length - higher uses more VRAM">
               <ComboBoxItem Content="64K" Tag="65536" ToolTip="65,536 tokens"/>
               <ComboBoxItem Content="128K" Tag="131072" ToolTip="131,072 tokens - drop to this if the server runs out of VRAM"/>
               <ComboBoxItem Content="262K" Tag="262144" ToolTip="262,144 tokens - the model's native maximum (default)"/>
             </ComboBox>
-            <CheckBox x:Name="ChkMtp" Content="MTP speed boost" ToolTip="Speculative decoding (multi-token prediction) - faster, leave on" IsChecked="True" Margin="0,0,14,0"/>
-            <CheckBox x:Name="ChkShare" Content="Share on network" ToolTip="Other devices on your Wi-Fi or tailnet (LAN/Tailscale) can use the API - asks for admin once per start"/>
-          </StackPanel>
+            <CheckBox x:Name="ChkMtp" Content="MTP speed boost" ToolTip="Speculative decoding (multi-token prediction) - faster, leave on" IsChecked="True" Margin="0,0,14,6"/>
+            <CheckBox x:Name="ChkShare" Content="Share on network" ToolTip="Other devices on your Wi-Fi or tailnet (LAN/Tailscale) can use the API - asks for admin once per start" Margin="0,0,0,6"/>
+          </WrapPanel>
           <TextBox x:Name="TxtServerLog" Grid.Row="1" Style="{StaticResource LogBox}"
                    Text="Server output appears here.&#10;The first start takes a minute or two (model load + CUDA graph capture).&#10;API endpoint: http://localhost:8000/v1  (OpenAI-compatible; any api_key works)&#10;"/>
         </Grid>
@@ -625,7 +633,7 @@ $xaml = @'
               <CheckBox x:Name="ChkThink" Content="Thinking mode" IsChecked="True" Margin="0,0,14,0"
                         ToolTip="Let the model reason before answering - smarter but slower"/>
               <TextBlock Text="Effort" Style="{StaticResource FieldLabel}"/>
-              <ComboBox x:Name="CmbEffort" Width="96" VerticalAlignment="Center" SelectedIndex="0"
+              <ComboBox x:Name="CmbEffort" Width="108" VerticalAlignment="Center" SelectedIndex="0"
                         ToolTip="How much thinking the model does before answering">
                 <ComboBoxItem Content="default"/>
                 <ComboBoxItem Content="low"/>
@@ -705,8 +713,9 @@ function Get-SelectedModel {
 }
 
 function Get-SelectedModelLabel {
-    if ((Get-SelectedModel) -eq $script:ModelStandard) { return "standard" }
-    return "uncensored"
+    # The repo name without the owner: short enough for the status pill, but it
+    # says which checkpoint - "uncensored" alone did not.
+    return ((Get-SelectedModel) -split '/')[-1]
 }
 
 function Update-ModelChoice {
@@ -811,13 +820,15 @@ function Update-Status {
         if ($LASTEXITCODE -eq 0) { $TxtWslS.Text = "$Distro + vLLM ready"; Set-Dot $DotWsl "#FF76B900" }
         else { $TxtWslS.Text = "$Distro (vLLM not installed)"; Set-Dot $DotWsl "#FFE0B84C" }
         $label = Get-SelectedModelLabel
+        $TxtModelS.ToolTip = Get-SelectedModel
         $cachePath = "`$HOME/.cache/huggingface/hub/models--$((Get-SelectedModel) -replace '/','--')"
         & wsl -d $Distro -- bash -c "test -d $cachePath" 2>$null
         if ($LASTEXITCODE -eq 0) { $TxtModelS.Text = "$label - downloaded"; Set-Dot $DotModel "#FF76B900" }
         else { $TxtModelS.Text = "$label - not downloaded"; Set-Dot $DotModel "#FF4A5261" }
     } else {
         $TxtWslS.Text = "not installed";   Set-Dot $DotWsl "#FF4A5261"
-        $TxtModelS.Text = "not downloaded"; Set-Dot $DotModel "#FF4A5261"
+        $TxtModelS.ToolTip = Get-SelectedModel
+        $TxtModelS.Text = "$(Get-SelectedModelLabel) - not downloaded"; Set-Dot $DotModel "#FF4A5261"
     }
 }
 
