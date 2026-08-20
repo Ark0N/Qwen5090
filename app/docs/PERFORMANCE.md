@@ -37,15 +37,33 @@ Rule of thumb: OOM at startup → drop `-Ctx` first, then `-GpuUtil`.
    and verifies them in one pass — a large single-stream win at negligible
    cost. Disable with `-NoMtp` only if outputs look corrupted after an
    upstream vLLM change.
-2. **Context length.** Bigger `-Ctx` costs VRAM, not speed — until vLLM starts
-   preempting because the KV cache is tight. If logs show preemption warnings,
-   lower `-Ctx`.
-3. **Thinking mode.** Reasoning tokens are generated tokens: `-Effort high`
+2. **Context length.** `-Ctx` above 131072 switches the KV cache to 4-bit,
+   which costs speed twice over: decode drops from ~80 to ~49 tok/s (MTP has
+   to be turned off with it), and long prompts prefill far slower — see the
+   next lever. 131072 is the sweet spot; go higher only when you need the room.
+3. **Thinking mode.** Reasoning tokens are generated tokens: `-Effort xhigh`
    answers harder questions but takes proportionally longer. Use
-   `chat.ps1 -NoThink` for snappy chat.
-4. **Background VRAM users.** A game or browser eating 4 GB forces a lower
+   `chat.ps1 -NoThink` for snappy chat. The levels are `low`, `medium` and
+   `xhigh` — this model's chat template rejects `high` with an HTTP 400.
+   Reasoning tokens also count against the reply limit, so a small
+   `max_tokens` with thinking on can return an empty answer.
+4. **Long prompts above ~128K cost far more than long chats.** Measured at
+   262144 with the 4-bit KV cache, needle-in-a-haystack, thinking off:
+
+   | Prompt | Prefill | Wall | Answer |
+   |---|---|---|---|
+   | 5,585 tokens | ~11,100 tok/s | 0.5 s | correct |
+   | 22,210 tokens | ~11,300 tok/s | 2.0 s | correct |
+   | 90,800 tokens | ~370 tok/s | 245 s | correct |
+
+   Retrieval stays exact at every length — it is purely a speed cliff, in
+   the TurboQuant KV store and the GDN linear-attention core during chunked
+   prefill. While it grinds the GPU reads 100% busy at ~128 W and the server
+   logs nothing, so it looks like a freeze. Growing *into* a long context by
+   chatting is fine; pasting 100K tokens in at once is a multi-minute wait.
+5. **Background VRAM users.** A game or browser eating 4 GB forces a lower
    `GPU_UTIL`. Check with `nvidia-smi` in Windows before blaming vLLM.
-5. **Batch throughput.** Serving several clients? Aggregate tok/s scales well
+6. **Batch throughput.** Serving several clients? Aggregate tok/s scales well
    beyond single-stream numbers; nothing to configure, vLLM batches
    continuously.
 

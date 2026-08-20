@@ -83,9 +83,10 @@ and nvcc lives in the CUDA toolkit, not the driver:
   v0.27 and is now silently ignored — it looks exactly like a fix that does not work. Note it only
   reaches the main model: MTP's draft model re-selects FlashInfer regardless, so the no-toolkit
   fallback has to drop MTP too.
-- **262144 context cannot start on a 32 GB card**: weights ~19.5 GiB leave ~6.3 GiB, and that
-  window's KV cache wants 9.13 GiB (vLLM's own estimate of the ceiling is 174400). The default is
-  now 131072 in serve.sh, run.ps1 and the GUI dropdown.
+- **262144 needs a 4-bit KV cache to start on a 32 GB card**: weights ~19.5 GiB leave ~6.3 GiB,
+  and an fp8 cache for that window wants 9.13 GiB. 0d49281 made serve.sh switch precision to fit
+  rather than refuse, so 262144 is the default again everywhere — see the KV-precision contract
+  below, and the prefill cliff under "Measured on the 5090".
 
 Loose ends worth a look, none blocking: the HF cache holds a stale 1.73 GB `.incomplete` blob from
 the aborted first download (harmless, but it is why setup prints "downloaded 21G of ~19 GB"); and
@@ -189,6 +190,55 @@ The WPF dispatcher thread is never blocked. All patterns funnel through one 300 
 - **Logging**: Windows side `%LOCALAPPDATA%\Qwen5090\logs` (pruned after 14 days), WSL side
   `~/.qwen5090/logs` (scripts tee everything + ERR trap). `collect-logs.ps1` bundles both plus
   system state into a Desktop ZIP — that's the designated bug-report artifact.
+
+## Measured on the 5090 (2026-08-20, uncensored build at CTX=262144)
+
+A full-window run — server started by `serve.sh`, a real code-generation task at
+`xhigh`, then needle-in-a-haystack and a per-effort sweep. What it settled:
+
+- **The API field is `reasoning`, not `reasoning_content`** on vLLM 0.27.1 with this
+  model — in streaming deltas *and* in the non-streaming message. `gui.ps1` and
+  `chat.py` read only `reasoning_content` and therefore threw the entire thinking
+  stream away (14,000+ tokens in one measured run: 4,645 chunks received in 437 s
+  while the server logged 40–49 tok/s). Both now accept either name; keep the
+  fallback, other servers do use `reasoning_content`.
+- **The chat template accepts `low`, `medium`, `xhigh` only.** `high` is rejected:
+  `{"message":"Unexpected reasoning effort high. Supported types are xhigh
+  (default), medium, and low.","code":400}`. It has been removed from the GUI
+  dropdown, `chat.ps1`'s ValidateSet and `chat.py`'s choices. `xhigh` is the
+  template's own default. Effort really does scale: 146 → 242 → 711 chars of
+  thinking for low → medium → xhigh on the same question.
+- **Reasoning tokens are billed against `max_tokens`.** `max_tokens=16` with
+  thinking on returns `content=None` and `finish_reason=length`; the same request
+  with `enable_thinking:false` answers correctly. Any client asking for a short
+  answer under a small cap gets an empty string behind an HTTP 200.
+- **Prefill collapses super-linearly above ~30K tokens**, and this is the real
+  limit of the 262K window:
+
+      prompt_tokens=  5,585    0.5 s   ~11,117 tok/s   needle found
+      prompt_tokens= 22,210    2.0 s   ~11,315 tok/s   needle found
+      prompt_tokens= 90,800  245.0 s   ~   371 tok/s   needle found
+      prompt_tokens=~139,000  aborted after 7 min
+
+  Retrieval accuracy never degrades — it is purely speed. `py-spy` on the engine
+  during the stall puts the time in `triton_turboquant_store`
+  (`v1/attention/ops/triton_turboquant_store.py:414`, via `_store_kv` →
+  `do_kv_cache_update`) and `qwen_gdn_attention_core`, i.e. the 4-bit KV store and
+  the GDN linear-attention core during chunked prefill — both only on the path
+  serve.sh picks when `CTX > 131072`. Symptom to recognise: GPU at 100% util but
+  only ~128 W, and no scheduler stats line for minutes. It reads as a hang and is
+  not one. Not yet measured: whether fp8 at 131072 clears the same prompt faster.
+- **Startup, for reference**: weights 18.74 GiB in 8.6 s warm / ~60 s cold, engine
+  init 10.8 s, MM warmup 12.2 s, "Application startup complete" ~78 s in, first
+  request 1.03 s. TurboQuant pins `flash_attn_version=2`, so the FlashInfer prefill
+  JIT never runs and the old first-message 500 cannot happen on this path.
+- **8 GB of headroom for Windows was not enough.** With `memory=24GB` on a 31.7 GB
+  PC the host fell to **1.89 GB free** while the weights mapped in, and vLLM warned
+  `checkpoint size (19.15 GiB) exceeds 90% of available RAM (19.44 GiB)`. VRAM peaked
+  at 32,148 of 32,607 MiB at the same time. `install.ps1` now reserves 12 GB
+  (`$hostGB - 12`), giving 20 GB + 8 GB swap on a 32 GB machine — still ≥ `$needGB`.
+  The sizing stays raise-only, so an existing `.wslconfig` at 24 GB must be lowered
+  by hand, then `wsl --shutdown`.
 
 ## Model/stack facts (post-cutoff; verified via web 2026-08)
 

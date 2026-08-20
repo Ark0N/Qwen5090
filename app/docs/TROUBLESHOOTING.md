@@ -187,4 +187,19 @@ The shell scripts were checked out with CRLF line endings. This repo's
 ## Generation quality is off (rambling, repetitive)
 Use the recommended instruct sampling (chat.ps1 already does): temperature 0.7,
 top-p 0.8, top-k 20, presence penalty 1.5. For heavy reasoning tasks, raise the
-dial with `.\chat.ps1 -Effort high`.
+dial with `.\chat.ps1 -Effort xhigh`. The valid levels are `low`, `medium` and
+`xhigh`; this model's chat template rejects `high` outright with an HTTP 400.
+
+## The reply is empty, or the chat sits silent for a long time
+Both are thinking mode behaving normally:
+
+- **Empty reply.** Reasoning tokens are billed against the reply limit. Asking
+  for a one-word answer with a small `max_tokens` spends the whole budget on
+  thinking and returns an empty string behind a perfectly healthy HTTP 200.
+  Raise the limit, or turn thinking off (`-NoThink`, or untick Thinking mode).
+- **Long silence, then everything at once.** The model thinks before it writes.
+  The GUI shows that phase as dim italic text; if you see nothing at all until
+  the answer lands, you are on a build older than 2026-08-20, which read the
+  wrong field name and discarded the thinking stream.
+- **Minutes of silence after pasting something huge.** See PERFORMANCE.md:
+  above ~128K context, a very long prompt prefills at roughly 370 tok/s.
