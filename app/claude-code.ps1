@@ -1,0 +1,91 @@
+﻿<#
+.SYNOPSIS
+  Point Claude Code at this PC's Qwen 5090 server.
+
+.DESCRIPTION
+  Claude Code speaks the Anthropic API; vLLM serves the OpenAI API. This starts
+  a small translation bridge inside WSL (scripts/claude-code.sh) and then either
+  launches Claude Code inside WSL, or prints the environment variables a
+  Windows-native Claude Code needs.
+
+  The Qwen server must already be running - use the app's Run button, or
+  .\app\run.ps1 - and Claude Code must be installed:  npm install -g @anthropic-ai/claude-code
+
+.EXAMPLE
+  .\claude-code.ps1                  # start the bridge, open Claude Code in WSL
+.EXAMPLE
+  .\claude-code.ps1 -Windows         # print env vars for Claude Code on Windows
+.EXAMPLE
+  .\claude-code.ps1 -Effort medium   # think less, answer sooner
+.EXAMPLE
+  .\claude-code.ps1 -Status ; .\claude-code.ps1 -Stop
+#>
+[CmdletBinding()]
+param(
+    [string]$Distro = "Ubuntu-24.04",
+    [int]$Port = 8000,
+    [int]$BridgePort = 4000,
+    # The chat template accepts these three and rejects everything else.
+    [ValidateSet('low','medium','xhigh')]
+    [string]$Effort = 'xhigh',
+    [switch]$Windows,
+    [switch]$Status,
+    [switch]$Stop,
+    [switch]$Doctor
+)
+$ErrorActionPreference = "Stop"
+
+# The bash half lives next to this file. Translate C:\path\to -> /mnt/c/path/to;
+# never hand wsl.exe a Windows path.
+$scriptWin = Join-Path $PSScriptRoot "scripts\claude-code.sh"
+if (-not (Test-Path $scriptWin)) {
+    Write-Host "ERROR: scripts\claude-code.sh is missing next to this script." -ForegroundColor Red
+    exit 1
+}
+$drive = $scriptWin.Substring(0,1).ToLower()
+$scriptWsl = "/mnt/$drive" + ($scriptWin.Substring(2) -replace '\\','/')
+
+# Bind the bridge where the client can actually reach it. Claude Code running
+# inside WSL wants loopback; a Windows-native one reaches WSL services through
+# the localhost relay, which only forwards ports bound to all interfaces.
+# WSL sits behind its own NAT, so this is not a LAN exposure.
+$bridgeHost = if ($Windows) { "0.0.0.0" } else { "127.0.0.1" }
+
+$verb = "run"
+if ($Stop)   { $verb = "stop" }
+if ($Status) { $verb = "status" }
+if ($Doctor) { $verb = "doctor" }
+if ($Windows -and -not ($Stop -or $Status -or $Doctor)) { $verb = "env" }
+
+# Everything after -- goes through as ONE bash -c string: wsl.exe re-joins a
+# multi-argument tail through the default shell and quoting does not survive.
+# $ is escaped so bash expands it, not PowerShell.
+$envPrefix = "QWEN_URL=http://localhost:$Port BRIDGE_PORT=$BridgePort BRIDGE_HOST=$bridgeHost QWEN_EFFORT=$Effort"
+$bashCmd = "$envPrefix bash '$scriptWsl' $verb"
+
+if ($verb -eq "env") {
+    # Ask the bridge for its settings, then translate the exports into
+    # PowerShell assignments for this window.
+    $lines = & wsl -d $Distro -- bash -c "$bashCmd"
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+    Write-Host ""
+    Write-Host "Bridge is up. Paste this into the PowerShell window you run Claude Code from:" -ForegroundColor Cyan
+    Write-Host ""
+    foreach ($line in $lines) {
+        if ($line -match '^\s*export\s+([A-Z0-9_]+)="?([^"]*)"?\s*$') {
+            $name = $Matches[1]
+            $value = $Matches[2]
+            # The bridge listens inside WSL; Windows reaches it over localhost.
+            $value = $value -replace '^http://0\.0\.0\.0:', 'http://127.0.0.1:'
+            Write-Host ('  $env:{0} = "{1}"' -f $name, $value)
+        }
+    }
+    Write-Host ""
+    Write-Host "  claude" -ForegroundColor Green
+    Write-Host ""
+    exit 0
+}
+
+& wsl -d $Distro -- bash -c "$bashCmd"
+exit $LASTEXITCODE

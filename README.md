@@ -188,6 +188,24 @@ print(resp.choices[0].message.content)
 Tool calling and the `qwen3` reasoning parser are enabled on the server.
 Quick benchmark while it runs (from WSL): `bash app/scripts/benchmark.sh`
 
+**Use it as a coding agent (Claude Code):** point
+[Claude Code](https://claude.com/claude-code) at this server and it edits your
+files and runs commands with no account and no per-token bill:
+
+```powershell
+.\app\claude-code.ps1          # on the 5090 PC (start the server first)
+```
+
+```bash
+# or from any other machine, once the server is shared
+QWEN_URL=http://<5090-ip>:8000 bash app/scripts/claude-code.sh run
+```
+
+Claude Code speaks the Anthropic API and vLLM serves the OpenAI one, so this
+starts a small LiteLLM bridge between them, configured from whatever
+`/v1/models` reports. Full guide, settings and troubleshooting:
+[app/docs/CLAUDE-CODE.md](app/docs/CLAUDE-CODE.md).
+
 **Use it from your phone/laptop (LAN / Tailscale):** tick **Share on network**
 on the Server tab (one admin prompt per start), or run `.\app\run.ps1 -Share`.
 Any device on your Wi-Fi or tailnet can then use `http://<this-PC's-IP>:8000/v1`
@@ -216,14 +234,16 @@ app/                       everything under the hood:
   share.ps1                  expose the API to LAN/Tailscale (used by -Share)
   uninstall.ps1              remove everything (distro + model); GUI 'Cleanup' button
   collect-logs.ps1           zip all logs + system state for bug reports
-  scripts/                   Linux-side setup, serve, chat, benchmark
-  docs/                      troubleshooting + performance notes
+  claude-code.ps1            run Claude Code against this server
+  scripts/                   Linux-side setup, serve, chat, benchmark, claude-code
+  docs/                      troubleshooting, performance, Claude Code
 ```
 
 ## Something not working?
 
-See [app/docs/TROUBLESHOOTING.md](app/docs/TROUBLESHOOTING.md) and
-[app/docs/PERFORMANCE.md](app/docs/PERFORMANCE.md), or click
+See [app/docs/TROUBLESHOOTING.md](app/docs/TROUBLESHOOTING.md),
+[app/docs/PERFORMANCE.md](app/docs/PERFORMANCE.md) and
+[app/docs/CLAUDE-CODE.md](app/docs/CLAUDE-CODE.md), or click
 **Collect diagnostics** in the app and share the ZIP it puts on your Desktop.
 
 ## Credits & license

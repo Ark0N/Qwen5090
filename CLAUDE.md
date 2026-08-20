@@ -23,7 +23,7 @@ then tell the user what still needs a smoke test on the real machine.
 
 | Task | Command |
 |------|---------|
-| Lint bash | `bash -n app/scripts/*.sh` |
+| Lint bash | `bash -n app/scripts/*.sh` (covers `claude-code.sh`) |
 | Lint python | `python3 -m py_compile app/scripts/chat.py` |
 | Parse PowerShell | portable pwsh (download tarball to scratchpad if missing): `[System.Management.Automation.Language.Parser]::ParseFile(...)` over `app/*.ps1` |
 | Lint PowerShell | `Invoke-ScriptAnalyzer -Path app/ -Severity Error` in that pwsh (`Install-Module PSScriptAnalyzer -Force -Scope CurrentUser`) |
@@ -178,12 +178,14 @@ to the dropdown only when nothing is answering.
    `XamlReader`). It never does work itself; it shells out to the layer below.
 2. **Windows scripts** — `app/install.ps1` (also run headless by the GUI with `-Unattended`),
    `run.ps1`, `chat.ps1`, `share.ps1`, `uninstall.ps1` (GUI Cleanup button; unregisters the distro
-   incl. model, removes share rules/shortcut/RunOnce), `collect-logs.ps1`. All GUI-spawned children
+   incl. model, removes share rules/shortcut/RunOnce), `collect-logs.ps1`, `claude-code.ps1` (thin
+   wrapper over the WSL-side bridge script — it has no GUI entry point). All GUI-spawned children
    run hidden with stdout/stderr redirected to log files.
 3. **WSL side (where everything real happens)** — vLLM is Linux-only, so `install.ps1` provisions
    Ubuntu-24.04 and `app/scripts/*.sh` run inside it: `setup-wsl.sh` (uv + Python 3.13 venv at
    `~/.qwen5090/venv` + model download), `serve.sh` (`vllm serve` with 5090-tuned flags),
-   `chat.py`/`benchmark.sh` (clients against the OpenAI-compatible endpoint).
+   `chat.py`/`benchmark.sh` (clients against the OpenAI-compatible endpoint), and
+   `claude-code.sh` (the Claude Code bridge — see its contract below).
 
 ### GUI concurrency model (gui.ps1) — don't fight it
 
@@ -217,6 +219,27 @@ The WPF dispatcher thread is never blocked. All patterns funnel through one 300 
   sane trivial answers with MTP on, 3/3 with it off. Cost of the full window: ~49 tok/s vs ~80 at
   131072 with fp8 + MTP. `MAX_SEQS=16` because the GDN/Mamba layers need one cache block per decode
   sequence and vLLM's default 256 aborts the start at a long context.
+- **Claude Code bridge** (`scripts/claude-code.sh`, `app/claude-code.ps1`, docs in
+  `app/docs/CLAUDE-CODE.md`): runs LiteLLM in its own venv at `~/.qwen5090/bridge/venv`,
+  translating Anthropic `/v1/messages` to this server's OpenAI API. It is a *client-side* tool —
+  it works against a remote server too (`QWEN_URL=`), and never touches the serving path.
+  Self-configuring: model id and `max_model_len` come from `/v1/models`, so it follows whatever
+  checkpoint is being served. Three properties of the chat template drive its whole design, and
+  all three are already documented above under "Measured on the 5090":
+  **(a)** Claude Code sends `reasoning_effort: "high"`, which this template 400s on, so the bridge
+  drops the client's value and injects `QWEN_EFFORT` (default `xhigh`) instead;
+  **(b)** reasoning tokens count against `max_tokens`, so the `qwen5090-fast` alias that Claude
+  Code uses for background chores disables thinking — otherwise those small-cap calls return
+  empty behind a 200; **(c)** the model name is unknown to Claude Code, which would assume a 200K
+  window, so `CLAUDE_CODE_MAX_CONTEXT_TOKENS` is exported from the real value.
+  `start` re-renders the config and restarts if it differs from what is running — settings changes
+  must not be silently ignored — and `stop` waits for the port to close, or the next `start` sees a
+  dying process as healthy and the session dies with "connection refused".
+  **Dependency pin that must not be dropped**: `fastapi>=0.136.3,<0.140.7`. 0.140.7 removed
+  `get_flat_dependant`, which LiteLLM's proxy imports at startup, while LiteLLM's metadata still
+  claims `fastapi<1.0` — so an unpinned install resolves to a pair that fails at *launch* with a
+  misleading `No module named 'proxy_server'`. Pinning fastapi below 0.116 instead silently
+  downgrades LiteLLM itself to 1.79.
 - **Sharing (LAN/Tailscale)**: `share.ps1` = netsh portproxy into WSL + firewall rule scoped to
   Private/Domain profiles only. WSL's IP changes every reboot, so `-Share`/the GUI checkbox
   re-applies it on each server start.
