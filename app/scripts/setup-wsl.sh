@@ -7,6 +7,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib-build-tools.sh
 source "$SCRIPT_DIR/lib-build-tools.sh"
+# shellcheck source=lib-platform.sh
+source "$SCRIPT_DIR/lib-platform.sh"
 
 VENV="${QWEN5090_VENV:-$HOME/.qwen5090/venv}"
 MODEL="${MODEL:-unsloth/Qwen3.8-27B-NVFP4}"   # or sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4
@@ -22,12 +24,23 @@ exec > >(tee -a "$LOG_FILE") 2>&1
 trap 'echo "ERROR: setup-wsl.sh failed at line $LINENO (exit $?)"' ERR
 echo "(logging to $LOG_FILE)"
 
-echo "== [1/6] Checking the GPU is visible inside WSL =="
+if qwen5090_is_wsl; then
+  echo "== [1/6] Checking the GPU is visible inside WSL =="
+else
+  echo "== [1/6] Checking the GPU is visible =="
+fi
 if ! command -v nvidia-smi >/dev/null 2>&1 || ! nvidia-smi >/dev/null 2>&1; then
-  echo "nvidia-smi failed inside WSL." >&2
-  echo "Install/update the *Windows* NVIDIA driver (>= 570; Game Ready or Studio)," >&2
-  echo "then run 'wsl --shutdown' from Windows and try again." >&2
-  echo "Never install a Linux NVIDIA driver inside WSL — it shadows the Windows one." >&2
+  if qwen5090_is_wsl; then
+    echo "nvidia-smi failed inside WSL." >&2
+    echo "Install/update the *Windows* NVIDIA driver (>= 570; Game Ready or Studio)," >&2
+    echo "then run 'wsl --shutdown' from Windows and try again." >&2
+    echo "Never install a Linux NVIDIA driver inside WSL — it shadows the Windows one." >&2
+  else
+    echo "nvidia-smi failed." >&2
+    echo "Install the NVIDIA driver (>= 570 for Blackwell / RTX 50-series) and reboot:" >&2
+    echo "    sudo ubuntu-drivers install     # or your distro's driver package" >&2
+    echo "'nvidia-smi' must list the GPU before vLLM can use it." >&2
+  fi
   exit 1
 fi
 nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader
@@ -124,8 +137,12 @@ TRITON_PY
 then
   echo "WARNING: Triton could not build its CUDA kernels (see the error above)." >&2
   echo "         vLLM will fail at startup until that is fixed. Usual causes: no" >&2
-  echo "         C compiler (apt-get install build-essential) or a WSL that cannot" >&2
-  echo "         see the GPU (wsl --shutdown, then update the Windows driver)." >&2
+  echo "         C compiler (apt-get install build-essential), or a GPU this" >&2
+  if qwen5090_is_wsl; then
+    echo "         WSL cannot see (wsl --shutdown, then update the Windows driver)." >&2
+  else
+    echo "         machine's driver cannot see (check nvidia-smi)." >&2
+  fi
 fi
 
 echo "== [6/6] Downloading model weights: $MODEL ($SIZE_HINT) =="
@@ -194,5 +211,4 @@ fi
 
 echo
 echo "Setup complete."
-echo "  Start the server from Windows:  double-click 'Start Qwen 5090.cmd' (or .\\app\\run.ps1)"
-echo "  ...or from this WSL shell:      bash app/scripts/serve.sh"
+qwen5090_start_hint

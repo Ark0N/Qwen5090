@@ -7,6 +7,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib-build-tools.sh
 source "$SCRIPT_DIR/lib-build-tools.sh"
+# shellcheck source=lib-platform.sh
+source "$SCRIPT_DIR/lib-platform.sh"
 
 VENV="${QWEN5090_VENV:-$HOME/.qwen5090/venv}"
 MODEL="${MODEL:-unsloth/Qwen3.8-27B-NVFP4}"   # or sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4
@@ -173,6 +175,26 @@ check_wsl_memory() {
   local budget_gib=$(( budget / 1073741824 ))
   local total_gib=$(( ($(awk '/^MemTotal:/ {print $2}' /proc/meminfo) * 1024) / 1073741824 ))
   local need_gib=$(( shard_gib + 6 ))   # weights + the loader's own working set
+  if ! qwen5090_is_wsl; then
+    cat >&2 <<EOF
+
+ERROR: not enough usable memory to load the model weights.
+
+  largest weights file : ${shard_gib} GiB
+  usable RAM + swap    : ${budget_gib} GiB   (this machine has ${total_gib} GiB of RAM)
+  needed               : ${need_gib} GiB of RAM + swap
+
+vLLM maps each weights shard with one private, writable mmap, and Linux
+heuristic overcommit refuses a mapping larger than MemAvailable + free swap.
+Free some RAM, or add swap to make up the shortfall:
+
+     sudo fallocate -l 8G /swapfile && sudo chmod 600 /swapfile
+     sudo mkswap /swapfile && sudo swapon /swapfile
+
+(Override this check with QWEN5090_SKIP_MEMCHECK=1 to let vLLM try anyway.)
+EOF
+    exit 1
+  fi
   cat >&2 <<EOF
 
 ERROR: this WSL virtual machine is too small to load the model weights.
