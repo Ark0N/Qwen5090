@@ -192,6 +192,53 @@ which strips `tool_choice` only when no callable tool is left in the request.
 Dropping the parameter unconditionally would have been one config line, but it
 would also silently defang a genuinely forced tool call.
 
+## Auto mode needs the classifier alias
+
+Claude Code's **auto mode** (`⏵⏵ auto mode on`) does not decide on its own
+whether a tool call is safe — it asks a model. Every tool call that is not
+plainly read-only costs one extra request, and that request is unlike any
+other the session makes:
+
+| | |
+|---|---|
+| system prompt | ~115 KB of security rules (`claude auto-mode config` prints them) |
+| streaming | no |
+| model asked for | `claude-sonnet-5` |
+| client-side timeout | 60 seconds, hard |
+
+On a local 27B that combination is brutal. The prompt alone is ~30K tokens,
+which on the 262K path is right at the prefill cliff, and if the alias it lands
+on has thinking enabled the reply cannot arrive inside 60 s. The whole session
+then behaves as if tools were broken, once per tool call:
+
+```
+Error: qwen5090 is temporarily unavailable (timed out), so auto mode cannot
+determine the safety of WebFetch right now.
+```
+
+The model itself is fine — its own turns take a couple of seconds and its tool
+calls are well-formed. Only the classification times out.
+
+The lever is the **sonnet slot**: `claude-sonnet-5` is what auto mode asks for,
+so `ANTHROPIC_DEFAULT_SONNET_MODEL` is what decides where the classifier lands.
+The bridge points it at a third alias, `qwen5090-classifier` — same weights,
+thinking off, output cap raised to 16384 for the classifier's second stage.
+`CLAUDE_CODE_AUTO_MODE_MODEL` looks like the right knob and is not: it is
+ignored, from the environment and from `settings.json` alike (measured against
+Claude Code 2.1.238). One side effect worth knowing: `/model sonnet` inside a
+session selects that alias too.
+
+Measured after the fix, on the 5090 at `-Ctx 131072`: a one-shot auto-mode
+session that runs a single mutating `Bash` call completes in **11 s**, tool
+included, and Claude Code reports the routing itself at startup —
+`[claude-code:unrecognized_model] {"model":"qwen5090-classifier",
+"query_source":"auto_mode"}`. Before the fix the same shape of call failed at
+60.05 s.
+
+If classification is still too slow — a long conversation pushes the prompt
+further up the prefill curve — turn auto mode off with `shift+tab` and approve
+tools yourself, or serve at `-Ctx 131072`, where prefill is far cheaper.
+
 ## Troubleshooting
 
 **`400 ... When using tool_choice, tools must be set`** on a WebSearch — the
@@ -223,6 +270,13 @@ but LiteLLM's own metadata still claims compatibility. The installer pins
 **Tools never fire.** The server must have been started by `serve.sh` — it
 passes `--enable-auto-tool-choice --tool-call-parser qwen3_coder`, without
 which the model emits tool calls as plain text and Claude Code cannot act.
+
+**`... is temporarily unavailable (timed out), so auto mode cannot determine
+the safety of ...`** — the tool call is fine; auto mode's classifier request
+timed out. See [Auto mode needs the classifier
+alias](#auto-mode-needs-the-classifier-alias). A bridge older than that fix
+routes the classifier through the main thinking alias and every tool fails this
+way; `bash app/scripts/claude-code.sh restart` re-renders the config.
 
 ## Security
 

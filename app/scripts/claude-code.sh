@@ -242,10 +242,13 @@ render_config() {
   local drop='      additional_drop_params: ["reasoning_effort"]'
   local main_extra="      extra_body: {\"chat_template_kwargs\": {\"reasoning_effort\": \"$QWEN_EFFORT\"}}"
 
-  # The fast alias turns thinking off entirely instead - reasoning tokens count
-  # against max_tokens, and Claude Code's background calls use a small cap, so
-  # with thinking on they come back empty behind an HTTP 200.
-  local fast_extra="      extra_body: {\"chat_template_kwargs\": {\"enable_thinking\": false}}"
+  # The fast and classifier aliases turn thinking off entirely instead -
+  # reasoning tokens count against max_tokens, and Claude Code's background
+  # calls use a small cap, so with thinking on they come back empty behind an
+  # HTTP 200. FAST_THINKING re-enables it for the fast alias only: the
+  # classifier's 60-second budget has no room for it under any setting.
+  local nothink_extra="      extra_body: {\"chat_template_kwargs\": {\"enable_thinking\": false}}"
+  local fast_extra="$nothink_extra"
   if [[ "$FAST_THINKING" == "1" ]]; then
     fast_extra="$main_extra"
   fi
@@ -278,6 +281,23 @@ $fast_extra
     model_info:
       max_input_tokens: $MODEL_CTX
       max_output_tokens: 8192
+      supports_function_calling: true
+
+  # Auto mode's permission classifier. Every tool call that is not plainly
+  # read-only costs one extra request - non-streaming, ~115 KB of rules in the
+  # system prompt, and a hard 60-second timeout on the client side. An xhigh
+  # thinking pass does not land inside that budget, so thinking is off here and
+  # the cap is generous enough for the classifier's second stage (10240).
+  - model_name: qwen5090-classifier
+    litellm_params:
+      model: hosted_vllm/$MODEL_ID
+      api_base: $QWEN_URL/v1
+      api_key: "none"
+$drop
+$nothink_extra
+    model_info:
+      max_input_tokens: $MODEL_CTX
+      max_output_tokens: 16384
       supports_function_calling: true
 
   # Anything else Claude Code asks for lands on the same server instead of 404.
@@ -413,7 +433,14 @@ export ANTHROPIC_AUTH_TOKEN="$BRIDGE_KEY"
 export ANTHROPIC_MODEL="qwen5090"
 export ANTHROPIC_SMALL_FAST_MODEL="qwen5090-fast"
 export ANTHROPIC_DEFAULT_HAIKU_MODEL="qwen5090-fast"
-export ANTHROPIC_DEFAULT_SONNET_MODEL="qwen5090"
+# Auto mode asks for "claude-sonnet-5" to classify tool calls, so the sonnet
+# slot is the only lever that reaches its classifier - CLAUDE_CODE_AUTO_MODE_MODEL
+# exists but is ignored (measured against 2.1.238, env and settings.json alike).
+# Left on the main alias, every classification is an xhigh thinking pass against
+# a 60-second timeout, and each tool fails with "qwen5090 is temporarily
+# unavailable (timed out), so auto mode cannot determine the safety of ...".
+# Side effect: /model sonnet picks that alias too - same weights, no thinking.
+export ANTHROPIC_DEFAULT_SONNET_MODEL="qwen5090-classifier"
 export ANTHROPIC_DEFAULT_OPUS_MODEL="qwen5090"
 # Claude Code does not know this model, so it would assume a 200K window and
 # start compacting long before the real limit.
