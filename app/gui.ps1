@@ -530,6 +530,13 @@ $xaml = @'
               <TextBlock x:Name="TxtServerS" Text="stopped" FontSize="12" Foreground="#8A93A5" VerticalAlignment="Center"/>
             </StackPanel>
           </Border>
+          <Border Style="{StaticResource StatusPill}" Margin="0,0,0,4">
+            <StackPanel Orientation="Horizontal">
+              <Ellipse x:Name="DotBridge" Width="8" Height="8" Fill="#4A5261" VerticalAlignment="Center" Margin="0,0,7,0"/>
+              <TextBlock Text="CLAUDE CODE" Style="{StaticResource PillLabel}"/>
+              <TextBlock x:Name="TxtBridgeS" Text="bridge stopped" FontSize="12" Foreground="#8A93A5" VerticalAlignment="Center"/>
+            </StackPanel>
+          </Border>
         </WrapPanel>
       </Grid>
     </Border>
@@ -673,18 +680,66 @@ $xaml = @'
         </Grid>
       </TabItem>
 
+      <TabItem>
+        <TabItem.Header>
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Style="{x:Null}" Text="&#xE943;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                       FontSize="14" VerticalAlignment="Center" Margin="0,0,7,0"/>
+            <TextBlock Style="{x:Null}" Text="Claude Code" VerticalAlignment="Center"/>
+          </StackPanel>
+        </TabItem.Header>
+        <Grid>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+          </Grid.RowDefinitions>
+          <WrapPanel Grid.Row="0" Margin="0,0,0,6">
+            <Button x:Name="BtnCcOpen" Content="Open Claude Code" Style="{StaticResource AccentButton}"
+                    ToolTip="Start the bridge if it is not up, then open a Claude Code session in its own window, answered by the model on this PC"/>
+            <Button x:Name="BtnCcStart" Content="Start bridge" Margin="0,0,8,6"
+                    ToolTip="Start just the translation bridge - for a Claude Code that is already open, or one on another machine"/>
+            <Button x:Name="BtnCcStop" Content="Stop bridge" IsEnabled="False" Margin="0,0,16,6"/>
+            <TextBlock Text="Effort" Style="{StaticResource FieldLabel}"/>
+            <!-- The chat template accepts these three and 400s on anything else,
+                 "high" included - which is exactly what Claude Code sends. -->
+            <ComboBox x:Name="CmbCcEffort" Width="104" SelectedIndex="2" VerticalAlignment="Center" Margin="0,0,14,6"
+                      ToolTip="How hard the model thinks before it answers. Applies to the next bridge start.">
+              <ComboBoxItem Content="low" ToolTip="Fastest, least thinking"/>
+              <ComboBoxItem Content="medium" ToolTip="A middle setting"/>
+              <ComboBoxItem Content="xhigh" ToolTip="The template's own default - best answers, slowest"/>
+            </ComboBox>
+            <TextBlock Text="Bridge port" Style="{StaticResource FieldLabel}"/>
+            <TextBox x:Name="TxtCcPort" Text="4000" Width="92" Height="30" Padding="6,0" TextAlignment="Center"
+                     VerticalAlignment="Center" Margin="0,0,0,6" ToolTip="Where the bridge listens (1-65535). Change it only if something else already uses 4000."/>
+          </WrapPanel>
+          <WrapPanel Grid.Row="1" Margin="0,0,0,6">
+            <Button x:Name="BtnCcEnv" Content="Windows env" Margin="0,0,8,6"
+                    ToolTip="For a Claude Code installed on Windows rather than inside WSL: prints the variables it needs and copies them to the clipboard"/>
+            <Button x:Name="BtnCcDoctor" Content="Doctor" Margin="0,0,16,6"
+                    ToolTip="Check the bridge end to end and print what it finds below"/>
+            <TextBlock Text="Needs Claude Code installed:  npm install -g @anthropic-ai/claude-code"
+                       FontSize="11" Foreground="#8A93A5" VerticalAlignment="Center" Margin="0,0,0,6"/>
+          </WrapPanel>
+          <TextBox x:Name="TxtCcLog" Grid.Row="2" Style="{StaticResource LogBox}"
+                   Text="Claude Code, answered by the model on this PC instead of the cloud.&#10;&#10;Claude Code speaks one API and the server speaks another, so a small translation&#10;bridge runs inside Linux between them. These buttons drive it.&#10;&#10;   Open Claude Code   starts the bridge if needed, then opens a session in its own window&#10;   Windows env        for a Claude Code installed on Windows instead of inside WSL&#10;&#10;Start the model server on the Server tab first - the bridge asks it which model it is&#10;serving and configures itself from the answer.&#10;"/>
+        </Grid>
+      </TabItem>
+
     </TabControl>
   </Grid>
 </Window>
 '@
 
 $Window = [Windows.Markup.XamlReader]::Parse($xaml)
-foreach ($name in 'TxtGpuS','TxtWslS','TxtModelS','TxtServerS','BtnRefresh','BtnLogs','BtnDiag',
-                  'DotGpu','DotWsl','DotModel','DotServer','TxtBusy',
+foreach ($name in 'TxtGpuS','TxtWslS','TxtModelS','TxtServerS','TxtBridgeS','BtnRefresh','BtnLogs','BtnDiag',
+                  'DotGpu','DotWsl','DotModel','DotServer','DotBridge','TxtBusy',
                   'BtnInstall','BtnCleanup','ChkSkipDownload','TxtSetupLog',
                   'CmbModel','TxtHfToken','TxtModelHint',
                   'BtnStart','BtnStop','TxtPort','CmbCtx','ChkMtp','ChkShare','TxtServerLog',
-                  'ChkThink','CmbEffort','BtnClear','RtbChat','TxtInput','BtnSend') {
+                  'ChkThink','CmbEffort','BtnClear','RtbChat','TxtInput','BtnSend',
+                  'BtnCcOpen','BtnCcStart','BtnCcStop','CmbCcEffort','TxtCcPort',
+                  'BtnCcEnv','BtnCcDoctor','TxtCcLog') {
     Set-Variable -Name $name -Value $Window.FindName($name)
 }
 
@@ -693,6 +748,19 @@ $script:SetupProc = $null
 $script:CleanupProc = $null
 $script:ServerProc = $null
 $script:DiagProc = $null
+# Claude Code bridge: a child per one-shot action (start/stop/doctor/env), plus
+# its own health ping. Bridge state is deliberately independent of $ServerProc -
+# the bridge outlives this window, and one started outside the GUI must show up.
+$script:BridgeProc = $null
+$script:BridgeAction = ""
+$script:BridgeUp = $false
+$script:BridgePingTask = $null
+$script:BridgeEnvLog = $null
+# A 'start' that succeeded but is not answering the Windows-side ping a few
+# seconds later means a bridge bound to loopback inside WSL was already up -
+# started by claude-code.sh directly, or by an earlier session. It works; this
+# window just cannot watch it. Explaining that beats a pill stuck on "stopped".
+$script:BridgeConfirmBy = $null
 $script:DiagZip = $null
 $script:ServerUp = $false
 # The id the running server reports (used in chat requests); the id the user
@@ -1096,6 +1164,215 @@ function Test-ServerHealth {
     $script:PingTask = $script:Http.GetAsync("http://localhost:$($TxtPort.Text)/v1/models")
 }
 
+# ------------------------------------------------------------ claude code
+# Everything here shells out to claude-code.ps1, which shells out to
+# scripts/claude-code.sh inside WSL. The GUI only ever starts children and
+# reads their logs - the same contract the Setup and Server tabs keep.
+function Set-BridgeStatus([string]$text, [string]$color) {
+    $TxtBridgeS.Text = $text
+    $TxtBridgeS.Foreground = New-Brush $color
+    Set-Dot $DotBridge $color
+}
+
+function Get-CcPorts {
+    # Returns @(serverPort, bridgePort), or $null after complaining about
+    # whichever one is wrong. Both matter: the bridge is told where the model
+    # server is, and a typo there fails 60 seconds later inside WSL.
+    $bridge = 0
+    if (-not [int]::TryParse($TxtCcPort.Text, [ref]$bridge) -or $bridge -lt 1 -or $bridge -gt 65535) {
+        [Windows.MessageBox]::Show("Invalid bridge port: $($TxtCcPort.Text)", "Qwen 5090") | Out-Null
+        return $null
+    }
+    $server = 0
+    if (-not [int]::TryParse($TxtPort.Text, [ref]$server) -or $server -lt 1 -or $server -gt 65535) {
+        [Windows.MessageBox]::Show("Invalid server port on the Server tab: $($TxtPort.Text)", "Qwen 5090") | Out-Null
+        return $null
+    }
+    return @($server, $bridge)
+}
+
+function Get-CcEffort {
+    if ($CmbCcEffort -and $CmbCcEffort.SelectedItem) { return [string]$CmbCcEffort.SelectedItem.Content }
+    return "xhigh"
+}
+
+function Start-BridgeAction([string]$action, [string]$switches) {
+    # One child at a time: the script below serialises anyway (start waits for
+    # the port to open, stop waits for it to close), and two at once would race
+    # for the same port and both lose.
+    if ($script:BridgeProc) {
+        Add-Log $TxtCcLog "Busy with '$($script:BridgeAction)' - wait for it to finish."
+        return
+    }
+    $ports = Get-CcPorts
+    if (-not $ports) { return }
+    $ts = Get-Date -Format "yyyyMMdd-HHmmss"
+    $outLog = Join-Path $script:LogDir "claude-code-$action-$ts.log"
+    $errLog = Join-Path $script:LogDir "claude-code-$action-$ts.err.log"
+    Add-Tail $outLog $TxtCcLog
+    Add-Tail $errLog $TxtCcLog
+    $psArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$script:RepoRoot\claude-code.ps1`"" +
+              " -Distro $Distro -Port $($ports[0]) -BridgePort $($ports[1]) -Effort $(Get-CcEffort) $switches"
+    Write-GuiLog "claude-code $action | args: $psArgs"
+    $script:BridgeAction = $action
+    $script:BridgeEnvLog = if ($action -eq "env") { $outLog } else { $null }
+    $script:BridgeProc = Start-Process powershell -ArgumentList $psArgs -PassThru -WindowStyle Hidden `
+        -RedirectStandardOutput $outLog -RedirectStandardError $errLog
+    $BtnCcStart.IsEnabled = $false
+    $BtnCcStop.IsEnabled = $false
+    $BtnCcEnv.IsEnabled = $false
+    $BtnCcDoctor.IsEnabled = $false
+}
+
+function Test-BridgeReady {
+    # The bridge reads the served model id and context length off /v1/models, so
+    # without a server it dies with a message about a server, not about itself.
+    if ($script:ServerUp) { return $true }
+    $r = [Windows.MessageBox]::Show(
+        "The model server is not running, and the bridge configures itself from it.`n`nStart the server first (Server tab)?",
+        "Qwen 5090", "YesNo", "Warning")
+    if ($r -eq "Yes") { Start-Server }
+    return $false
+}
+
+function Start-Bridge {
+    if (-not (Test-BridgeReady)) { return }
+    Add-Log $TxtCcLog "Starting the bridge on port $($TxtCcPort.Text) at effort $(Get-CcEffort)..."
+    Set-BridgeStatus "starting..." "#FFE0B84C"
+    Start-BridgeAction "start" "-Start -BindAll"
+}
+
+function Stop-Bridge {
+    Add-Log $TxtCcLog "Stopping the bridge..."
+    Start-BridgeAction "stop" "-Stop"
+}
+
+function Start-BridgeDoctor { Start-BridgeAction "doctor" "-Doctor" }
+
+function Copy-BridgeEnv {
+    # The env verb only reads settings back - it does not start anything, and the
+    # variables it prints point at a port that has to be live for them to be
+    # worth pasting anywhere.
+    if (-not $script:BridgeUp) {
+        $r = [Windows.MessageBox]::Show(
+            "The bridge is not running, and these variables only work while it is.`n`nStart it now?",
+            "Qwen 5090", "YesNo", "Question")
+        if ($r -eq "Yes") { Start-Bridge }
+        return
+    }
+    if (-not (Test-BridgeReady)) { return }
+    Add-Log $TxtCcLog "Collecting the variables a Windows Claude Code needs..."
+    Start-BridgeAction "env" "-Windows"
+}
+
+function Open-ClaudeCode {
+    if (-not (Test-BridgeReady)) { return }
+    $ports = Get-CcPorts
+    if (-not $ports) { return }
+    # The one child that is NOT hidden: Claude Code is an interactive terminal
+    # app, so it needs a real console. -NoExit keeps the window open when
+    # something fails, which is the only place the user would see why.
+    $psArgs = "-NoProfile -ExecutionPolicy Bypass -NoExit -File `"$script:RepoRoot\claude-code.ps1`"" +
+              " -Distro $Distro -Port $($ports[0]) -BridgePort $($ports[1]) -Effort $(Get-CcEffort) -BindAll"
+    Write-GuiLog "claude-code session | args: $psArgs"
+    Add-Log $TxtCcLog "Opening a Claude Code session in its own window (first start takes a few seconds)."
+    Add-Log $TxtCcLog "It runs inside Linux, in your home directory there. Close that window to end the session."
+    try {
+        $null = Start-Process powershell -ArgumentList $psArgs
+    } catch {
+        Add-Log $TxtCcLog "Could not open the session window: $($_.Exception.Message)"
+        Write-GuiLog "claude-code session FAILED to launch: $($_.Exception.Message)"
+    }
+}
+
+function Complete-BridgeAction {
+    $action = $script:BridgeAction
+    $code = -1
+    try { $code = $script:BridgeProc.ExitCode } catch { }
+    $script:BridgeProc = $null
+    $script:BridgeAction = ""
+    $BtnCcEnv.IsEnabled = $true
+    $BtnCcDoctor.IsEnabled = $true
+    $BtnCcStart.IsEnabled = -not $script:BridgeUp
+    $BtnCcStop.IsEnabled = $script:BridgeUp
+    Write-GuiLog "claude-code $action exited with $code"
+
+    if ($code -ne 0) {
+        Add-Log $TxtCcLog "'$action' failed (exit $code) - see the output above."
+        if ($action -eq "start") { Set-BridgeStatus "failed to start" "#FFFF6B6B" }
+        return
+    }
+    if ($action -eq "start") {
+        Add-Log $TxtCcLog "Bridge start finished - confirming it is reachable..."
+        $script:BridgeConfirmBy = (Get-Date).AddSeconds(8)
+        return
+    }
+    if ($action -eq "stop") {
+        $script:BridgeConfirmBy = $null
+        $script:BridgeUp = $false
+        Set-BridgeStatus "bridge stopped" "#FF8A93A5"
+        $BtnCcStart.IsEnabled = $true
+        $BtnCcStop.IsEnabled = $false
+        return
+    }
+    if ($action -eq "env" -and $script:BridgeEnvLog -and (Test-Path $script:BridgeEnvLog)) {
+        # The child prints PowerShell assignments; lift them out for the clipboard
+        # so the user can paste straight into their own window.
+        try {
+            $lines = @(Get-Content -LiteralPath $script:BridgeEnvLog |
+                       Where-Object { $_ -match '^\s*\$env:[A-Z0-9_]+\s*=' } |
+                       ForEach-Object { $_.Trim() })
+            if ($lines.Count -gt 0) {
+                Set-Clipboard -Value ($lines -join "`r`n")
+                Add-Log $TxtCcLog "Copied $($lines.Count) variables to the clipboard - paste them into a PowerShell window, then run: claude"
+                Add-Log $TxtCcLog "Keep that window for Qwen only; they apply to every 'claude' started from it, cloud sessions included."
+            }
+        } catch { Write-GuiLog "clipboard copy failed: $($_.Exception.Message)" }
+    }
+    $script:BridgeEnvLog = $null
+}
+
+function Test-BridgeHealth {
+    # Same async shape as Test-ServerHealth: start on one tick, read on a later
+    # one, so a bridge that is not there costs the UI nothing. Polled whatever
+    # the GUI itself did, so a bridge from an earlier session is picked up too.
+    if ($script:BridgePingTask) {
+        if (-not $script:BridgePingTask.IsCompleted) { return }
+        $task = $script:BridgePingTask
+        $script:BridgePingTask = $null
+        $alive = $false
+        try {
+            $resp = $task.Result
+            $alive = $resp.IsSuccessStatusCode
+            $resp.Dispose()
+        } catch { $alive = $false }
+
+        if ($alive) { $script:BridgeConfirmBy = $null }
+        if ($alive -and -not $script:BridgeUp) {
+            $script:BridgeUp = $true
+            Set-BridgeStatus "bridge on port $($TxtCcPort.Text)" "#FF76B900"
+            if (-not $script:BridgeProc) {
+                $BtnCcStart.IsEnabled = $false
+                $BtnCcStop.IsEnabled = $true
+            }
+            Write-GuiLog "bridge detected UP on port $($TxtCcPort.Text)"
+            Add-Log $TxtCcLog "Bridge is up on http://127.0.0.1:$($TxtCcPort.Text) - Open Claude Code will use it."
+        } elseif (-not $alive -and $script:BridgeUp) {
+            $script:BridgeUp = $false
+            Set-BridgeStatus "bridge stopped" "#FF8A93A5"
+            if (-not $script:BridgeProc) {
+                $BtnCcStart.IsEnabled = $true
+                $BtnCcStop.IsEnabled = $false
+            }
+            Write-GuiLog "bridge went DOWN"
+        }
+        return
+    }
+    $port = 0
+    if (-not [int]::TryParse($TxtCcPort.Text, [ref]$port) -or $port -lt 1 -or $port -gt 65535) { return }
+    $script:BridgePingTask = $script:Http.GetAsync("http://127.0.0.1:$port/health/liveliness")
+}
+
 # ------------------------------------------------------------------ chat
 $chatWorker = {
     param($url, $json, $queue)
@@ -1224,6 +1501,11 @@ $BtnCleanup.Add_Click({ Start-Cleanup })
 $BtnStart.Add_Click({ Start-Server })
 $BtnStop.Add_Click({ Stop-Server })
 $BtnSend.Add_Click({ Send-ChatMessage })
+$BtnCcOpen.Add_Click({ Open-ClaudeCode })
+$BtnCcStart.Add_Click({ Start-Bridge })
+$BtnCcStop.Add_Click({ Stop-Bridge })
+$BtnCcEnv.Add_Click({ Copy-BridgeEnv })
+$BtnCcDoctor.Add_Click({ Start-BridgeDoctor })
 $BtnClear.Add_Click({
     $script:Messages.Clear()
     # One paragraph per message now, so clearing the current one would leave
@@ -1245,7 +1527,7 @@ $timer.Add_Tick({
     Drain-ChatQueue
     # Spinner in the header: something is running that the user cannot see,
     # because every child process is hidden and logs into a tab below.
-    $busy = [bool]($script:SetupProc -or $script:CleanupProc -or $script:DiagProc -or
+    $busy = [bool]($script:SetupProc -or $script:CleanupProc -or $script:DiagProc -or $script:BridgeProc -or
                    $script:ChatBusy -or ($script:ServerProc -and -not $script:ServerUp))
     if ($busy) {
         # [int] rounds to even, which makes the spinner stutter; floor it.
@@ -1256,6 +1538,17 @@ $timer.Add_Tick({
     }
     if ($script:SetupProc -and $script:SetupProc.HasExited) { Complete-Install }
     if ($script:CleanupProc -and $script:CleanupProc.HasExited) { Complete-Cleanup }
+    if ($script:BridgeProc -and $script:BridgeProc.HasExited) { Complete-BridgeAction }
+    if ($script:BridgeConfirmBy -and (Get-Date) -gt $script:BridgeConfirmBy) {
+        $script:BridgeConfirmBy = $null
+        if (-not $script:BridgeUp) {
+            Set-BridgeStatus "running, not watchable" "#FFE0B84C"
+            $BtnCcStop.IsEnabled = $true
+            Add-Log $TxtCcLog "The bridge is up, but bound to loopback inside Linux by something other than this app, so this window cannot watch it. Sessions work normally."
+            Add-Log $TxtCcLog "To bring it under the app: click Stop bridge, then Start bridge."
+            Write-GuiLog "bridge started but not visible from Windows (loopback-bound elsewhere)"
+        }
+    }
     if ($script:DiagProc -and $script:DiagProc.HasExited) {
         $script:DiagProc = $null
         $BtnDiag.IsEnabled = $true
@@ -1278,6 +1571,8 @@ $timer.Add_Tick({
     # Ping unconditionally so a server started outside this GUI (run.ps1, or a
     # previous session) is detected too; a refused connection fails instantly.
     if ($script:TickCount % 7 -eq 0) { Test-ServerHealth }
+    # Offset from the server ping so the two never fire on the same tick.
+    if ($script:TickCount % 7 -eq 3) { Test-BridgeHealth }
 })
 $timer.Start()
 

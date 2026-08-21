@@ -179,7 +179,7 @@ to the dropdown only when nothing is answering.
 2. **Windows scripts** — `app/install.ps1` (also run headless by the GUI with `-Unattended`),
    `run.ps1`, `chat.ps1`, `share.ps1`, `uninstall.ps1` (GUI Cleanup button; unregisters the distro
    incl. model, removes share rules/shortcut/RunOnce), `collect-logs.ps1`, `claude-code.ps1` (thin
-   wrapper over the WSL-side bridge script — it has no GUI entry point). All GUI-spawned children
+   wrapper over the WSL-side bridge script, behind the GUI's Claude Code tab). All GUI-spawned children
    run hidden with stdout/stderr redirected to log files.
 3. **WSL side (where everything real happens)** — vLLM is Linux-only, so `install.ps1` provisions
    Ubuntu-24.04 and `app/scripts/*.sh` run inside it: `setup-wsl.sh` (uv + Python 3.13 venv at
@@ -235,6 +235,12 @@ The WPF dispatcher thread is never blocked. All patterns funnel through one 300 
   `app/docs/CLAUDE-CODE.md`): runs LiteLLM in its own venv at `~/.qwen5090/bridge/venv`,
   translating Anthropic `/v1/messages` to this server's OpenAI API. It is a *client-side* tool —
   it works against a remote server too (`QWEN_URL=`), and never touches the serving path.
+  The GUI's **Claude Code tab** drives the same wrapper: `-Start` brings up the bridge without a
+  session, and `-BindAll` binds it to 0.0.0.0 because WSL's localhost relay only forwards ports
+  bound to all interfaces — a 127.0.0.1 bridge works fine for a session inside WSL but is invisible
+  to the GUI's Windows-side health ping, which would leave a live bridge sitting behind a pill
+  reading "stopped". The session itself is the one GUI child that is **not** hidden: Claude Code is
+  an interactive terminal app, so it gets a real console (`-NoExit`, so a failure stays readable).
   Self-configuring: model id and `max_model_len` come from `/v1/models`, so it follows whatever
   checkpoint is being served. Four properties of this server drive its whole design, and
   the first three are already documented above under "Measured on the 5090":

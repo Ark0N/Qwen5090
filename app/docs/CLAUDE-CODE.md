@@ -37,7 +37,14 @@ The bridge is ~40 MB of Python, installs itself on first run into
 
 That starts the bridge inside WSL and opens Claude Code there. If Claude Code
 is installed on the Windows side instead, use `-Windows` and it prints the
-three environment variables to paste into your PowerShell window.
+three environment variables to paste into your PowerShell window. `-Start`
+brings up the bridge on its own, without opening a session on top of it.
+
+The app has all of this on its **Claude Code** tab: **Open Claude Code** starts
+the bridge if it is not already up and opens a session in a console window,
+**Windows env** copies those variables to the clipboard, and the header pill
+tracks the bridge whether the app started it or not. The effort dropdown there
+sets `QWEN_EFFORT` for the next bridge start.
 
 If that errors with *"is not digitally signed"*, run
 `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force` first — see

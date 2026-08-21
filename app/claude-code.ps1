@@ -18,6 +18,8 @@
 .EXAMPLE
   .\claude-code.ps1 -Effort medium   # think less, answer sooner
 .EXAMPLE
+  .\claude-code.ps1 -Start          # bridge only, no session (what the GUI uses)
+.EXAMPLE
   .\claude-code.ps1 -Status ; .\claude-code.ps1 -Stop
 #>
 [CmdletBinding()]
@@ -29,6 +31,14 @@ param(
     [ValidateSet('low','medium','xhigh')]
     [string]$Effort = 'xhigh',
     [switch]$Windows,
+    # Start the bridge and return, instead of launching a session on top of it.
+    [switch]$Start,
+    # Bind the bridge where Windows can reach it without also asking for the
+    # -Windows env dump. The GUI needs this: it polls the bridge's health from
+    # the Windows side, and WSL's localhost relay only forwards ports bound to
+    # all interfaces. A 127.0.0.1 bridge is invisible to it, so a session opened
+    # from the GUI would run fine behind a pill that still read "stopped".
+    [switch]$BindAll,
     [switch]$Status,
     [switch]$Stop,
     [switch]$Doctor
@@ -49,13 +59,14 @@ $scriptWsl = "/mnt/$drive" + ($scriptWin.Substring(2) -replace '\\','/')
 # inside WSL wants loopback; a Windows-native one reaches WSL services through
 # the localhost relay, which only forwards ports bound to all interfaces.
 # WSL sits behind its own NAT, so this is not a LAN exposure.
-$bridgeHost = if ($Windows) { "0.0.0.0" } else { "127.0.0.1" }
+$bridgeHost = if ($Windows -or $BindAll) { "0.0.0.0" } else { "127.0.0.1" }
 
 $verb = "run"
+if ($Start)  { $verb = "start" }
 if ($Stop)   { $verb = "stop" }
 if ($Status) { $verb = "status" }
 if ($Doctor) { $verb = "doctor" }
-if ($Windows -and -not ($Stop -or $Status -or $Doctor)) { $verb = "env" }
+if ($Windows -and -not ($Start -or $Stop -or $Status -or $Doctor)) { $verb = "env" }
 
 # Everything after -- goes through as ONE bash -c string: wsl.exe re-joins a
 # multi-argument tail through the default shell and quoting does not survive.

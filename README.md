@@ -226,11 +226,17 @@ itself, so it follows whichever checkpoint you are serving — nothing to keep i
 sync. You supply Claude Code:
 `npm install -g @anthropic-ai/claude-code`.
 
-*On the same PC as the server.* Start the server first (the Run button, or
-`.\app\run.ps1`), then:
+*On the same PC as the server.* Start the server first, then open the app's
+**Claude Code** tab and click **Open Claude Code** — it starts the bridge and
+opens a session in its own window. **Windows env** on the same tab is for a
+Claude Code installed on Windows rather than inside WSL: it copies the variables
+that one needs to the clipboard.
+
+The same thing from PowerShell, if you prefer:
 
 ```powershell
 .\app\claude-code.ps1              # opens Claude Code inside WSL
+.\app\claude-code.ps1 -Start       # just the bridge, no session
 .\app\claude-code.ps1 -Windows     # prints the env vars for a Windows-native Claude Code
 ```
 
