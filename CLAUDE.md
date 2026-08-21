@@ -461,7 +461,13 @@ A full-window run — server started by `serve.sh`, a real code-generation task 
   The sizing stays raise-only, so an existing `.wslconfig` at 24 GB must be lowered
   by hand, then `wsl --shutdown`.
 
-## The GPU falls off under load (open; six 0x116 dumps + two Linux Xid 79 as of 2026-08-21)
+## The GPU falls off under load (six 0x116 dumps + two Linux Xid 79 as of 2026-08-21)
+
+**Status 2026-08-21: a physical cause was found — the 12VHPWR was not fully
+seated — and is under validation.** Read "The 12VHPWR was not fully seated"
+and "Validating the reseat" below before adding a theory. The history that
+follows is kept because it is what falsified five software explanations, and
+because the reseat is not proven until the soak has run for a day.
 
 The **Windows** PC bluescreens with `0x116` VIDEO_TDR_ERROR, arg3 `0xc000009a`
 STATUS_INSUFFICIENT_RESOURCES, arg4 4, at the end of a serving run. Dumps:
@@ -556,21 +562,86 @@ Note what this does **not** license: it is still not a reason to blame a KV
 precision, a context length or `GPU_UTIL`. Those were falsified on the merits
 and stay falsified.
 
-**The cheap physical checks now outrank further log reading**, and none of them
-have been done:
+**The cheap physical checks now outrank further log reading.** 1 and 2 were
+done on 2026-08-21 at ~17:40 and **found the fault** — see the next section.
+3 and 4 are on hold pending the validation soak.
 
-1. **Inspect both ends of the 12VHPWR connector** for discoloration, browning
-   or melted pins — the well-known high-power-NVIDIA failure mode, and a
-   perfect match for an abrupt electrical fault under a ~570 W transient with
-   no thermal or PCIe warning. Free, and it either finds the fault or clears
-   the cable.
-2. **Reseat** the card and both cable ends.
+1. ~~**Inspect both ends of the 12VHPWR connector**~~ — **done 2026-08-21**,
+   clean: no discoloration, no browning, no melted or receded pins. That
+   matters twice over: it clears the cable of the well-known high-power-NVIDIA
+   melting mode, *and* it means the contact surfaces are undamaged, so a
+   reseat is a real fix rather than a delay.
+2. ~~**Reseat** the card and both cable ends~~ — **done 2026-08-21**: the
+   12VHPWR was **not fully seated**. Replugged.
 3. **Swap the 12VHPWR cable** for a different one, ideally native to the PSU
-   rather than an adapter.
+   rather than an adapter. Only if the crash returns after the reseat.
 4. Only then treat it as a card RMA — and note the PSU is not eliminated until
    the card is proven bad or tested in another system.
 
-### The 450 W cap test (running since 2026-08-21 17:37)
+### The 12VHPWR was not fully seated (found 2026-08-21 ~17:40)
+
+The owner pulled the 12VHPWR, found it **clean but not fully seated**, and
+replugged it. This is the first physical check ever performed in this
+investigation, and it is a live candidate for the root cause of all eight
+crashes: a partially-seated connector carries the full current across fewer
+and smaller contact patches, which is exactly how a card pulling 572.8 W
+transients drops off the bus with **no thermal, PCIe, ECC or throttle
+precursor** — the profile recorded in every incident above.
+
+It also explains the shape of the evidence that defeated five software
+theories. An intermittent mechanical contact is indifferent to KV precision,
+context length, `GPU_UTIL`, GPU scheduling, driver version and operating
+system, and it fires from steady state between two 2-second telemetry
+samples. Nothing in software was ever going to correlate.
+
+**The abrupt 17:39:58 shutdown was this work, not a ninth incident.** That boot
+(17:13:08 → ~17:39:58) ended with no Xid, no clean-shutdown records, and the
+GPU idle at 15 W / 225 MHz / PCIe gen 1 under the hand-applied 450 W cap; the
+telemetry file ends in NUL padding. That reads as an abrupt power loss and was
+briefly logged as one — it was the owner powering the box down to get at the
+cable. **The incident count stays at eight.** Boot -1 ending without a shutdown
+sequence is the signature of a deliberate power-off, not a fault.
+
+### Validating the reseat: uncapped soak from 2026-08-21 17:45
+
+Being validated by continuous single-stream decode load on the config that
+crashed twice that afternoon — `ctx=262144 gpu_util=0.93 mtp=1
+kv=turboquant_4bit_nc max_seqs=1`, abliterated build, patched MTP-3, `xhigh`
+thinking, 1200-token outputs back to back. Logged per request to
+`~/.qwen5090/logs/soak-*.log` alongside the usual `gpu-telemetry-*.log`.
+
+At the 38-minute mark: **143 requests, 0 failures**, 171,600 tokens generated,
+77.2 tok/s mean decode (46.8–104.8), GPU mean 375.8 W, **peak 517.6 W**, 62 °C
+peak, no Xid, no `EngineDeadError`, never throttled, PCIe gen 5 x16 throughout.
+
+Read it against the yardstick: the eight crashes hit between ~30 minutes and a
+couple of hours of active serving, so 38 minutes is only the bottom edge of
+meaningful. Hours are a signal; a full day is the result worth writing down.
+
+**This run is uncapped at 600 W, and that is deliberate** — it makes the test
+stronger, not weaker. The 450 W cap reverted at the 17:42 reboot (persistence
+mode is Disabled) and was not re-applied, so all 1,162 telemetry samples read
+`600.00`. Surviving a day at the *stock* limit, with the card free to pull its
+full transient, says the connector was the fault outright. It also means the
+450 W cap test is **confounded and effectively superseded**: the cable and the
+cap changed between the last crash and this run, so a crash-free capped result
+could no longer be attributed to the cap anyway.
+
+**Apparatus gap found here: `GPU_POWER_LIMIT` cannot work under systemd.**
+`serve.sh` applies it via `sudo -n`, and sudo on this box wants a password, so
+every service start warn-skips it:
+`>> WARNING: GPU_POWER_LIMIT=450 needs root and sudo asked for a password.`
+The knob is documented as re-applied on every start and silently is not — the
+exact revert-on-reboot failure it was written to prevent. If the cap test is
+ever resumed, fix it first with a sudoers drop-in
+(`testuser ALL=(root) NOPASSWD: /usr/bin/nvidia-smi -pl *`) and confirm with
+the telemetry `power.limit` column, not with intent.
+
+### The 450 W cap test (2026-08-21 17:37 — superseded by the reseat)
+
+*Kept for the reasoning and for the `GPU_POWER_LIMIT` contract it defines.
+The cap itself reverted at the 17:42 reboot and the validation soak runs
+uncapped on purpose; see "Validating the reseat" above.*
 
 `sudo nvidia-smi -pl 450`. If the crash stops recurring at a 450 W cap, it is
 power delivery. Persistence mode is Disabled, so **the cap is lost on every
