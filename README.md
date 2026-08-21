@@ -102,12 +102,12 @@ Two things worth being straight about:
 
 <table>
 <tr>
-<td width="50%"><img src="app/docs/images/server.png" alt="Server tab: start/stop, port, context and MTP toggles above a live log"></td>
-<td width="50%"><img src="app/docs/images/chat.png" alt="Chat tab: thinking mode and effort dial above the transcript"></td>
+<td width="50%"><img src="app/docs/images/server.png" alt="Server tab: the green SERVER pill reads running on port 8000, with vLLM startup output ending in Server is READY"></td>
+<td width="50%"><img src="app/docs/images/chat.png" alt="Chat tab: a question and the model's reply, with its reasoning shown above the answer in dim italic"></td>
 </tr>
 <tr>
-<td align="center"><em>Server tab — start it, watch it load, share it.</em></td>
-<td align="center"><em>Chat tab — thinking mode and the effort dial.</em></td>
+<td align="center"><em>Server tab — one click, then watch it come up.</em></td>
+<td align="center"><em>Chat tab — the model's thinking renders dim above its answer.</em></td>
 </tr>
 </table>
 
