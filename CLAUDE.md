@@ -9,7 +9,7 @@ RTX 5090. Remote: https://github.com/Ark0N/Qwen5090 (private, renamed from
 Qwen3.8-27B-NVFP4-RTX-5090 on 2026-08-20; GitHub redirects the old URL). Users get it as a
 ZIP; the entire UX is: unzip → double-click `Start Qwen 5090.cmd` → click Install.
 
-**This file is tracked** (it was gitignored until 2026-08-20, when the owner asked for it to be
+**This file is tracked** (it was gitignored until 2026-08-20, when the maintainer asked for it to be
 committed and synced). `.claude/` stays ignored — it is only harness runtime state.
 
 ## The core constraint: cross-platform development
@@ -461,15 +461,29 @@ A full-window run — server started by `serve.sh`, a real code-generation task 
   The sizing stays raise-only, so an existing `.wslconfig` at 24 GB must be lowered
   by hand, then `wsl --shutdown`.
 
-## The GPU falls off under load (six 0x116 dumps + two Linux Xid 79 as of 2026-08-21)
+## The GPU falls off under load — resolved, pending a full-day soak (2026-08-21)
 
-**Status 2026-08-21: a physical cause was found — the 12VHPWR was not fully
-seated — and is under validation.** Read "The 12VHPWR was not fully seated"
-and "Validating the reseat" below before adding a theory. The history that
-follows is kept because it is what falsified five software explanations, and
-because the reseat is not proven until the soak has run for a day.
+**Status: the cause was physical — the 12VHPWR was not fully seated — and both
+arms of the validation are clean so far.** Linux ran 42.6 minutes of unbroken
+decode load with zero faults; Windows has since served for a few hours under
+real use with nothing at all. That clears the fastest of the eight crashes
+several times over and is a genuine signal, but the standard this file set for
+itself is a full day, so **do not write "confirmed" yet**.
 
-The **Windows** PC bluescreens with `0x116` VIDEO_TDR_ERROR, arg3 `0xc000009a`
+Everything below this header is now a **historical record**. It is kept for one
+reason: it is what falsified five software explanations, and a future reader
+who sees a GPU drop off should not spend another day re-deriving them. Read
+"The 12VHPWR was not fully seated" and "Validating the reseat" before adding
+any theory, and if the crash returns, resume at step 3 of the physical checks
+(swap the cable) rather than at the top of this list.
+
+The user-facing version of all this lives in
+`app/docs/TROUBLESHOOTING.md` — reseat first, then driver, then headroom. Keep
+the two in step.
+
+### The history: eight incidents, five falsified theories
+
+The **Windows** PC bluescreened with `0x116` VIDEO_TDR_ERROR, arg3 `0xc000009a`
 STATUS_INSUFFICIENT_RESOURCES, arg4 4, at the end of a serving run. Dumps:
 2026-08-16 20:20, 08-20 21:42, 08-20 23:32, 08-21 00:44, 08-21 02:36,
 **08-21 10:22**. `nvlddmkm` event-153 reset storms accompanied the early ones and
@@ -532,7 +546,7 @@ now that both OSes are known to be the same PC — and Xid 79
 is specifically the electrical/PCIe-link signature — power-delivery transient,
 seating, or a failing card.
 
-### It is one machine (answered 2026-08-21 by the owner)
+### It is one machine (answered 2026-08-21 by the maintainer)
 
 The open question here — two 5090s or one — has an answer, and it is stronger
 than the question asked. There is **one physical PC**: same card, same PSU,
@@ -580,7 +594,7 @@ done on 2026-08-21 at ~17:40 and **found the fault** — see the next section.
 
 ### The 12VHPWR was not fully seated (found 2026-08-21 ~17:40)
 
-The owner pulled the 12VHPWR, found it **clean but not fully seated**, and
+The maintainer pulled the 12VHPWR, found it **clean but not fully seated**, and
 replugged it. This is the first physical check ever performed in this
 investigation, and it is a live candidate for the root cause of all eight
 crashes: a partially-seated connector carries the full current across fewer
@@ -598,7 +612,7 @@ samples. Nothing in software was ever going to correlate.
 (17:13:08 → ~17:39:58) ended with no Xid, no clean-shutdown records, and the
 GPU idle at 15 W / 225 MHz / PCIe gen 1 under the hand-applied 450 W cap; the
 telemetry file ends in NUL padding. That reads as an abrupt power loss and was
-briefly logged as one — it was the owner powering the box down to get at the
+briefly logged as one — it was the maintainer powering the box down to get at the
 cable. **The incident count stays at eight.** Boot -1 ending without a shutdown
 sequence is the signature of a deliberate power-off, not a fault.
 
@@ -635,10 +649,25 @@ back-to-back decode never produces the transient a cold prefill does — so this
 soak stresses sustained delivery well, and the worst-case spike less well. A
 mixed workload with large prefills is the better next test.
 
-The Windows half is the other arm of the same experiment: six of the eight
-crashes were 0x116 bugchecks there, so post-reseat Windows soak time counts
-toward the same question. Record it in the same terms — hours under active
-serving, and what the power limit actually read.
+**The Windows arm, post-reseat (2026-08-21):** clean. Six of the eight crashes
+were 0x116 bugchecks under Windows, so this is the arm that matters most, and
+after the reseat the machine served for **a few hours of ordinary use with no
+bugcheck, no freeze and no visible fault** — reported by the maintainer, who
+described it as working with no issues at all.
+
+Weigh it for what it is. It clears the fastest of the eight crashes by a wide
+margin and it is the platform that produced most of them, so together with the
+Linux soak it is the strongest evidence yet that the connector was the fault.
+But it is an **operator report, not an instrumented run**: no telemetry file,
+no per-request log, no recorded `power.limit`, and "ordinary use" is a lighter
+and burstier load than the back-to-back decode the Linux soak applied. It does
+not, on its own, meet the bar this section set.
+
+What would close it: a day of uptime with active serving on either OS, or a
+Windows run logged the way the Linux one was — `gpu-telemetry-*.log` alongside
+the server, so the power ceiling and the peak draw are on record rather than
+inferred. Until then the finding stands as *very likely* and the section stays
+open.
 
 **This run is uncapped at 600 W, and that is deliberate** — it makes the test
 stronger, not weaker. The 450 W cap reverted at the 17:42 reboot (persistence
@@ -656,7 +685,7 @@ every service start warn-skips it:
 The knob is documented as re-applied on every start and silently is not — the
 exact revert-on-reboot failure it was written to prevent. If the cap test is
 ever resumed, fix it first with a sudoers drop-in
-(`testuser ALL=(root) NOPASSWD: /usr/bin/nvidia-smi -pl *`) and confirm with
+(`<user> ALL=(root) NOPASSWD: /usr/bin/nvidia-smi -pl *`) and confirm with
 the telemetry `power.limit` column, not with intent.
 
 ### The 450 W cap test (2026-08-21 17:37 — superseded by the reseat)
