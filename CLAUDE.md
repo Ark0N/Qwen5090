@@ -142,6 +142,13 @@ to the dropdown only when nothing is answering.
   default shell; quoting only survives reliably via a single `bash -c` string). Escape `$` as
   `` `$ `` in PS double-quoted strings so bash expands it, and prefer single quotes inside the bash
   string over nested double quotes.
+  **Never write an unquoted assignment prefix** like `PATH=$HOME/bin:$PATH cmd`. `$HOME`/`$PATH`
+  are expanded before the inner bash parses the line, and WSL inherits the Windows PATH, which holds
+  `C:\Program Files (x86)\...` on virtually every machine — the bare `(` then dies with
+  `syntax error near unexpected token`, exit 2. Quote it, or avoid PATH in the command text
+  entirely. This is what made the GUI report an installed Claude Code as missing (gui.ps1:1244,
+  fixed 2026-08-21); `scripts/claude-code.sh:72` had it right all along with
+  `export PATH="$HOME/.local/bin:$PATH"`.
 - **Root layout is a product decision**: only `Start Qwen 5090.cmd`, `README.md`, `LICENSE` (plus
   dotfiles) at the root; all code under `app/`. Don't add root files — ZIP users must see one thing
   to click. The launcher name, the desktop shortcut, and install.ps1's RunOnce entry all reference

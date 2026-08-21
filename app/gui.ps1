@@ -1238,10 +1238,19 @@ function Start-BridgeAction([string]$action, [string]$switches) {
 function Test-ClaudeInstalled {
     # Synchronous, like the WSL probes Update-Status already does: one warm
     # `wsl -d ... bash -c` is a few hundred ms and this runs on a click, not on
-    # the timer. PATH is set explicitly - the installer puts claude in
-    # ~/.local/bin, which a non-login `bash -c` does not pick up by itself.
+    # the timer. The installer puts claude in ~/.local/bin, which a non-login
+    # `bash -c` does not pick up by itself, so look there first and only then
+    # fall back to whatever is on PATH.
+    #
+    # Do NOT put the lookup back behind a `PATH=$HOME/.local/bin:$PATH command
+    # -v claude` prefix. $HOME and $PATH are expanded before the inner bash
+    # parses the line, and the inherited Windows PATH holds
+    # `C:\Program Files (x86)\...` on virtually every machine - the bare `(`
+    # then dies with "syntax error near unexpected token", exit 2, which is
+    # indistinguishable from "not installed". It reported a perfectly good
+    # install as missing on every click.
     try {
-        & wsl -d $Distro -- bash -c "PATH=`$HOME/.local/bin:`$PATH command -v claude >/dev/null" 2>$null
+        & wsl -d $Distro -- bash -c "test -x `"`$HOME/.local/bin/claude`" || command -v claude >/dev/null" 2>$null
         return ($LASTEXITCODE -eq 0)
     } catch { return $false }
 }
