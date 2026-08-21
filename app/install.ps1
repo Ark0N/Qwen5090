@@ -629,7 +629,7 @@ if ($script:TdrRebootNeeded) {
     Write-Host "This run raised the GPU watchdog timeout, and Windows only reads that value at" -ForegroundColor Yellow
     Write-Host "boot. Starting the server before you restart can bluescreen the machine" -ForegroundColor Yellow
     Write-Host "(0x116 VIDEO_TDR_ERROR) about a minute into loading the model. If it still does" -ForegroundColor Yellow
-    Write-Host "after the restart, run:  .\app\run.ps1 -Ctx 131072 -GpuUtil 0.80" -ForegroundColor Yellow
+    Write-Host "after the restart, run:  .\app\run.ps1 -GpuUtil 0.80  (see docs/TROUBLESHOOTING.md)" -ForegroundColor Yellow
     Write-Host ""
 }
 Write-Host "Open the app     :  double-click 'Start Qwen 5090.cmd' (or the 'Qwen 5090' desktop shortcut)"

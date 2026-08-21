@@ -24,8 +24,8 @@ from WSL (add `TOKENS=1024` for a longer run).
 - **Long context costs the MTP speed-up**: a TurboQuant KV cache and speculative
   decoding together corrupt this model's output (empty replies, or `: : : :`
   until the token limit, all behind an HTTP 200), so serve.sh turns MTP off
-  whenever it picks a 4-bit cache. 262K runs ~49 tok/s; 131072 keeps fp8 + MTP
-  and runs ~80 tok/s. Pick the window you actually need
+  whenever it picks a 4-bit cache. 262K runs ~49 tok/s; the default 131072 keeps
+  fp8 + MTP and runs ~80 tok/s. Pick the window you actually need
 - **Repeated prompts are nearly free above 128K**: the 4-bit path turns on
   prefix caching, so a request that shares its opening tokens with an earlier
   one skips re-reading them. Measured on a 32,422-token prefix: 3.80 s cold,
@@ -54,7 +54,8 @@ changing any setting.
 2. **Context length.** `-Ctx` above 131072 switches the KV cache to 4-bit,
    which costs speed twice over: decode drops from ~80 to ~49 tok/s (MTP has
    to be turned off with it), and long prompts prefill far slower — see the
-   next lever. 131072 is the sweet spot; go higher only when you need the room.
+   next lever. That is why 131072 is the default; go higher only when you
+   actually need the room.
 3. **Thinking mode.** Reasoning tokens are generated tokens: `-Effort xhigh`
    answers harder questions but takes proportionally longer. Use
    `chat.ps1 -NoThink` for snappy chat. The levels are `low`, `medium` and

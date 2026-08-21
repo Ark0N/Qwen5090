@@ -183,13 +183,20 @@ Management in the power plan, and set `HwSchMode` to `0` under the
 `GraphicsDrivers` key to disable hardware-accelerated GPU scheduling.
 
 **2. Give the reset room to succeed.** Run with headroom, and a context that
-fits in it. This also drops the 4-bit KV cache and the GDN path in favour of
-fp8, which turns MTP back on — so it is the faster configuration anyway
-(~80 tok/s against ~49), at the cost of the 262K window:
+fits in it. The default `-Ctx 131072` already keeps you on the fp8 KV cache
+rather than the 4-bit/GDN path, which is the faster configuration anyway
+(~80 tok/s against ~49); the remaining lever is VRAM headroom:
 
 ```powershell
-.\app\run.ps1 -Ctx 131072 -GpuUtil 0.80
+.\app\run.ps1 -GpuUtil 0.80
 ```
+
+Be clear-eyed about this one, though: on the test machine it is **not a cure**.
+A crash on 2026-08-21 landed mid-decode at `ctx=131072 mtp=1 kv=fp8` with the
+same `0x116 / 0xC000009A` signature, and earlier crashes ruled out the watchdog,
+`-GpuUtil 0.85`, driver 610.88 and hardware-accelerated GPU scheduling in turn.
+A smaller window may lengthen the interval between faults; nothing so far stops
+them.
 
 **3. Keep the watchdog raise.** It is harmless and rules out one failure mode.
 The installer sets it, and **the values are only read at boot**:

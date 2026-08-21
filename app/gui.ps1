@@ -617,13 +617,15 @@ $xaml = @'
             <TextBlock Text="Context" Style="{StaticResource FieldLabel}"/>
             <!-- Content is the label the user reads; Tag carries the exact token
                  count that run.ps1 needs (Start-Server reads Tag, never Content). -->
-            <ComboBox x:Name="CmbCtx" Width="104" VerticalAlignment="Center" SelectedIndex="2" Margin="0,0,14,6"
+            <ComboBox x:Name="CmbCtx" Width="104" VerticalAlignment="Center" SelectedIndex="1" Margin="0,0,14,6"
                       ToolTip="Maximum context length - higher uses more VRAM">
               <!-- 262K needs a 4-bit KV cache to fit in 32 GB; serve.sh switches to
-                   one automatically above 128K, so every entry here really starts. -->
+                   one automatically above 128K, so every entry here really starts.
+                   SelectedIndex is 1 (128K): the fp8 path keeps MTP and runs ~80 tok/s,
+                   against ~49 for the full window. -->
               <ComboBoxItem Content="64K" Tag="65536" ToolTip="65,536 tokens - pick this if you are gaming at the same time"/>
-              <ComboBoxItem Content="128K" Tag="131072" ToolTip="131,072 tokens - the fastest setting: fp8 KV cache, MTP stays on, about 80 tok/s. Plenty of room for normal chats."/>
-              <ComboBoxItem Content="262K" Tag="262144" ToolTip="262,144 tokens - the model's native maximum, and the default. It needs a 4-bit KV cache to fit in 32 GB, which costs speed: about 49 tok/s instead of 80, and pasting a very long document can take minutes before the reply starts. Switch to 128K if you would rather have the speed."/>
+              <ComboBoxItem Content="128K" Tag="131072" ToolTip="131,072 tokens - the default, and the fastest setting: fp8 KV cache, MTP stays on, about 80 tok/s. Plenty of room for normal chats."/>
+              <ComboBoxItem Content="262K" Tag="262144" ToolTip="262,144 tokens - the model's native maximum. It needs a 4-bit KV cache to fit in 32 GB, which costs speed: about 49 tok/s instead of 80, and pasting a very long document can take minutes before the reply starts. Pick it only when you actually need the room."/>
             </ComboBox>
             <CheckBox x:Name="ChkMtp" Content="MTP speed boost" ToolTip="Speculative decoding (multi-token prediction) - faster, leave on. Ignored above 128K context: it corrupts output when the KV cache is 4-bit, so the server turns it off for you." IsChecked="True" Margin="0,0,14,6"/>
             <CheckBox x:Name="ChkShare" Content="Share on network" ToolTip="Other devices on your Wi-Fi or tailnet (LAN/Tailscale) can use the API - asks for admin once per start" Margin="0,0,0,6"/>

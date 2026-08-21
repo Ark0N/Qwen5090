@@ -116,8 +116,10 @@ and nvcc lives in the CUDA toolkit, not the driver:
   fallback has to drop MTP too.
 - **262144 needs a 4-bit KV cache to start on a 32 GB card**: weights ~19.5 GiB leave ~6.3 GiB,
   and an fp8 cache for that window wants 9.13 GiB. 0d49281 made serve.sh switch precision to fit
-  rather than refuse, so 262144 is the default again everywhere — see the KV-precision contract
-  below, and the prefill cliff under "Measured on the 5090".
+  rather than refuse, so 262144 starts everywhere it is asked for — but it is **no longer the
+  default**: 131072 is (2026-08-21), because the fp8 path keeps MTP and runs ~80 tok/s against ~49
+  and avoids the prefill cliff. See the KV-precision contract below, and "Measured on the 5090".
+  The switch was **not** a bluescreen fix — see "The 0x116 bluescreens" below.
 
 Both of the loose ends recorded here have since been fixed. The stale `.incomplete` blob (the reason
 setup printed "downloaded 21G of ~19 GB") is now cleared by setup-wsl.sh before each download - by
@@ -208,7 +210,8 @@ The WPF dispatcher thread is never blocked. All patterns funnel through one 300 
   `ubuntu2404.exe install --root`, then create a `qwen` user (passwordless sudo) and set it as
   default via `/etc/wsl.conf` + `wsl --terminate`. Falls back to the interactive OOBE window if the
   store launcher is missing. Re-running install is always safe (idempotent by design).
-- **serve.sh env knobs** (set by run.ps1): `MODEL`, `CTX` (default 262144, the native max), `PORT`,
+- **serve.sh env knobs** (set by run.ps1): `MODEL`, `CTX` (default **131072**; 262144 is the
+  model's native max), `PORT`,
   `GPU_UTIL` (0.90, dropped to **0.85 on the 4-bit KV path** — see below; run.ps1 forwards it only
   when `-GpuUtil` is actually bound, because any value suppresses that default), `MTP`,
   `KV_CACHE_DTYPE`, `ATTN_BACKEND` (empty = let vLLM pick), `MAX_SEQS` (16),
@@ -229,7 +232,8 @@ The WPF dispatcher thread is never blocked. All patterns funnel through one 300 
   That switch then *forces MTP off*: TurboQuant + speculative decoding makes this model
   emit empty content or `: : : :` to the token limit while still answering HTTP 200 — measured 0/3
   sane trivial answers with MTP on, 3/3 with it off. Cost of the full window: ~49 tok/s vs ~80 at
-  131072 with fp8 + MTP. `MAX_SEQS=16` because the GDN/Mamba layers need one cache block per decode
+  the default 131072 with fp8 + MTP — which is exactly why 131072 is the default and 262144 is
+  opt-in. `MAX_SEQS=16` because the GDN/Mamba layers need one cache block per decode
   sequence and vLLM's default 256 aborts the start at a long context.
 - **Claude Code bridge** (`scripts/claude-code.sh`, `app/claude-code.ps1`, docs in
   `app/docs/CLAUDE-CODE.md`): runs LiteLLM in its own venv at `~/.qwen5090/bridge/venv`,
@@ -364,6 +368,46 @@ A full-window run — server started by `serve.sh`, a real code-generation task 
   (`$hostGB - 12`), giving 20 GB + 8 GB swap on a 32 GB machine — still ≥ `$needGB`.
   The sizing stays raise-only, so an existing `.wslconfig` at 24 GB must be lowered
   by hand, then `wsl --shutdown`.
+
+## The 0x116 bluescreens (open; six dumps as of 2026-08-21)
+
+This PC bluescreens with `0x116` VIDEO_TDR_ERROR, arg3 `0xc000009a`
+STATUS_INSUFFICIENT_RESOURCES, arg4 4, at the end of a serving run. Dumps:
+2026-08-16 20:20, 08-20 21:42, 08-20 23:32, 08-21 00:44, 08-21 02:36,
+**08-21 10:22**. `nvlddmkm` event-153 reset storms accompanied the early ones and
+stopped after the driver update; the later crashes produce no such events.
+
+**Five theories have been falsified in turn. Do not re-argue any of them from
+scratch, and do not ship any of them as a fix.**
+
+1. 612ef34 — too-short GPU watchdog. `TdrDelay`/`TdrDdiDelay` were confirmed live
+   at 10 during a crash.
+2. 250b4ff — thin VRAM headroom at `GPU_UTIL=0.90`. The 21:42 crash ran at 0.85.
+3. 8d3ff91 — the display driver (NVIDIA Bug 6546168, fixed in 610.74). 610.88 was
+   installed 08-20 23:51 and the PC crashed again 52 minutes later.
+4. `HwSchMode=1` (hardware-accelerated GPU scheduling off). Armed by the 01:35
+   reboot; the run that started 01:38 still crashed at 02:36.
+5. **The `turboquant_4bit_nc`/GDN path at `CTX=262144`.** This was the last
+   correlation standing after five crashes — and the sixth killed it. The 10:22
+   crash ran the shipped fp8 configuration
+   (`soak131k-20260821-101831.log`: `ctx=131072 gpu_util=0.90 mtp=1 kv=fp8
+   prefix_cache=0`), served ~2 minutes at 54–98 tok/s, and died mid-decode: last
+   stat line 10:21:49 `0.0 tokens/s, Running: 1 reqs`, bugcheck at 10:22:30.
+
+So the crash is **not** specific to a KV precision, a context length, a
+`GPU_UTIL`, the driver, or GPU scheduling. What every crash does share is a vLLM
+decode/prefill workload on this card; a June `nvlddmkm` storm at an idle desktop
+(see TROUBLESHOOTING.md) says the fault predates the toolkit. Treat it as
+hardware/platform until something new says otherwise.
+
+131072 became the default on 2026-08-21 for speed (~80 tok/s vs ~49) and to
+avoid the prefill cliff — **not** as a crash fix. Do not describe it as one.
+
+Recording new incidents: check for a minidump *and* a Kernel-Power 41 first —
+the 08-21 01:01 freeze was commit exhaustion (`dwm.exe` `STATUS_COMMITMENT_LIMIT`)
+with vLLM not running, and does not belong in the count above. When reading old
+logs, `gpu_util=0.9` (one decimal) means a caller passed `-GpuUtil` explicitly,
+which suppresses serve.sh's own choice; `0.90`/`0.85` means serve.sh chose it.
 
 ## Model/stack facts (post-cutoff; verified via web 2026-08)
 

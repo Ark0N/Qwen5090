@@ -98,10 +98,10 @@ print(d["id"])' 2>/dev/null || true)
   MODEL_CTX=$(printf '%s' "$json" | python3 -c '
 import json,sys
 d=json.load(sys.stdin)["data"][0]
-print(d.get("max_model_len") or 262144)' 2>/dev/null || true)
+print(d.get("max_model_len") or 131072)' 2>/dev/null || true)
 
   [[ -n "${MODEL_ID:-}" ]] || die "could not read a model id from $QWEN_URL/v1/models"
-  MODEL_CTX="${MODEL_CTX:-262144}"
+  MODEL_CTX="${MODEL_CTX:-131072}"
 }
 
 # ---------------------------------------------------------------- install ---

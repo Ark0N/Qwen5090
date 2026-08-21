@@ -3,7 +3,8 @@
   Start the Qwen3.8-27B-NVFP4 vLLM server (runs inside WSL2, Ctrl+C stops it).
 
 .EXAMPLE
-  .\run.ps1                     # full 262K context, port 8000, MTP on
+  .\run.ps1                     # 128K context, port 8000, MTP on
+  .\run.ps1 -Ctx 262144         # the model's full window (slower: 4-bit KV cache, no MTP)
   .\run.ps1 -Ctx 65536          # smaller window, if you are gaming at the same time
   .\run.ps1 -Port 8080 -NoMtp
   .\run.ps1 -Uncensored         # serve the abliterated build instead
@@ -12,9 +13,11 @@
 [CmdletBinding()]
 param(
     [string]$Distro = "Ubuntu-24.04",
-    # The model's native maximum. serve.sh drops the KV cache to 4-bit above
-    # 128K so this actually fits on a 32 GB card - see the note there.
-    [int]$Ctx = 262144,
+    # 131,072 - the largest window that still holds an fp8 KV cache on a 32 GB
+    # card, so MTP stays on and decoding runs ~80 tok/s instead of ~49. The
+    # model goes to 262144; serve.sh drops the KV cache to 4-bit above 128K so
+    # that window fits too - see the note there.
+    [int]$Ctx = 131072,
     [int]$Port = 8000,
     [string]$Model = "unsloth/Qwen3.8-27B-NVFP4",
     # Download it first with:  .\install.ps1 -Uncensored

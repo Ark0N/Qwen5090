@@ -268,7 +268,7 @@ included, and Claude Code reports the routing itself at startup —
 
 If classification is still too slow — a long conversation pushes the prompt
 further up the prefill curve — turn auto mode off with `shift+tab` and approve
-tools yourself, or serve at `-Ctx 131072`, where prefill is far cheaper.
+tools yourself, or drop to `-Ctx 65536`, where prefill is cheaper still.
 
 ## Troubleshooting
 
@@ -289,8 +289,8 @@ not shared. Start it on the 5090 PC; for remote use run `.\app\share.ps1`.
 **Long silences on a big codebase** — expected, and it is prefill, not a hang.
 Above ~30K tokens of context, prompt processing on the 262K path collapses from
 ~11,000 tok/s to a few hundred. The GPU sits at 100% utilisation but low
-wattage. Serving at `-Ctx 131072` is dramatically faster per prompt; see
-[PERFORMANCE.md](PERFORMANCE.md).
+wattage. The default `-Ctx 131072` stays on the fp8 cache and avoids that cliff;
+see [PERFORMANCE.md](PERFORMANCE.md).
 
 **`No module named 'proxy_server'`** — a broken LiteLLM/FastAPI pair. FastAPI
 0.140.7 removed `get_flat_dependant`, which LiteLLM's proxy imports at startup,

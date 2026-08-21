@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Serve Qwen3.8-27B-NVFP4 with vLLM, tuned for a single RTX 5090 (32 GB).
 # Every knob is env-overridable, e.g.:  CTX=262144 PORT=8080 bash scripts/serve.sh
+# (262144 is the model's native maximum; the default is 131072, see below.)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -9,10 +10,12 @@ source "$SCRIPT_DIR/lib-build-tools.sh"
 
 VENV="${QWEN5090_VENV:-$HOME/.qwen5090/venv}"
 MODEL="${MODEL:-unsloth/Qwen3.8-27B-NVFP4}"   # or sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4
-# The model's native maximum. It does not fit with an fp8 KV cache on a 32 GB
-# card (that window wants ~9.1 GiB against the ~6.2 GiB free after the weights),
-# so the KV precision is chosen further down to match the context asked for.
-CTX="${CTX:-262144}"
+# 131,072 tokens: the largest window that still holds an fp8 KV cache on a 32 GB
+# card, so MTP stays on and decoding runs ~80 tok/s instead of ~49. The model
+# goes to 262144, but that window wants ~9.1 GiB of fp8 cache against the
+# ~6.2 GiB free after the weights, so asking for it switches the KV precision
+# further down to match - see the note there.
+CTX="${CTX:-131072}"
 PORT="${PORT:-8000}"
 GPU_UTIL_EXPLICIT="${GPU_UTIL+set}"
 GPU_UTIL="${GPU_UTIL:-0.90}"  # leave headroom: on WSL the same GPU drives the Windows desktop

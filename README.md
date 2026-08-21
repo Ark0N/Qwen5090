@@ -81,7 +81,7 @@ Two things worth being straight about:
 - **The model**: Qwen3.8-27B — Alibaba's Apache-2.0, 27B multimodal model
   (released 2026-08-14) with 262K context and a reasoning dial, in NVIDIA's
   NVFP4 4-bit format built for your 5090's Blackwell tensor cores. Expect
-  ~49 tokens/s at the default 262K context, or ~80 at 128K — see
+  ~80 tokens/s at the default 128K context, or ~49 at the full 262K — see
   [PERFORMANCE.md](app/docs/PERFORMANCE.md).
 - **A control panel** (pure Windows, no Electron): one-button install with live
   progress, server start/stop with health light, and streaming chat where the
@@ -178,7 +178,7 @@ and which need `--trust-remote-code`.
 
 | Knob | Default | Notes |
 |---|---|---|
-| `run.ps1 -Ctx` | `262144` | Context window, the model's native maximum. Above 128K the KV cache switches to 4-bit so it fits in 32 GB, which also turns MTP off (the two together corrupt the output) — so the full window runs at ~49 tok/s. Choose `131072` for ~80 tok/s with the higher-precision fp8 cache and MTP on, or `65536` if you are gaming at the same time. |
+| `run.ps1 -Ctx` | `131072` | Context window. 128K is the largest that still holds a higher-precision fp8 KV cache in 32 GB, which keeps MTP on and runs ~80 tok/s. `262144` is the model's native maximum, but above 128K the KV cache switches to 4-bit so it fits, which also turns MTP off (the two together corrupt the output) — so the full window runs at ~49 tok/s. Use `65536` if you are gaming at the same time. |
 | `run.ps1 -Port` | `8000` | API port. |
 | `run.ps1 -GpuUtil` | `0.90`, or `0.85` above 128K | Fraction of VRAM the server may claim. The Windows desktop shares the GPU, and at the full 262K window the 4-bit cache has capacity to spare — so it keeps a little more back for Windows there. Only pass this if you know you need to. |
 | `run.ps1 -NoMtp` | off | Disables speculative decoding if it misbehaves. |
@@ -277,9 +277,10 @@ Undo anytime: `.\app\share.ps1 -Remove`. HTTPS alternative with zero setup:
 `tailscale serve --bg 8000`.
 
 **Why NVFP4 on a 5090:** the ~22 GB weights fit the 32 GB card with room for
-the full 262K context (4-bit KV cache + Qwen3.8's hybrid attention), it runs ~1.5×
-faster than BF16 on Blackwell's FP4 tensor cores, and Unsloth's dynamic quants
-keep accuracy close to the original checkpoint.
+a 128K context at fp8 — or the full 262K with a 4-bit KV cache, thanks to
+Qwen3.8's hybrid attention. It runs ~1.5× faster than BF16 on Blackwell's FP4
+tensor cores, and Unsloth's dynamic quants keep accuracy close to the original
+checkpoint.
 
 ## Repo layout
 
