@@ -14,8 +14,9 @@ committed and synced). `.claude/` stays ignored — it is only harness runtime s
 
 ## The core constraint: cross-platform development
 
-*(Applies when developing from Linux. If you are on the RTX 5090 PC itself, this constraint is
-lifted — skip to "Continuing on the Windows 11 machine" below.)*
+*(Applies when developing from Linux **without a GPU**. If you are on the RTX 5090 PC itself, this
+constraint is lifted — skip to "Continuing on the Windows 11 machine" below. If you are on a native
+Linux box that has the 5090 in it, skip to "Running on native Linux" — you can run the real thing.)*
 
 The original dev machine is **Linux**, but everything ships for **Windows 11 + WSL2**. PowerShell
 cannot execute there, so nothing GUI/installer-side is ever runtime-tested locally — validate hard,
@@ -127,6 +128,81 @@ mtime, `-mmin +60`, because huggingface_hub *resumes* from those files and the l
 the same suffix, so a blanket delete or a `du --exclude` would break the transfer or zero the
 progress line. And the MODEL pill now reports the served model whenever a server is up, falling back
 to the dropdown only when nothing is answering.
+
+## Running on native Linux (2026-08-21)
+
+**The product now targets two platforms**, and everything under `app/scripts/`
+is the shared half. A third machine entered the picture: a native **Ubuntu 26.04**
+box with a real RTX 5090 (driver 595.84, CUDA 13.2), no Windows and no WSL. The
+scripts ran there unmodified — `setup-wsl.sh` completed all six steps, `serve.sh`
+served, `claude-code.sh` bridged Claude Code. Only the *wording* was WSL-specific.
+
+- `scripts/lib-platform.sh` — `qwen5090_is_wsl` / `qwen5090_platform` /
+  `qwen5090_start_hint`. Sourced by setup-wsl.sh and serve.sh so their advice
+  matches the platform: on WSL a dead GPU means the *Windows* driver and
+  `wsl --shutdown`, and installing a Linux driver is actively harmful; on native
+  Linux installing the driver is the fix. Same for the memory error — `.wslconfig`
+  vs `swapon`.
+- `scripts/setup-linux.sh` — three-line wrapper that execs setup-wsl.sh. It
+  exists so a Linux user is not told to run "setup-wsl" on a box with no WSL.
+  **Do not rename setup-wsl.sh**: install.ps1 references it by name.
+- `app/docs/LINUX.md` — the full walkthrough; README gained an "Already running
+  Linux?" section and a Linux block under power users.
+
+**The `.ps1` layer is simply unused there.** No GUI, no install.ps1, no
+share.ps1 (serve.sh already binds 0.0.0.0). Logs land in `~/.qwen5090/logs`.
+
+### The build-tools trap is `c++`, not just `gcc`
+
+FlashInfer's JIT compiles with nvcc but **links with `c++`**, by that exact name.
+A toolchain with `gcc` but no `c++` gets three successful nvcc steps and then
+`/bin/sh: 1: c++: not found`, exit 127, and the engine dies *after* the weights
+have loaded — it reads like a model failure. `build-essential` provides both;
+this only bites when someone assembles a compiler by hand.
+
+Worth knowing for a no-root box: `binutils`, `libc6-dev` and `cc1` are already
+present on a stock Ubuntu desktop, so only the gcc *driver*, `libgcc-*-dev` and
+`cc1plus` are missing — extracting those debs into `~/.local` and grafting the
+system `cc1` alongside produces a working compiler without sudo. It works, but
+prefer `apt-get install build-essential` — the hand-built one gets no updates.
+
+## MTP at the full 262,144 window: upstream PR #40914
+
+The KV-precision contract below says the 4-bit switch *forces MTP off*, because
+stock vLLM 0.27.1 garbles output with MTP over `turboquant_4bit_nc`. That is
+still the correct default — but it is now **fixable**, and `scripts/patch-mtp.sh`
+does it (`status` / `apply` / `revert`, idempotent, keeps a `.pre40914.bak`).
+
+The bug: vLLM captures the MTP verify step as a context-free first-chunk
+`flash_attn` FULL cudagraph (capture dummy batch has `seq_len == query_len`), so
+the replayed graph never reads the KV cache — repetition collapse behind HTTP 200
+(vllm#40880). PR #40914 routes uniform K+1 spec-verify batches through the decode
+kernel with all-GPU synthetic args. Credit: the backport was lifted from
+[MiaAI-Lab/Qwen3.8-27B-NVFP4-RTX-5090](https://github.com/MiaAI-Lab/Qwen3.8-27B-NVFP4-RTX-5090),
+which solves the same collision the opposite way — it keeps MTP and patches,
+where serve.sh refused the combination.
+
+`serve.sh`'s interlock gained an escape hatch requiring **both**
+`QWEN5090_MTP_TQ_PATCHED=1` **and** the patch marker physically present in the
+installed `turboquant_attn.py`. An env var alone must never re-enable this: a
+rebuilt venv silently restores the safe path, which is the whole point.
+
+**`MAX_SEQS=1` and `GPU_UTIL=0.93` are load-bearing on this path.** MTP-3 adds
+draft slots plus the MTP head; at the default `MAX_SEQS=16` the KV cache lands
+0.43 GiB short of a 262,144 window and vLLM refuses to start with
+`estimated maximum model length is 237120`. Measured 2026-08-21 on the Linux
+5090, abliterated build, display attached:
+
+| | MTP off (stock) | MTP-3 (patched) |
+|---|---|---|
+| generation | 52.6 tok/s | **139.3 tok/s** (2.65x) |
+| KV cache | 339,077 tokens (1.29x) | 377,487 tokens (1.44x) |
+| garble battery | clean | 15/15 clean, and clean at 900-token outputs |
+| concurrency | up to MAX_SEQS | **1** (MTP + batching is unstable here) |
+
+So 131072 remains the default — it keeps concurrency and needs no patched venv.
+262144 + patch is opt-in, single-session, and must be re-applied after any vLLM
+reinstall. The prefill cliff above ~30K tokens is unchanged by any of this.
 
 ## Hard rules that will break the product if violated
 

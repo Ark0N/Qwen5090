@@ -75,11 +75,31 @@ Two things worth being straight about:
 
 | | |
 |---|---|
-| 💻 OS | Windows 11 |
+| 💻 OS | Windows 11 — or **native Linux**, see [LINUX.md](app/docs/LINUX.md) |
 | 🎮 GPU | NVIDIA RTX 5090 (other RTX 50-series with ≥24 GB also work) |
 | 🔧 Driver | NVIDIA 570 or newer ([get the latest](https://www.nvidia.com/drivers)) |
 | 🧠 RAM | 16 GB minimum, 32 GB recommended (the installer sizes WSL's share for you) |
 | 💾 Disk | ~45 GB free (model ~22 GB, Python + CUDA libraries the rest) |
+
+## Already running Linux?
+
+Everything above describes the Windows 11 experience, where one click builds a
+WSL2 Ubuntu box because **vLLM only runs on Linux**. If your RTX 5090 is already
+in a Linux machine, skip all of it — the scripts under `app/scripts/` are plain
+bash and run directly:
+
+```bash
+git clone https://github.com/Ark0N/Qwen5090.git
+cd Qwen5090
+sudo apt-get install -y build-essential      # Triton needs a C compiler
+bash app/scripts/setup-linux.sh              # venv + vLLM + model (~20 GB)
+bash app/scripts/serve.sh                    # http://localhost:8000/v1
+bash app/scripts/claude-code.sh install && qwen-claude   # Claude Code on your GPU
+```
+
+No launcher, no GUI, no WSL. Verified on Ubuntu 26.04 with an RTX 5090.
+Full walkthrough — including the **262K-context + MTP** configuration that runs
+at ~139 tok/s — in **[app/docs/LINUX.md](app/docs/LINUX.md)**.
 
 ## What you get
 
@@ -145,6 +165,17 @@ creates a Python 3.13 venv with `vllm`, `flashinfer`, and the CUTLASS DSL → do
 .\app\run.ps1        # serve on http://localhost:8000/v1
 .\app\chat.ps1       # terminal chat (second terminal)
 .\app\uninstall.ps1  # remove the distro, env, and model (what the Cleanup button runs)
+```
+
+**On native Linux** (no PowerShell, no WSL — see
+[LINUX.md](app/docs/LINUX.md)):
+
+```bash
+bash app/scripts/setup-linux.sh     # one-time: venv + vLLM + model
+bash app/scripts/serve.sh           # serve on http://localhost:8000/v1
+bash app/scripts/chat.py            # terminal chat
+bash app/scripts/claude-code.sh run # Claude Code against this server
+bash app/scripts/patch-mtp.sh apply # opt-in: MTP at the full 262K window
 ```
 
 > **First time in a PowerShell window?** Windows blocks these scripts with
@@ -319,8 +350,15 @@ app/                       everything under the hood:
   uninstall.ps1              remove everything (distro + model); GUI 'Cleanup' button
   collect-logs.ps1           zip all logs + system state for bug reports
   claude-code.ps1            run Claude Code against this server
-  scripts/                   Linux-side setup, serve, chat, benchmark, claude-code
-  docs/                      troubleshooting, performance, Claude Code
+  scripts/                   the Linux side — runs under WSL *and* on native Linux:
+    setup-linux.sh             one-time setup on a Linux box (wraps setup-wsl.sh)
+    setup-wsl.sh               venv + vLLM + model download (what install.ps1 runs)
+    serve.sh                   vLLM with 5090-tuned flags
+    claude-code.sh             the Claude Code bridge (LiteLLM)
+    patch-mtp.sh               opt-in vLLM PR #40914 backport: MTP at 262K ctx
+    chat.py, benchmark.sh      clients against the OpenAI endpoint
+    lib-*.sh                   shared helpers (build tools, WSL/Linux detection)
+  docs/                      troubleshooting, performance, Claude Code, Linux
     images/                    control-panel screenshots used by this README
 ```
 
