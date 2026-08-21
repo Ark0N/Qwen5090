@@ -97,6 +97,9 @@ bash app/scripts/serve.sh                    # http://localhost:8000/v1
 bash app/scripts/claude-code.sh install && qwen-claude   # Claude Code on your GPU
 ```
 
+Want it back after a reboot? `bash app/scripts/install-service.sh install`
+writes a systemd user unit (no root needed).
+
 No launcher, no GUI, no WSL. Verified on Ubuntu 26.04 with an RTX 5090.
 Full walkthrough — including the **262K-context + MTP** configuration that runs
 at ~139 tok/s — in **[app/docs/LINUX.md](app/docs/LINUX.md)**.
@@ -176,6 +179,7 @@ bash app/scripts/serve.sh           # serve on http://localhost:8000/v1
 bash app/scripts/chat.py            # terminal chat
 bash app/scripts/claude-code.sh run # Claude Code against this server
 bash app/scripts/patch-mtp.sh apply # opt-in: MTP at the full 262K window
+bash app/scripts/install-service.sh install   # start automatically at boot
 ```
 
 > **First time in a PowerShell window?** Windows blocks these scripts with
@@ -356,6 +360,7 @@ app/                       everything under the hood:
     serve.sh                   vLLM with 5090-tuned flags
     claude-code.sh             the Claude Code bridge (LiteLLM)
     patch-mtp.sh               opt-in vLLM PR #40914 backport: MTP at 262K ctx
+    install-service.sh         systemd user unit so the server survives reboot
     chat.py, benchmark.sh      clients against the OpenAI endpoint
     lib-*.sh                   shared helpers (build tools, WSL/Linux detection)
   docs/                      troubleshooting, performance, Claude Code, Linux

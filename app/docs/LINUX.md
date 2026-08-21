@@ -84,6 +84,55 @@ process** — your normal `claude` is untouched.
 
 Full detail in [CLAUDE-CODE.md](CLAUDE-CODE.md).
 
+## Starting automatically at boot
+
+`serve.sh` in a terminal dies with the terminal. To have the server come back
+by itself after a reboot:
+
+```bash
+bash app/scripts/install-service.sh install
+```
+
+That writes a systemd **user** unit (no root: it runs as you and inherits the
+`~/.qwen5090` venv, model cache and logs), enables lingering so it starts at
+boot rather than at login, and starts it.
+
+```bash
+bash app/scripts/install-service.sh status     # unit state + does the API answer
+bash app/scripts/install-service.sh logs       # follow the journal
+bash app/scripts/install-service.sh uninstall  # remove it
+systemctl --user restart qwen5090              # after changing settings
+```
+
+Settings live in **`~/.qwen5090/server.env`**, not in the unit, so changing the
+model or the context is an edit plus a restart:
+
+```bash
+MODEL=sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4
+CTX=262144
+MTP=1
+QWEN5090_MTP_TQ_PATCHED=1
+MAX_SEQS=1
+GPU_UTIL=0.93
+```
+
+The generated file ships with the safe defaults and carries the 262K block
+commented out, with a note that `patch-mtp.sh apply` has to come first.
+
+Two details the unit handles that are easy to miss by hand:
+
+- **`PATH`.** A systemd unit does not inherit a login shell's environment, and
+  FlashInfer's JIT links with `c++` by that exact name. The unit sets an
+  explicit `PATH` including `/usr/bin`, or the engine dies at exit code 127
+  *after* the weights load.
+- **`TimeoutStartSec=900`.** A cold start is weights, `torch.compile` and
+  cudagraph capture — minutes. The default 90-second timeout would kill it
+  mid-compile and systemd would call it a failed start.
+
+If lingering could not be enabled (it needs authentication), the service starts
+when you log in instead of at boot; `sudo loginctl enable-linger $USER` fixes
+that.
+
 ## The full 262,144-token window
 
 The model's native context is 262,144, but that is **not** the default, and the

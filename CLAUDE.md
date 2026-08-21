@@ -146,6 +146,15 @@ served, `claude-code.sh` bridged Claude Code. Only the *wording* was WSL-specifi
 - `scripts/setup-linux.sh` — three-line wrapper that execs setup-wsl.sh. It
   exists so a Linux user is not told to run "setup-wsl" on a box with no WSL.
   **Do not rename setup-wsl.sh**: install.ps1 references it by name.
+- `scripts/install-service.sh` — `install`/`uninstall`/`status`/`logs` for a
+  systemd **user** unit (no root; it runs as the user and inherits `~/.qwen5090`).
+  Settings live in `~/.qwen5090/server.env` via `EnvironmentFile`, not baked into
+  the unit, so changing model/context is an edit plus a restart. Two non-obvious
+  bits: the unit must set `PATH` explicitly (a unit inherits no login shell, and
+  FlashInfer links with `c++` by name), and `TimeoutStartSec=900` because a cold
+  start is weights + torch.compile + cudagraph capture — the default 90 s would
+  kill it mid-compile. `install` also enables lingering, or a user unit would
+  only start at login rather than at boot.
 - `app/docs/LINUX.md` — the full walkthrough; README gained an "Already running
   Linux?" section and a Linux block under power users.
 
