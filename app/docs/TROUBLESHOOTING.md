@@ -124,35 +124,35 @@ Keep ~8 GB for Windows itself. On a 16 GB PC leave `memory` alone and give
 `swap=20GB` instead — loading is slower but it works. `wsl --shutdown` is
 required for any `.wslconfig` change to take effect.
 
-## Bluescreen (0x116 VIDEO_TDR_ERROR)
+## The PC bluescreens or the GPU drops off (0x116 / Xid 79)
 
-The machine bluescreens, or freezes with the GPU fans at full speed and the
-screen dark. `C:\Windows\Minidump` has a fresh `.dmp`, and Event Viewer →
-System shows bugcheck `0x00000116` next to a burst of `nvlddmkm` events.
+Windows bugchecks `0x116 VIDEO_TDR_ERROR` — a fresh `.dmp` in
+`C:\Windows\Minidump` and `nvlddmkm` events around it — or, on Linux,
+`NVRM: Xid 79, GPU has fallen off the bus`. The machine may instead freeze with
+the fans at full speed and the screen dark.
 
-**Raising the watchdog timeout is not enough.** An earlier version of this file
-said it was; a measured run disproved it. On the 5090 test machine, with
-`TdrDelay` confirmed at 10 seconds and Windows freshly booted so the value was
-live, the PC bluescreened anyway — while serving requests no larger than 2048
-tokens, nowhere near the startup profiling the timeout was raised for.
+**Check the power connector first.** On the machine this toolkit was built on,
+this fault turned out to be a **12VHPWR connector that was not fully seated**.
+It took eight crashes across both Windows and Linux to find, because a
+partially-seated connector carries the full current through fewer contact
+points and fails as an electrical transient — indifferent to driver version,
+context length, VRAM headroom, GPU scheduling and operating system. Every
+software theory below was tested and falsified before anyone pulled the cable.
 
-What the event log actually recorded, in the 34 seconds before the bugcheck:
+So, in order:
 
-| what | evidence |
-|---|---|
-| ~10 GPU resets per second | 322 × `nvlddmkm` event 153, `GpuRcReset TDR occurred on GPUID:100` |
-| engine command errors alongside them | 55 × `nvlddmkm` event 14, `CMDre …` |
-| the bugcheck itself | `0x116`, third argument `0xc000009a` = `STATUS_INSUFFICIENT_RESOURCES` |
+**1. Reseat the 12VHPWR — both ends, and the card in its slot.** Power off at
+the PSU. Unplug the connector at the GPU and at the power supply, look at both
+(browning, discoloration or receded pins mean *replace the cable*, not reseat
+it), then push each end home until it clicks and no gap is visible at the
+shroud. If it was loose, you have very likely found it.
 
-A ten-second timeout cannot fire ten times a second, so these are not timeouts —
-they are error-driven driver resets. And that third argument says what finally
-kills Windows: the *recovery* fails for lack of resources. VRAM was at 29.7 of
-32.6 GB when it happened, leaving 2.9 GB for the desktop.
+This is worth doing before any log reading if your symptom matches: an abrupt
+drop under load with **no** thermal event, **no** PCIe error, **no** ECC error
+and **no** throttle flag beforehand. Those absences are the signature.
 
-So the order of defence is the reverse of what this file used to advise:
-
-**1. Suspect the display driver first.** Check whether your PC has already been
-crashing this way, and how long it has been doing it:
+**2. Suspect the display driver.** Check whether the PC has been crashing this
+way for longer than you have had this toolkit:
 
 ```powershell
 Get-WinEvent -FilterHashtable @{LogName='System'; Id=1001} -MaxEvents 20 |
@@ -161,44 +161,40 @@ Get-WinEvent -FilterHashtable @{LogName='System'; ProviderName='nvlddmkm'} -MaxE
   Group-Object {$_.TimeCreated.ToString('yyyy-MM-dd')} | Select-Object Name, Count
 ```
 
-On the test machine that history goes back to **June**, months before this
-toolkit existed — including a storm two minutes after a boot, at an idle
-desktop, with nothing on the GPU at all. A workload like vLLM provokes the
-fault reliably, but does not cause it.
+On the test machine that history went back to **June**, months before this
+toolkit existed — including a storm two minutes after boot, at an idle desktop,
+with nothing on the GPU. A workload like vLLM provokes the fault reliably but
+does not cause it.
 
 NVIDIA has a matching bug on file
 ([forum report](https://forums.developer.nvidia.com/t/bug-report-rtx-5090-gpu-lost-0x116-tdr-and-failed-warm-reboot-after-pcie-sram-ecc-events-windows-11-610-62/378873),
-NVIDIA Bug 6546168): RTX 5090, `0x116` with the same `0xC000009A` argument,
-hundreds of event 153 resets alongside event 14 command errors. **It was fixed
-by a driver update — 610.62 → 610.74.** So check what you are on:
+NVIDIA Bug 6546168): RTX 5090, `0x116` with argument `0xC000009A`, hundreds of
+`nvlddmkm` event 153 resets alongside event 14 command errors. **It was fixed in
+610.74.** Check what you are on:
 
 ```powershell
 nvidia-smi --query-gpu=driver_version --format=csv
 ```
 
-If that is below 610.74, install the current Game Ready driver (610.88 WHQL or
-later) using the **clean install** option — or DDU in safe mode if it comes
-back. Two further levers from the same report: turn off PCIe Link State Power
-Management in the power plan, and set `HwSchMode` to `0` under the
-`GraphicsDrivers` key to disable hardware-accelerated GPU scheduling.
+Below 610.74, install the current Game Ready driver using the **clean install**
+option — or DDU in safe mode if it comes back. Two further levers from the same
+report: turn off PCIe Link State Power Management in the power plan, and set
+`HwSchMode` to `0` under the `GraphicsDrivers` key to disable
+hardware-accelerated GPU scheduling.
 
-**2. Give the reset room to succeed.** Run with headroom, and a context that
-fits in it. The default `-Ctx 131072` already keeps you on the fp8 KV cache
-rather than the 4-bit/GDN path, which is the faster configuration anyway
-(~80 tok/s against ~49); the remaining lever is VRAM headroom:
+**3. Give the driver's reset room to succeed.** Run with VRAM headroom, and a
+context that fits in it. The default `-Ctx 131072` already keeps you on the fp8
+KV cache rather than the 4-bit/GDN path, which is the faster configuration
+anyway (~80 tok/s against ~49). The remaining lever:
 
 ```powershell
 .\app\run.ps1 -GpuUtil 0.80
 ```
 
-Be clear-eyed about this one, though: on the test machine it is **not a cure**.
-A crash on 2026-08-21 landed mid-decode at `ctx=131072 mtp=1 kv=fp8` with the
-same `0x116 / 0xC000009A` signature, and earlier crashes ruled out the watchdog,
-`-GpuUtil 0.85`, driver 610.88 and hardware-accelerated GPU scheduling in turn.
-A smaller window may lengthen the interval between faults; nothing so far stops
-them.
+Be clear-eyed about this one: on the test machine it was **not** a cure. It may
+lengthen the interval between faults; on its own it did not stop them.
 
-**3. Keep the watchdog raise.** It is harmless and rules out one failure mode.
+**4. Keep the watchdog raise.** It is harmless and rules out one failure mode.
 The installer sets it, and **the values are only read at boot**:
 
 ```powershell
@@ -213,6 +209,45 @@ $k = 'HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers'
 Set-ItemProperty $k -Name TdrDelay    -Value 10 -Type DWord
 Set-ItemProperty $k -Name TdrDdiDelay -Value 10 -Type DWord
 ```
+
+**If it still crashes after all four:** swap the 12VHPWR cable for a different
+one, ideally native to your PSU rather than an adapter, and only then treat it
+as a card or PSU fault. A 5090 pulling 570 W transients is close enough to the
+limits of both that neither is cleared until the other is tested.
+
+<details>
+<summary>What the crash actually looked like, if you want to compare notes</summary>
+
+<br>
+
+Recorded across eight incidents on one dual-booted PC (six Windows bugchecks,
+two Linux Xid 79), before the connector was found:
+
+| what | evidence |
+|---|---|
+| ~10 GPU resets per second | 322 × `nvlddmkm` event 153, `GpuRcReset TDR occurred on GPUID:100` |
+| engine command errors alongside them | 55 × `nvlddmkm` event 14, `CMDre …` |
+| the bugcheck itself | `0x116`, third argument `0xc000009a` = `STATUS_INSUFFICIENT_RESOURCES` |
+| on Linux | `Xid 79, GPU has fallen off the bus`, then `Xid 154, Node Reboot Required` |
+
+A ten-second watchdog cannot fire ten times a second, so those are not timeouts
+— they are error-driven driver resets, and `0xc000009a` says the *recovery*
+failed for lack of resources.
+
+Falsified in turn, each with a measured run: the watchdog (`TdrDelay` confirmed
+live at 10), VRAM headroom (a crash at `GpuUtil 0.85`), the display driver (a
+crash 52 minutes after 610.88), hardware-accelerated GPU scheduling (a crash
+with `HwSchMode=1` armed), and the 4-bit KV/262K path (a crash on plain fp8 at
+`ctx=131072`). The Linux crashes then made any Windows-specific explanation
+impossible: two independent driver stacks do not invent the same electrical
+signature on the same hardware by coincidence.
+
+On Linux, expect the desktop to die *on top of* the missing GPU —
+`nvidia-modeset: Error while waiting for GPU progress`, then GLX apps
+segfaulting in `libnvidia-glcore`, then the session aborting. **That is
+aftermath, not cause: read the Xid, not the segfault.**
+
+</details>
 
 ## Out of memory (CUDA OOM) at startup
 The 5090's 32 GB is shared with the Windows desktop, so vLLM can't take it all.
