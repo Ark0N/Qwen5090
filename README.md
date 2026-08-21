@@ -1,10 +1,16 @@
 <div align="center">
 
-<h1>Qwen&nbsp;5090</h1>
+<h1>Run Qwen3.8-27B (NVFP4) on a 5090 !</h1>
 
-**Frontier-class coding AI, running entirely on your own RTX 5090.**
+**Frontier-class coding AI, running entirely on your own hardware.**
 
 No cloud · no subscription · no rate limits · nothing you type ever leaves your PC
+
+**It takes one click on your Windows 11 PC.** Unzip, double-click, press
+Install — the app sets up everything itself. When it finishes you can chat with
+the model right there, and you can point
+**[Claude Code](app/docs/CLAUDE-CODE.md)** straight at it: the same agent you
+already know, answered by the GPU in your own machine.
 
 [![Release](https://img.shields.io/github/v/release/Ark0N/Qwen5090?style=flat-square&color=76B900&label=release)](https://github.com/Ark0N/Qwen5090/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
@@ -39,12 +45,6 @@ No cloud · no subscription · no rate limits · nothing you type ever leaves yo
 </div>
 
 ---
-
-**It takes one click on your Windows 11 PC.** Unzip, double-click, press
-Install — the app sets up everything itself. When it finishes you can chat with
-the model right there, and you can point
-**[Claude Code](app/docs/CLAUDE-CODE.md)** straight at it: the same agent you
-already know, answered by the GPU in your own machine.
 
 The model is Qwen3.8-27B, and it is not a toy: on real-world bug fixing it
 scores **61.7 against Claude Opus 4.6 Max's 53.4** — see
