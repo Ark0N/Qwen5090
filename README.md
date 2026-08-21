@@ -15,6 +15,10 @@ scores **61.7 against Claude Opus 4.6 Max's 53.4** — see
 
 **Unzip → double-click `Start Qwen 5090.cmd` → click Install. That's it.**
 
+<img src="app/docs/images/setup.png" alt="The Qwen 5090 control panel on first run: status pills across the top, and one Install / Repair button" width="820">
+
+*First run. One button installs WSL2, Ubuntu, vLLM and the model.*
+
 </div>
 
 <!-- Maintainer note: while this repo is private, the ZIP link only works for
@@ -95,6 +99,17 @@ Two things worth being straight about:
 - **A clean exit**: **Cleanup / Uninstall** on the Setup tab removes everything
   the app installed — Ubuntu, the Python environment, and the ~22 GB model —
   freeing 20+ GB. Reinstalling later is one click.
+
+<table>
+<tr>
+<td width="50%"><img src="app/docs/images/server.png" alt="Server tab: start/stop, port, context and MTP toggles above a live log"></td>
+<td width="50%"><img src="app/docs/images/chat.png" alt="Chat tab: thinking mode and effort dial above the transcript"></td>
+</tr>
+<tr>
+<td align="center"><em>Server tab — start it, watch it load, share it.</em></td>
+<td align="center"><em>Chat tab — thinking mode and the effort dial.</em></td>
+</tr>
+</table>
 
 ## How it works
 
@@ -233,6 +248,8 @@ opens a session in its own window. **Windows env** on the same tab is for a
 Claude Code installed on Windows rather than inside WSL: it copies the variables
 that one needs to the clipboard.
 
+<img src="app/docs/images/claude-code.png" alt="Claude Code tab: buttons to open a session, start or stop the bridge, install Claude Code, and run the doctor" width="820">
+
 The same thing from PowerShell, if you prefer:
 
 ```powershell
@@ -298,6 +315,7 @@ app/                       everything under the hood:
   claude-code.ps1            run Claude Code against this server
   scripts/                   Linux-side setup, serve, chat, benchmark, claude-code
   docs/                      troubleshooting, performance, Claude Code
+    images/                    control-panel screenshots used by this README
 ```
 
 ## Something not working?
