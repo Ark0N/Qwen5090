@@ -6,6 +6,7 @@
 
 No cloud · no subscription · no rate limits · nothing you type ever leaves your PC
 
+[![Release](https://img.shields.io/github/v/release/Ark0N/Qwen5090?style=flat-square&color=76B900&label=release)](https://github.com/Ark0N/Qwen5090/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![Windows 11](https://img.shields.io/badge/Windows_11-one--click-0078D6?style=flat-square&logo=windows11&logoColor=white)](#get-started-3-steps)
 [![Linux](https://img.shields.io/badge/Linux-native-FCC624?style=flat-square&logo=linux&logoColor=black)](app/docs/LINUX.md)
@@ -15,9 +16,9 @@ No cloud · no subscription · no rate limits · nothing you type ever leaves yo
 
 <br>
 
-### [⬇️ &nbsp;DOWNLOAD ZIP&nbsp; ⬇️](https://github.com/Ark0N/Qwen5090/archive/refs/heads/main.zip)
+### [⬇️ &nbsp;DOWNLOAD ZIP&nbsp; ⬇️](https://github.com/Ark0N/Qwen5090/releases/latest/download/Qwen5090.zip)
 
-[![Download ZIP](https://img.shields.io/badge/⬇_Download_for_Windows_11-Qwen3.8--27B_NVFP4-76b900?style=for-the-badge&logo=nvidia&logoColor=white)](https://github.com/Ark0N/Qwen5090/archive/refs/heads/main.zip)
+[![Download ZIP](https://img.shields.io/badge/⬇_Download_for_Windows_11-Qwen3.8--27B_NVFP4-76b900?style=for-the-badge&logo=nvidia&logoColor=white)](https://github.com/Ark0N/Qwen5090/releases/latest/download/Qwen5090.zip)
 
 **Unzip → double-click `Start Qwen 5090.cmd` → click Install. That's it.**
 
@@ -51,7 +52,7 @@ scores **61.7 against Claude Opus 4.6 Max's 53.4** — see
 
 ## Get started (3 steps)
 
-1. **[Download the ZIP](https://github.com/Ark0N/Qwen5090/archive/refs/heads/main.zip)**
+1. **[Download the ZIP](https://github.com/Ark0N/Qwen5090/releases/latest/download/Qwen5090.zip)**
    and unzip it anywhere (Desktop is fine).
    *Windows may flag the download: right-click the ZIP → Properties → tick
    **Unblock** before unzipping, and choose "More info → Run anyway" if
