@@ -241,6 +241,16 @@ The WPF dispatcher thread is never blocked. All patterns funnel through one 300 
   to the GUI's Windows-side health ping, which would leave a live bridge sitting behind a pill
   reading "stopped". The session itself is the one GUI child that is **not** hidden: Claude Code is
   an interactive terminal app, so it gets a real console (`-NoExit`, so a failure stays readable).
+  **Traffic recording is opt-in and lives outside the logs directory.**
+  `QWEN_LOG_PAYLOADS=1` (`-LogPayloads`, or the tab's "Record traffic" box) makes the same hooks
+  module append every request and reply to `~/.qwen5090/debug/payloads-<date>.jsonl`. The switch is
+  baked into the rendered `qwen_hooks.py` rather than read from the environment, so flipping it
+  changes the file and `start` restarts on it — an env var alone would be ignored by a bridge that
+  is already up. `~/.qwen5090/debug/`, never `~/.qwen5090/logs/`: collect-logs.ps1 bundles
+  `logs/*.log` into the bug-report ZIP, and these files are the user's actual conversations.
+  Secrets are stripped at **any depth** — LiteLLM hides the raw request headers, `x-api-key` and
+  all, inside `secret_fields`, which a top-level filter walks straight past (caught by the test on
+  2026-08-21, not by review).
   **Claude Code installs itself on demand** (`install-claude`, `-InstallClaude`, or the tab's
   Install button; `run` also does it, the way `ensure_bridge_installed` handles LiteLLM):
   Anthropic's native installer at `https://claude.ai/install.sh` puts one checksum-verified binary

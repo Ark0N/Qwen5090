@@ -720,6 +720,8 @@ $xaml = @'
                     ToolTip="For a Claude Code installed on Windows rather than inside WSL: prints the variables it needs and copies them to the clipboard"/>
             <Button x:Name="BtnCcDoctor" Content="Doctor" Margin="0,0,16,6"
                     ToolTip="Check the bridge end to end and print what it finds below"/>
+            <CheckBox x:Name="ChkCcDebug" Content="Record traffic" Margin="0,0,14,6"
+                      ToolTip="Debugging only: write every prompt, file and reply the bridge handles to ~/.qwen5090/debug inside Linux. Applies from the next bridge start. These files contain your actual conversations - delete them when you are done, and do not attach them to a bug report."/>
             <TextBlock x:Name="TxtCcHint" Text="" FontSize="11" Foreground="#8A93A5"
                        VerticalAlignment="Center" Margin="0,0,0,6"/>
           </WrapPanel>
@@ -741,7 +743,7 @@ foreach ($name in 'TxtGpuS','TxtWslS','TxtModelS','TxtServerS','TxtBridgeS','Btn
                   'BtnStart','BtnStop','TxtPort','CmbCtx','ChkMtp','ChkShare','TxtServerLog',
                   'ChkThink','CmbEffort','BtnClear','RtbChat','TxtInput','BtnSend',
                   'BtnCcOpen','BtnCcStart','BtnCcStop','CmbCcEffort','TxtCcPort',
-                  'BtnCcInstall','BtnCcEnv','BtnCcDoctor','TxtCcHint','TxtCcLog') {
+                  'BtnCcInstall','BtnCcEnv','BtnCcDoctor','ChkCcDebug','TxtCcHint','TxtCcLog') {
     Set-Variable -Name $name -Value $Window.FindName($name)
 }
 
@@ -1266,11 +1268,19 @@ function Test-BridgeReady {
     return $false
 }
 
+function Get-CcDebugSwitch {
+    if ($ChkCcDebug -and $ChkCcDebug.IsChecked) { return " -LogPayloads" }
+    return ""
+}
+
 function Start-Bridge {
     if (-not (Test-BridgeReady)) { return }
     Add-Log $TxtCcLog "Starting the bridge on port $($TxtCcPort.Text) at effort $(Get-CcEffort)..."
+    if ($ChkCcDebug.IsChecked) {
+        Add-Log $TxtCcLog "Recording is ON: every prompt and reply will be written to ~/.qwen5090/debug inside Linux. Untick and restart the bridge to stop."
+    }
     Set-BridgeStatus "starting..." "#FFE0B84C"
-    Start-BridgeAction "start" "-Start -BindAll"
+    Start-BridgeAction "start" "-Start -BindAll$(Get-CcDebugSwitch)"
 }
 
 function Stop-Bridge {
@@ -1316,7 +1326,7 @@ function Open-ClaudeCode {
     # app, so it needs a real console. -NoExit keeps the window open when
     # something fails, which is the only place the user would see why.
     $psArgs = "-NoProfile -ExecutionPolicy Bypass -NoExit -File `"$script:RepoRoot\claude-code.ps1`"" +
-              " -Distro $Distro -Port $($ports[0]) -BridgePort $($ports[1]) -Effort $(Get-CcEffort) -BindAll"
+              " -Distro $Distro -Port $($ports[0]) -BridgePort $($ports[1]) -Effort $(Get-CcEffort) -BindAll$(Get-CcDebugSwitch)"
     Write-GuiLog "claude-code session | args: $psArgs"
     Add-Log $TxtCcLog "Opening a Claude Code session in its own window (first start takes a few seconds)."
     Add-Log $TxtCcLog "It runs inside Linux, in your home directory there. Close that window to end the session."

@@ -46,6 +46,9 @@ param(
     # session - `run` installs it on demand - but the GUI offers it as its own
     # step so the download happens when the user asks for it, not mid-launch.
     [switch]$InstallClaude,
+    # Debugging: record every request and reply to ~/.qwen5090/debug as JSONL.
+    # Applies from the next bridge start, and stays on until one without it.
+    [switch]$LogPayloads,
     [switch]$Status,
     [switch]$Stop,
     [switch]$Doctor
@@ -80,6 +83,7 @@ if ($Windows -and -not ($Start -or $Stop -or $Status -or $Doctor -or $InstallCla
 # multi-argument tail through the default shell and quoting does not survive.
 # $ is escaped so bash expands it, not PowerShell.
 $envPrefix = "QWEN_URL=http://localhost:$Port BRIDGE_PORT=$BridgePort BRIDGE_HOST=$bridgeHost QWEN_EFFORT=$Effort"
+if ($LogPayloads) { $envPrefix += " QWEN_LOG_PAYLOADS=1" }
 $bashCmd = "$envPrefix bash '$scriptWsl' $verb"
 
 if ($verb -eq "env") {

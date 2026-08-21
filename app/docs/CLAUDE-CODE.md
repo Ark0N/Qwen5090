@@ -135,10 +135,41 @@ All are environment variables for the `.sh`, and flags on the `.ps1`.
 | `FAST_THINKING` | `0` | Set `1` to let background chores think too (slower, no benefit). |
 | `BRIDGE_KEY` | `sk-qwen5090-local` | Shared secret between Claude Code and the bridge. |
 | `BRIDGE_HOME` | `~/.qwen5090/bridge` | Where the venv and generated config live. |
+| `QWEN_LOG_PAYLOADS` | `0` | `1` records every request and reply — see below. |
+| `PAYLOAD_DIR` | `~/.qwen5090/debug` | Where those recordings go. |
 
 The model id and context length are **not** settings: the bridge asks
 `/v1/models` at startup and configures itself, so it follows whichever
 checkpoint you are serving.
+
+## Seeing the actual traffic
+
+The logs record that requests happened, not what was in them. When you need the
+contents — a reply that makes no sense, a tool call that arrives malformed —
+turn the recorder on for one bridge start:
+
+```powershell
+.\app\claude-code.ps1 -Start -LogPayloads      # or tick "Record traffic" on the tab
+```
+
+```bash
+QWEN_LOG_PAYLOADS=1 bash app/scripts/claude-code.sh start
+```
+
+Every request and reply is appended to `~/.qwen5090/debug/payloads-<date>.jsonl`
+as one JSON object per line (`kind` is `request`, `response` or `failure`).
+Requests are recorded *after* the bridge rewrites them, so the file shows what
+vLLM was actually asked for — which is the point when client and server
+disagree. The shared secret and the raw headers are stripped at any depth.
+
+It stays on until you start the bridge again without it. Two things worth
+knowing before you do:
+
+- **Those files are your conversations** — prompts, file contents, replies.
+  They live in `~/.qwen5090/debug/`, deliberately *not* `~/.qwen5090/logs/`,
+  because `collect-logs.ps1` bundles the logs directory into the ZIP people
+  attach to bug reports. Attach a recording only if you have read it.
+- Delete the directory when you are done: `rm -rf ~/.qwen5090/debug`.
 
 ## Four quirks this model has, and how the bridge handles them
 
