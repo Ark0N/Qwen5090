@@ -570,7 +570,7 @@ have been done:
 4. Only then treat it as a card RMA — and note the PSU is not eliminated until
    the card is proven bad or tested in another system.
 
-### The 450 W cap test (armed 2026-08-21, results pending)
+### The 450 W cap test (running since 2026-08-21 17:37)
 
 `sudo nvidia-smi -pl 450`. If the crash stops recurring at a 450 W cap, it is
 power delivery. Persistence mode is Disabled, so **the cap is lost on every
@@ -586,9 +586,21 @@ actually took effect is recorded regardless: every telemetry sample carries
 `power.limit`, so check that column, not the intent. On the Linux box
 `GPU_POWER_LIMIT=450` is live in `~/.qwen5090/server.env`.
 
+Applied live at 17:37 on 2026-08-21 (`450.00 W` from `600.00 W`). It needs no
+restart: the already-running server's telemetry column flipped from 600.00 to
+450.00 mid-run, which is also the cheapest way to confirm it.
+
 Reading the result: the card must be capped *and* under a real load for this to
 mean anything. Confirm with `awk -F, '{print $4}'` over a telemetry file that it
 reads 450.00, and only count crash-free hours logged that way.
+
+The yardstick to beat, from the eight known crashes (08-16 20:20; 08-20 21:42,
+23:32; 08-21 00:44, 02:36, 10:22, 16:38, 17:11): under *active serving* this
+fails somewhere between about 30 minutes and a couple of hours. So a few hours
+of capped load is already a signal, a full day is decent evidence, and anything
+short of an hour proves nothing either way. A crash while the telemetry column
+reads 450.00 falsifies the power-transient theory outright and moves the
+argument to the cable and the PSU — record it here the same as the rest.
 
 `serve.sh` now samples the GPU every 2 s into
 `~/.qwen5090/logs/gpu-telemetry-*.log` (`GPU_TELEMETRY=0` disables): power,
