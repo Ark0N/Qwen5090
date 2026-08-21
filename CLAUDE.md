@@ -461,7 +461,7 @@ A full-window run — server started by `serve.sh`, a real code-generation task 
   The sizing stays raise-only, so an existing `.wslconfig` at 24 GB must be lowered
   by hand, then `wsl --shutdown`.
 
-## The GPU falls off under load (open; six 0x116 dumps + one Linux Xid 79 as of 2026-08-21)
+## The GPU falls off under load (open; six 0x116 dumps + two Linux Xid 79 as of 2026-08-21)
 
 The **Windows** PC bluescreens with `0x116` VIDEO_TDR_ERROR, arg3 `0xc000009a`
 STATUS_INSUFFICIENT_RESOURCES, arg4 4, at the end of a serving run. Dumps:
@@ -486,7 +486,7 @@ scratch, and do not ship any of them as a fix.**
    prefix_cache=0`), served ~2 minutes at 54–98 tok/s, and died mid-decode: last
    stat line 10:21:49 `0.0 tokens/s, Running: 1 reqs`, bugcheck at 10:22:30.
 
-### The Linux box does it too — Xid 79, 2026-08-21 16:38 (this is new)
+### The Linux box does it too — Xid 79, 2026-08-21 16:38 and 17:11
 
 The **native Linux 5090** (Ubuntu 26.04, driver 595.84 — a different machine,
 a different OS and a different driver stack from the Windows PC) dropped its
@@ -538,21 +538,47 @@ temperature, clocks, PCIe link and throttle reasons, plus a stamped
 Five theories were argued and falsified for want of exactly that history — the
 next incident should not have to be.
 
-Its first load run already earned its keep. Five ordinary Claude Code turns
-(128 samples, 2026-08-21 17:02–17:07, `ctx=262144 mtp=1`, nothing exotic):
+### Its first load run was also the second crash — 17:11:20, fully instrumented
+
+The telemetry run first recorded here as a healthy sample
+(`gpu-telemetry-20260821-170248.log`, started 17:02:48) **is the run that then
+died**: `NVRM: Xid (PCI:0000:01:00): 79, GPU has fallen off the bus` at
+17:11:20, again followed by Xid 154 node-reboot-required, `EngineDeadError`,
+HTTP 500, and a reboot. Same config as the 16:38 one —
+`ctx=262144 gpu_util=0.93 mtp=1 kv=turboquant_4bit_nc prefix_cache=1`,
+abliterated build — driving ordinary Claude Code turns: 1 request, KV cache at
+~15%, MTP accepting 55–79%, 34–57 tok/s. 8m32s in, 243 samples.
+
+Full run (243 samples, 17:02:48–17:11:19, the last one 1.5 s before the Xid):
 
 | | |
 |---|---|
-| power | **572.8 W peak** against a 600 W limit, 100.9 W mean |
-| temperature | 56 °C peak — nowhere near thermal |
-| SM clock | 2,947 MHz peak, no HW/SW slowdown in any sample |
-| PCIe | gen 5 x16 under load, gen 1–2 at idle (normal downclock) |
+| power | **572.8 W peak** (17:06:00) against a 600 W limit, 173.2 W mean |
+| temperature | 64 °C peak — nowhere near thermal |
+| SM clock | 2,947 MHz peak; HW slowdown never active |
+| SW power cap | **active in 16 of 243 samples** — the card really is bumping its limit |
+| PCIe | gen 5 x16 under load throughout |
+
+**The last five seconds are utterly unremarkable**: 57–58 °C, ~450 W steady,
+2,872 MHz, gen 5 x16, no throttle flag, decode ticking along — and then it is
+gone between two samples. Nothing ramps, nothing degrades, nothing warns.
+Clean again on the kernel side: no PCIe AER, no correctable errors, no
+link-down, no MCE, no thermal event, no OOM kill.
 
 So the card transiently pulls ~95% of its power limit during a perfectly
-ordinary agent turn, while staying cold and unthrottled. That is exactly the
-profile in which an Xid 79 is a power-delivery transient rather than a thermal
-or a software fault, and it is the strongest argument yet for running the
-`nvidia-smi -pl 450` test above.
+ordinary agent turn, while staying cold and unthrottled, and dies from a
+steady-state mid-decode point with no precursor in any sampled metric. That is
+exactly the profile in which an Xid 79 is a power-delivery transient rather
+than a thermal or a software fault, and it is the strongest argument yet for
+running the `nvidia-smi -pl 450` test above — **still untried; the limit read
+600.00 W after this crash too.**
+
+Instrumentation gap found by this incident: the telemetry subshell polls
+`while kill -0 $TELEMETRY_WATCH_PID`, and a fallen-off GPU takes serve.sh down
+with it, so the subshell was killed inside its `sleep` — neither the
+`NVIDIA-SMI FAILED OR TIMED OUT` marker nor the closing `# server PID gone`
+line was ever written. The pre-crash history is what mattered and it survived
+intact, but do not expect the failure marker on a hard GPU loss.
 
 So the crash is **not** specific to a KV precision, a context length, a
 `GPU_UTIL`, the driver, GPU scheduling, an OS, or a driver stack. What every
