@@ -488,9 +488,10 @@ scratch, and do not ship any of them as a fix.**
 
 ### The Linux box does it too — Xid 79, 2026-08-21 16:38 and 17:11
 
-The **native Linux 5090** (Ubuntu 26.04, driver 595.84 — a different machine,
-a different OS and a different driver stack from the Windows PC) dropped its
-GPU mid-decode while driving a Claude Code session:
+The **native Linux 5090** (Ubuntu 26.04, driver 595.84 — the same physical PC
+as the Windows box, dual-booted; see "It is one machine" below, and note that
+this paragraph originally and wrongly called it a different machine) dropped
+its GPU mid-decode while driving a Claude Code session:
 
 ```
 16:38:33  NVRM: Xid (PCI:0000:01:00): 79, GPU has fallen off the bus.
@@ -520,34 +521,54 @@ identical config had already run twice that hour, at 16:09 and 16:22, without
 dying. Falsified theory 5 all over again, on the other platform.
 
 Why this matters more than a seventh Windows dump: it makes a *Windows*, WSL,
-`nvlddmkm`, TDR-watchdog or GPU-scheduling explanation impossible, and Xid 79
+`nvlddmkm`, TDR-watchdog or GPU-scheduling explanation impossible — the more so
+now that both OSes are known to be the same PC — and Xid 79
 is specifically the electrical/PCIe-link signature — power-delivery transient,
 seating, or a failing card.
 
-### It is one card, not two (answered 2026-08-21 by the owner)
+### It is one machine (answered 2026-08-21 by the owner)
 
-The open question here — two 5090s or one — has an answer: **the same physical
-card** was moved between the Windows PC and the native Linux box. That is the
-single most narrowing fact in this whole section, so read the eight crashes
-accordingly:
+The open question here — two 5090s or one — has an answer, and it is stronger
+than the question asked. There is **one physical PC**: same card, same PSU,
+same 12VHPWR cable, same board. Windows and Ubuntu 26.04 are dual-booted on it.
+"The Windows box" and "the native Linux box" throughout this file are the same
+computer wearing two operating systems.
 
-- The fault **follows the card** across two motherboards, two OSes, two driver
-  stacks (`nvlddmkm` 610.88 and NVIDIA open 595.84) and two failure signatures
-  (0x116 / Xid 79). Nothing software-side survives that.
-- It therefore **exonerates** everything already falsified plus, now, the host
-  platform itself: chipset, board, RAM, WSL, and each OS's GPU scheduler.
-- Prime suspect is the **card**, or anything that travelled with it. Whether
-  the 12VHPWR cable and the PSU moved along with the card is *not yet known*
-  and is the next thing to establish — if the cable came too, it is as much a
-  suspect as the GPU; if each machine used its own PSU and cable, the card is
-  very nearly the only shared part left, and this is an RMA conversation.
+There is therefore **no second machine anywhere in the eight crashes**, and the
+only variable that ever differed between them is which OS was booted. Read the
+whole section accordingly:
+
+- Every hardware component is a shared factor by definition. The two crash
+  populations differ by OS, driver stack and failure signature (0x116 vs
+  Xid 79) — and *nothing else*.
+- That kills the last software-shaped explanations outright: two independent
+  driver stacks do not invent the same electrical fault signature on the same
+  hardware by coincidence.
+- It also removes the consolation prize the two-machine theory offered. There
+  is no "it works on the other box" control, and no evidence yet that isolates
+  the GPU from the PSU or the cable, because they have never been separated.
+
+The suspect list is now exactly: **the card, the PSU, the 12VHPWR cable, and
+the wall circuit feeding them** — in roughly that order of prior probability
+for a 5090 that peaks at 572.8 W and dies with no thermal or PCIe warning.
 
 Note what this does **not** license: it is still not a reason to blame a KV
 precision, a context length or `GPU_UTIL`. Those were falsified on the merits
 and stay falsified.
 
-Being one card also means the 450 W cap is a **whole-fleet** test rather than a
-Linux-only one — whichever machine the card is in, cap it before a soak run.
+**The cheap physical checks now outrank further log reading**, and none of them
+have been done:
+
+1. **Inspect both ends of the 12VHPWR connector** for discoloration, browning
+   or melted pins — the well-known high-power-NVIDIA failure mode, and a
+   perfect match for an abrupt electrical fault under a ~570 W transient with
+   no thermal or PCIe warning. Free, and it either finds the fault or clears
+   the cable.
+2. **Reseat** the card and both cable ends.
+3. **Swap the 12VHPWR cable** for a different one, ideally native to the PSU
+   rather than an adapter.
+4. Only then treat it as a card RMA — and note the PSU is not eliminated until
+   the card is proven bad or tested in another system.
 
 ### The 450 W cap test (armed 2026-08-21, results pending)
 
