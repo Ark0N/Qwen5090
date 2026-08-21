@@ -14,3 +14,11 @@ models/
 # crash dumps / logs copied in for analysis — never ship these
 logs/
 *.dmp
+
+# scratch from bridge/server debugging sessions (2026-08) — probes and captured
+# API responses. Kept on disk, never committed: the repo root is a product
+# decision, and anything here would land in the ZIP end users download.
+q5090-*.sh
+resp*.json
+stream.txt
+testap/
