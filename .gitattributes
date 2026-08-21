@@ -7,7 +7,11 @@
 # Screenshots: never let the eol rules near them.
 *.png binary
 
-# Dev notes live in the repo (and in clones), but must not reach end users: the
-# ZIP root is a product decision - one thing to click. GitHub builds its
-# "Download ZIP" with git archive, which honours export-ignore.
-CLAUDE.md export-ignore
+# The ZIP root is a product decision: a user who unzips this must see one thing
+# to click, plus the README and the licence - nothing else. GitHub builds its
+# "Download ZIP" with git archive, which honours export-ignore, so anything
+# listed here exists in the repo and in clones but never in the download.
+# Verify: git archive --format=tar HEAD | tar -t | sed "s#/.*##" | sort -u
+CLAUDE.md      export-ignore
+.gitattributes export-ignore
+.gitignore     export-ignore
