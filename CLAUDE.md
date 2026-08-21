@@ -522,14 +522,52 @@ dying. Falsified theory 5 all over again, on the other platform.
 Why this matters more than a seventh Windows dump: it makes a *Windows*, WSL,
 `nvlddmkm`, TDR-watchdog or GPU-scheduling explanation impossible, and Xid 79
 is specifically the electrical/PCIe-link signature — power-delivery transient,
-seating, or a failing card. If the two machines really are two different 5090s,
-the shared factor is narrower than "this PC": PSU, 12VHPWR, card model, or the
-power-transient profile of this workload. **Establish whether they are two
-cards or one before theorising further.**
+seating, or a failing card.
 
-Untried, and the cheapest next test: `sudo nvidia-smi -pl 450`. If the crash
-stops recurring at a 450 W cap, it is power delivery. (Persistence mode is
-Disabled on the Linux box, so the cap resets on driver unload.)
+### It is one card, not two (answered 2026-08-21 by the owner)
+
+The open question here — two 5090s or one — has an answer: **the same physical
+card** was moved between the Windows PC and the native Linux box. That is the
+single most narrowing fact in this whole section, so read the eight crashes
+accordingly:
+
+- The fault **follows the card** across two motherboards, two OSes, two driver
+  stacks (`nvlddmkm` 610.88 and NVIDIA open 595.84) and two failure signatures
+  (0x116 / Xid 79). Nothing software-side survives that.
+- It therefore **exonerates** everything already falsified plus, now, the host
+  platform itself: chipset, board, RAM, WSL, and each OS's GPU scheduler.
+- Prime suspect is the **card**, or anything that travelled with it. Whether
+  the 12VHPWR cable and the PSU moved along with the card is *not yet known*
+  and is the next thing to establish — if the cable came too, it is as much a
+  suspect as the GPU; if each machine used its own PSU and cable, the card is
+  very nearly the only shared part left, and this is an RMA conversation.
+
+Note what this does **not** license: it is still not a reason to blame a KV
+precision, a context length or `GPU_UTIL`. Those were falsified on the merits
+and stay falsified.
+
+Being one card also means the 450 W cap is a **whole-fleet** test rather than a
+Linux-only one — whichever machine the card is in, cap it before a soak run.
+
+### The 450 W cap test (armed 2026-08-21, results pending)
+
+`sudo nvidia-smi -pl 450`. If the crash stops recurring at a 450 W cap, it is
+power delivery. Persistence mode is Disabled, so **the cap is lost on every
+driver unload, i.e. on every reboot** — and every one of these incidents is
+followed by a reboot, which is precisely how a hand-applied cap would silently
+revert and waste the test.
+
+So serve.sh re-applies it on every start, from a `GPU_POWER_LIMIT` env knob:
+**unset by default** (never reconfigure a ZIP user's hardware), documented in
+install-service.sh's `server.env` template, and warn-only if it cannot get root
+— a server that refuses to start teaches nothing about a crash. The limit that
+actually took effect is recorded regardless: every telemetry sample carries
+`power.limit`, so check that column, not the intent. On the Linux box
+`GPU_POWER_LIMIT=450` is live in `~/.qwen5090/server.env`.
+
+Reading the result: the card must be capped *and* under a real load for this to
+mean anything. Confirm with `awk -F, '{print $4}'` over a telemetry file that it
+reads 450.00, and only count crash-free hours logged that way.
 
 `serve.sh` now samples the GPU every 2 s into
 `~/.qwen5090/logs/gpu-telemetry-*.log` (`GPU_TELEMETRY=0` disables): power,
@@ -570,8 +608,8 @@ ordinary agent turn, while staying cold and unthrottled, and dies from a
 steady-state mid-decode point with no precursor in any sampled metric. That is
 exactly the profile in which an Xid 79 is a power-delivery transient rather
 than a thermal or a software fault, and it is the strongest argument yet for
-running the `nvidia-smi -pl 450` test above — **still untried; the limit read
-600.00 W after this crash too.**
+running the `nvidia-smi -pl 450` test above, which this crash finally armed
+(the limit still read 600.00 W when this incident was investigated).
 
 Instrumentation gap found by this incident: the telemetry subshell polls
 `while kill -0 $TELEMETRY_WATCH_PID`, and a fallen-off GPU takes serve.sh down

@@ -380,6 +380,41 @@ if [[ "$PREFIX_CACHE" == "1" ]]; then
   ARGS+=(--enable-prefix-caching)
 fi
 
+# GPU power-limit cap. Unset by default, and it must stay that way: silently
+# reconfiguring someone's hardware because they double-clicked a launcher is
+# not this script's business. Set GPU_POWER_LIMIT=450 to have serve.sh apply
+# `nvidia-smi -pl` before every start - the standing test for whether the
+# Xid 79 / 0x116 "GPU has fallen off the bus" crash is a power-delivery
+# transient (see CLAUDE.md). Applying it here rather than once by hand is the
+# point: persistence mode is Disabled on the test box, so the cap is lost on
+# every driver unload, i.e. on every reboot - exactly when the next soak run
+# would otherwise quietly revert to 600 W and waste the test.
+#
+# Needs root, and never blocks the start: a warning is the entire failure mode,
+# because a server that refuses to come up teaches nothing about a crash. The
+# limit that actually took effect is in the telemetry file either way - every
+# sample carries power.limit - so a warning that gets ignored cannot corrupt
+# the record.
+GPU_POWER_LIMIT="${GPU_POWER_LIMIT:-}"
+if [[ -n "$GPU_POWER_LIMIT" ]] && command -v nvidia-smi >/dev/null 2>&1; then
+  pl_rc=0
+  if [[ "$(id -u)" == "0" ]]; then
+    nvidia-smi -pl "$GPU_POWER_LIMIT" >/dev/null 2>&1 || pl_rc=$?
+  elif sudo -n true 2>/dev/null; then
+    sudo -n nvidia-smi -pl "$GPU_POWER_LIMIT" >/dev/null 2>&1 || pl_rc=$?
+  else
+    pl_rc=126
+  fi
+  if [[ $pl_rc -eq 0 ]]; then
+    echo ">> GPU power limit set to ${GPU_POWER_LIMIT} W (GPU_POWER_LIMIT)"
+  elif [[ $pl_rc -eq 126 ]]; then
+    echo ">> WARNING: GPU_POWER_LIMIT=${GPU_POWER_LIMIT} needs root and sudo asked for a password." >&2
+    echo ">>          Run 'sudo nvidia-smi -pl ${GPU_POWER_LIMIT}' yourself; starting at the current limit." >&2
+  else
+    echo ">> WARNING: could not set the GPU power limit (nvidia-smi rc=$pl_rc); starting at the current limit." >&2
+  fi
+fi
+
 # GPU telemetry. On 2026-08-21 an Xid 79 ("GPU has fallen off the bus") took
 # the Linux 5090 down mid-decode and left nothing behind but the driver's own
 # obituary - no power, temperature, clock or PCIe history for the seconds

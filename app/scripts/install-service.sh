@@ -75,6 +75,16 @@ PORT=8000
 #QWEN5090_MTP_TQ_PATCHED=1
 #MAX_SEQS=1
 #GPU_UTIL=0.93
+
+# --- GPU power cap (diagnostic) ----------------------------------------------
+# Unset by default; nothing here touches your hardware unless you ask. This
+# card has dropped off the bus mid-decode (Xid 79 on Linux, 0x116 on Windows)
+# while peaking at 572.8 W against a 600 W limit and staying cold, which is the
+# profile of a power-delivery transient. Uncommenting this re-applies the cap on
+# every server start - necessary because persistence mode is off, so the limit
+# reverts to stock on each reboot. Needs passwordless sudo, or set it yourself
+# with 'sudo nvidia-smi -pl 450'; serve.sh only warns if it cannot.
+#GPU_POWER_LIMIT=450
 ENVEOF
   echo "wrote $ENV_FILE"
 }
