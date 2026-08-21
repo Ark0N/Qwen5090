@@ -714,12 +714,14 @@ $xaml = @'
                      VerticalAlignment="Center" Margin="0,0,0,6" ToolTip="Where the bridge listens (1-65535). Change it only if something else already uses 4000."/>
           </WrapPanel>
           <WrapPanel Grid.Row="1" Margin="0,0,0,6">
+            <Button x:Name="BtnCcInstall" Content="Install Claude Code" Margin="0,0,8,6"
+                    ToolTip="Install Claude Code inside Linux (about 30 seconds, no account needed). Opening a session does this for you the first time - this button is here if you would rather get it over with."/>
             <Button x:Name="BtnCcEnv" Content="Windows env" Margin="0,0,8,6"
                     ToolTip="For a Claude Code installed on Windows rather than inside WSL: prints the variables it needs and copies them to the clipboard"/>
             <Button x:Name="BtnCcDoctor" Content="Doctor" Margin="0,0,16,6"
                     ToolTip="Check the bridge end to end and print what it finds below"/>
-            <TextBlock Text="Needs Claude Code installed:  npm install -g @anthropic-ai/claude-code"
-                       FontSize="11" Foreground="#8A93A5" VerticalAlignment="Center" Margin="0,0,0,6"/>
+            <TextBlock x:Name="TxtCcHint" Text="" FontSize="11" Foreground="#8A93A5"
+                       VerticalAlignment="Center" Margin="0,0,0,6"/>
           </WrapPanel>
           <TextBox x:Name="TxtCcLog" Grid.Row="2" Style="{StaticResource LogBox}"
                    Text="Claude Code, answered by the model on this PC instead of the cloud.&#10;&#10;Claude Code speaks one API and the server speaks another, so a small translation&#10;bridge runs inside Linux between them. These buttons drive it.&#10;&#10;   Open Claude Code   starts the bridge if needed, then opens a session in its own window&#10;   Windows env        for a Claude Code installed on Windows instead of inside WSL&#10;&#10;Start the model server on the Server tab first - the bridge asks it which model it is&#10;serving and configures itself from the answer.&#10;"/>
@@ -739,7 +741,7 @@ foreach ($name in 'TxtGpuS','TxtWslS','TxtModelS','TxtServerS','TxtBridgeS','Btn
                   'BtnStart','BtnStop','TxtPort','CmbCtx','ChkMtp','ChkShare','TxtServerLog',
                   'ChkThink','CmbEffort','BtnClear','RtbChat','TxtInput','BtnSend',
                   'BtnCcOpen','BtnCcStart','BtnCcStop','CmbCcEffort','TxtCcPort',
-                  'BtnCcEnv','BtnCcDoctor','TxtCcLog') {
+                  'BtnCcInstall','BtnCcEnv','BtnCcDoctor','TxtCcHint','TxtCcLog') {
     Set-Variable -Name $name -Value $Window.FindName($name)
 }
 
@@ -761,6 +763,9 @@ $script:BridgeEnvLog = $null
 # started by claude-code.sh directly, or by an earlier session. It works; this
 # window just cannot watch it. Explaining that beats a pill stuck on "stopped".
 $script:BridgeConfirmBy = $null
+# Set when the user asked for a session and Claude Code had to be installed
+# first: the install runs as a child, so the session opens when it finishes.
+$script:CcOpenAfterInstall = $false
 $script:DiagZip = $null
 $script:ServerUp = $false
 # The id the running server reports (used in chat requests); the id the user
@@ -1222,6 +1227,32 @@ function Start-BridgeAction([string]$action, [string]$switches) {
     $BtnCcStop.IsEnabled = $false
     $BtnCcEnv.IsEnabled = $false
     $BtnCcDoctor.IsEnabled = $false
+    $BtnCcInstall.IsEnabled = $false
+    $BtnCcOpen.IsEnabled = $false
+}
+
+function Test-ClaudeInstalled {
+    # Synchronous, like the WSL probes Update-Status already does: one warm
+    # `wsl -d ... bash -c` is a few hundred ms and this runs on a click, not on
+    # the timer. PATH is set explicitly - the installer puts claude in
+    # ~/.local/bin, which a non-login `bash -c` does not pick up by itself.
+    try {
+        & wsl -d $Distro -- bash -c "PATH=`$HOME/.local/bin:`$PATH command -v claude >/dev/null" 2>$null
+        return ($LASTEXITCODE -eq 0)
+    } catch { return $false }
+}
+
+function Update-CcHint {
+    if (Test-ClaudeInstalled) {
+        $TxtCcHint.Text = "Claude Code is installed."
+    } else {
+        $TxtCcHint.Text = "Claude Code is not installed yet - opening a session installs it (about 30 seconds)."
+    }
+}
+
+function Install-ClaudeCode {
+    Add-Log $TxtCcLog "Installing Claude Code inside Linux (about 30 seconds, no account needed)..."
+    Start-BridgeAction "install-claude" "-InstallClaude"
 }
 
 function Test-BridgeReady {
@@ -1269,6 +1300,18 @@ function Open-ClaudeCode {
     if (-not (Test-BridgeReady)) { return }
     $ports = Get-CcPorts
     if (-not $ports) { return }
+    # The session runs in a console window this GUI cannot read, so a missing
+    # Claude Code would fail out of sight. Install it here, then open the
+    # session from Complete-BridgeAction once the child is done.
+    if (-not (Test-ClaudeInstalled)) {
+        $r = [Windows.MessageBox]::Show(
+            "Claude Code is not installed yet.`n`nInstall it now? It takes about 30 seconds, needs no account, and only has to happen once.",
+            "Qwen 5090", "YesNo", "Question")
+        if ($r -ne "Yes") { return }
+        $script:CcOpenAfterInstall = $true
+        Install-ClaudeCode
+        return
+    }
     # The one child that is NOT hidden: Claude Code is an interactive terminal
     # app, so it needs a real console. -NoExit keeps the window open when
     # something fails, which is the only place the user would see why.
@@ -1293,6 +1336,8 @@ function Complete-BridgeAction {
     $script:BridgeAction = ""
     $BtnCcEnv.IsEnabled = $true
     $BtnCcDoctor.IsEnabled = $true
+    $BtnCcInstall.IsEnabled = $true
+    $BtnCcOpen.IsEnabled = $true
     $BtnCcStart.IsEnabled = -not $script:BridgeUp
     $BtnCcStop.IsEnabled = $script:BridgeUp
     Write-GuiLog "claude-code $action exited with $code"
@@ -1300,6 +1345,19 @@ function Complete-BridgeAction {
     if ($code -ne 0) {
         Add-Log $TxtCcLog "'$action' failed (exit $code) - see the output above."
         if ($action -eq "start") { Set-BridgeStatus "failed to start" "#FFFF6B6B" }
+        if ($action -eq "install-claude") {
+            $script:CcOpenAfterInstall = $false
+            Add-Log $TxtCcLog "Claude Code was not installed, so no session was opened."
+        }
+        return
+    }
+    if ($action -eq "install-claude") {
+        Update-CcHint
+        if ($script:CcOpenAfterInstall) {
+            $script:CcOpenAfterInstall = $false
+            Add-Log $TxtCcLog "Installed - opening your session now."
+            Open-ClaudeCode
+        }
         return
     }
     if ($action -eq "start") {
@@ -1506,6 +1564,7 @@ $BtnCcStart.Add_Click({ Start-Bridge })
 $BtnCcStop.Add_Click({ Stop-Bridge })
 $BtnCcEnv.Add_Click({ Copy-BridgeEnv })
 $BtnCcDoctor.Add_Click({ Start-BridgeDoctor })
+$BtnCcInstall.Add_Click({ Install-ClaudeCode })
 $BtnClear.Add_Click({
     $script:Messages.Clear()
     # One paragraph per message now, so clearing the current one would leave
@@ -1597,6 +1656,7 @@ $Window.Add_Loaded({
     }
     Update-ModelChoice
     Update-Status
+    Update-CcHint
     Add-ChatRun "Local Qwen3.8-27B chat - start the server on the Server tab, then ask anything. Dim italic text is the model thinking.`n" "#FF8A93A5" -Italic
     if ($AutoInstall -and $script:IsAdmin) { Start-Install }
     # Confirmed pre-elevation in Start-Cleanup; the elevated instance just runs it.

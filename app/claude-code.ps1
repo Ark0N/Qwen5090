@@ -9,7 +9,8 @@
   Windows-native Claude Code needs.
 
   The Qwen server must already be running - use the app's Run button, or
-  .\app\run.ps1 - and Claude Code must be installed:  npm install -g @anthropic-ai/claude-code
+  .\app\run.ps1. Claude Code itself is installed on demand the first time a
+  session is opened (or up front with -InstallClaude).
 
 .EXAMPLE
   .\claude-code.ps1                  # start the bridge, open Claude Code in WSL
@@ -19,6 +20,8 @@
   .\claude-code.ps1 -Effort medium   # think less, answer sooner
 .EXAMPLE
   .\claude-code.ps1 -Start          # bridge only, no session (what the GUI uses)
+.EXAMPLE
+  .\claude-code.ps1 -InstallClaude  # install Claude Code inside WSL, nothing else
 .EXAMPLE
   .\claude-code.ps1 -Status ; .\claude-code.ps1 -Stop
 #>
@@ -39,6 +42,10 @@ param(
     # all interfaces. A 127.0.0.1 bridge is invisible to it, so a session opened
     # from the GUI would run fine behind a pill that still read "stopped".
     [switch]$BindAll,
+    # Install Claude Code itself inside WSL and stop there. Not needed before a
+    # session - `run` installs it on demand - but the GUI offers it as its own
+    # step so the download happens when the user asks for it, not mid-launch.
+    [switch]$InstallClaude,
     [switch]$Status,
     [switch]$Stop,
     [switch]$Doctor
@@ -66,7 +73,8 @@ if ($Start)  { $verb = "start" }
 if ($Stop)   { $verb = "stop" }
 if ($Status) { $verb = "status" }
 if ($Doctor) { $verb = "doctor" }
-if ($Windows -and -not ($Start -or $Stop -or $Status -or $Doctor)) { $verb = "env" }
+if ($InstallClaude) { $verb = "install-claude" }
+if ($Windows -and -not ($Start -or $Stop -or $Status -or $Doctor -or $InstallClaude)) { $verb = "env" }
 
 # Everything after -- goes through as ONE bash -c string: wsl.exe re-joins a
 # multi-argument tail through the default shell and quoting does not survive.

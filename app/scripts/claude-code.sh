@@ -12,6 +12,7 @@
 #   bash claude-code.sh status|stop|restart|doctor
 #   bash claude-code.sh install      # add a `qwen-claude` command to your PATH
 #   bash claude-code.sh uninstall    # remove it again
+#   bash claude-code.sh install-claude   # install Claude Code itself (no Node needed)
 #
 # Works on Linux, macOS and inside WSL, against a local or a remote server:
 #   QWEN_URL=http://<host>:8000 bash claude-code.sh run
@@ -52,6 +53,15 @@ case "$QWEN_EFFORT" in
      printf '       The chat template rejects every other value, "high" included.\n' >&2
      exit 1 ;;
 esac
+
+# setup-wsl.sh puts uv in ~/.local/bin, and the Claude Code installer puts
+# `claude` there too - but neither writes anything a `bash -c` will read: uv's
+# installer only appends to ~/.bashrc, which is skipped for a shell that is
+# neither login nor interactive. Every route into this script is a `bash -c`
+# (the GUI, claude-code.ps1, the generated launcher), so without this line
+# `command -v uv` misses a uv sitting right there, and a `claude` that was
+# installed seconds ago is still "not installed".
+export PATH="$HOME/.local/bin:$PATH"
 
 say()  { printf '>> %s\n' "$*"; }
 warn() { printf 'WARNING: %s\n' "$*" >&2; }
@@ -102,15 +112,9 @@ ensure_bridge_installed() {
   say "installing the LiteLLM bridge into $VENV (one time, ~1 min)"
   mkdir -p "$BRIDGE_HOME"
 
-  # setup-wsl.sh puts uv in ~/.local/bin, and uv's own installer only appends
-  # that to ~/.bashrc - which `bash -c` never reads, because it is not a login
-  # or interactive shell. Every route into this script is a `bash -c` (the GUI,
-  # claude-code.ps1, the generated launcher), so without this line `command -v
-  # uv` misses a uv that is sitting right there, and we fall through to the
-  # python3 -m venv branch - which cannot work either. Same line setup-wsl.sh
-  # uses before its own uv check.
-  export PATH="$HOME/.local/bin:$PATH"
-
+  # PATH already carries ~/.local/bin from the top of this file - without it the
+  # uv that setup-wsl.sh installed is invisible here and we fall through to the
+  # python3 -m venv branch, which cannot work either.
   if command -v uv >/dev/null 2>&1; then
     uv venv --python 3.12 "$VENV" >/dev/null
     VIRTUAL_ENV="$VENV" uv pip install --quiet "${BRIDGE_PINS[@]}"
@@ -176,6 +180,49 @@ class QwenCompat(CustomLogger):
 proxy_handler_instance = QwenCompat()
 PY
 }
+
+# ---------------------------------------------------------- claude code ------
+# Claude Code itself, which is not ours to ship. The native installer is a
+# single checksum-verified binary under $HOME: no Node, no npm, no root. That
+# matters here - `npm install -g @anthropic-ai/claude-code` needs a Node
+# toolchain, and Ubuntu's WSL rootfs ships neither node nor npm, so the npm
+# route would mean apt-installing a whole toolchain first.
+CLAUDE_INSTALLER_URL="${CLAUDE_INSTALLER_URL:-https://claude.ai/install.sh}"
+
+ensure_claude_installed() {
+  if command -v claude >/dev/null 2>&1; then
+    say "Claude Code is already installed ($(command -v claude))"
+    return 0
+  fi
+  command -v curl >/dev/null 2>&1 || die "need curl to install Claude Code"
+  say "installing Claude Code (one time, about 30s)"
+
+  # Downloaded, then run - not piped straight into bash - so a download that
+  # fails halfway is a clear error here instead of a truncated script that
+  # half-runs. The installer verifies the binary's sha256 itself.
+  local tmp
+  tmp=$(mktemp) || die "could not create a temp file"
+  if ! curl -fsSL -m 120 "$CLAUDE_INSTALLER_URL" -o "$tmp"; then
+    rm -f "$tmp"
+    die "could not download the Claude Code installer from $CLAUDE_INSTALLER_URL
+Check that this machine can reach the internet, then try again."
+  fi
+  if ! bash "$tmp"; then
+    rm -f "$tmp"
+    die "the Claude Code installer failed - see the output above"
+  fi
+  rm -f "$tmp"
+
+  # It lands in ~/.local/bin, which is on PATH from the top of this file - but
+  # bash caches command lookups, so without this the shell still insists it is
+  # not there.
+  hash -r 2>/dev/null || true
+  command -v claude >/dev/null 2>&1 || die "the installer finished but 'claude' is still not on PATH.
+Look for it under $HOME/.local/bin."
+  say "Claude Code installed: $(command -v claude)"
+}
+
+cmd_install_claude() { ensure_claude_installed; }
 
 # ----------------------------------------------------------------- config ---
 render_config() {
@@ -382,10 +429,8 @@ cmd_env() {
 
 cmd_run() {
   cmd_start
-  command -v claude >/dev/null 2>&1 || die "Claude Code is not installed or not on PATH.
-
-Install it with:   npm install -g @anthropic-ai/claude-code
-Then re-run:       bash claude-code.sh run"
+  # Same deal as the bridge venv: install it rather than telling the user to.
+  ensure_claude_installed
   # shellcheck disable=SC1090
   eval "$(emit_env)"
   say "starting Claude Code on $MODEL_ID"
@@ -507,6 +552,7 @@ case "$cmd" in
   run)       cmd_run "$@" ;;
   install)   cmd_install "$@" ;;
   uninstall) cmd_uninstall "$@" ;;
+  install-claude) cmd_install_claude "$@" ;;
   -h|--help|help)
     # print the header block, stopping at the first line that is not a comment
     sed -n '2,${/^#/!q;p;}' "$0" | sed 's/^# \{0,1\}//' ;;

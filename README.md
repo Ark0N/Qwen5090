@@ -223,8 +223,9 @@ claude ──Anthropic /v1/messages──> bridge :4000 ──OpenAI /v1──> 
 
 The bridge installs itself on first run and reads `/v1/models` to configure
 itself, so it follows whichever checkpoint you are serving — nothing to keep in
-sync. You supply Claude Code:
-`npm install -g @anthropic-ai/claude-code`.
+sync. Claude Code itself installs the same way: the first session you open
+fetches it (about 30 seconds, no account, no Node.js), or click **Install Claude
+Code** on that tab to get it over with first.
 
 *On the same PC as the server.* Start the server first, then open the app's
 **Claude Code** tab and click **Open Claude Code** — it starts the bridge and

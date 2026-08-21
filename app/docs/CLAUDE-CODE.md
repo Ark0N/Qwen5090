@@ -60,7 +60,11 @@ QWEN_URL=http://<5090-ip>:8000 bash app/scripts/claude-code.sh run
 Over Tailscale, `<5090-ip>` is the PC's Tailscale IP (`tailscale ip -4`) or its
 MagicDNS name.
 
-Claude Code itself is installed with `npm install -g @anthropic-ai/claude-code`.
+Claude Code itself is installed on demand: `run` fetches it the first time
+(Anthropic's native installer - a single checksum-verified binary under `$HOME`,
+no Node.js and no root), and `bash app/scripts/claude-code.sh install-claude`
+does just that step. The app's Claude Code tab has an **Install Claude Code**
+button for the same thing.
 
 ## Put it on your PATH
 

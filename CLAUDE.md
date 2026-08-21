@@ -241,6 +241,14 @@ The WPF dispatcher thread is never blocked. All patterns funnel through one 300 
   to the GUI's Windows-side health ping, which would leave a live bridge sitting behind a pill
   reading "stopped". The session itself is the one GUI child that is **not** hidden: Claude Code is
   an interactive terminal app, so it gets a real console (`-NoExit`, so a failure stays readable).
+  **Claude Code installs itself on demand** (`install-claude`, `-InstallClaude`, or the tab's
+  Install button; `run` also does it, the way `ensure_bridge_installed` handles LiteLLM):
+  Anthropic's native installer at `https://claude.ai/install.sh` puts one checksum-verified binary
+  in `~/.local/bin` — no Node, no npm, no root, which matters because Ubuntu's WSL rootfs ships
+  neither node nor npm and the npm package would drag in a whole toolchain first. That directory
+  is on `PATH` from the top of claude-code.sh: a non-login `bash -c` reads no profile, so without
+  it a `claude` installed seconds earlier still reads as missing — which is exactly what made a
+  perfectly good install look absent when probed from the outside on 2026-08-21.
   Self-configuring: model id and `max_model_len` come from `/v1/models`, so it follows whatever
   checkpoint is being served. Four properties of this server drive its whole design, and
   the first three are already documented above under "Measured on the 5090":
