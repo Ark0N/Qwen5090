@@ -303,9 +303,21 @@ export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:T
 case "$KV_CACHE_DTYPE" in
   turboquant*)
     if [[ "$MTP" == "1" ]]; then
-      echo ">> MTP disabled: it produces corrupt output with a $KV_CACHE_DTYPE KV cache." >&2
-      echo "   (drop the context to 131072 or lower to get fp8 + MTP back)" >&2
-      MTP=0
+      # Opt-in escape hatch: upstream PR #40914 fixes the spec-verify cudagraph
+      # capture that causes the garbling, so MTP is safe once it is applied.
+      # Requires BOTH the env flag and the patch marker actually present in the
+      # installed vLLM - an env var alone must never re-enable this.
+      _tq_src="$(ls "$VENV"/lib/python3*/site-packages/vllm/v1/attention/backends/turboquant_attn.py 2>/dev/null | head -1)"
+      if [[ "${QWEN5090_MTP_TQ_PATCHED:-0}" == "1" ]] \
+         && [[ -n "$_tq_src" ]] \
+         && grep -q "backport of PR #40914" "$_tq_src" 2>/dev/null; then
+        echo ">> MTP kept ON: PR #40914 patch detected in $(basename "$_tq_src")." >&2
+        echo "   (unset QWEN5090_MTP_TQ_PATCHED to fall back to the safe MTP-off path)" >&2
+      else
+        echo ">> MTP disabled: it produces corrupt output with a $KV_CACHE_DTYPE KV cache." >&2
+        echo "   (drop the context to 131072 or lower to get fp8 + MTP back)" >&2
+        MTP=0
+      fi
     fi
     ;;
 esac
