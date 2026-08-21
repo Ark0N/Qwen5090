@@ -1,7 +1,43 @@
-# Qwen5090
+<div align="center">
 
-**Frontier-class coding AI, running entirely on your own RTX 5090.** No cloud,
-no subscription, no rate limits, and nothing you type ever leaves your PC.
+<h1>Qwen&nbsp;5090</h1>
+
+**Frontier-class coding AI, running entirely on your own RTX 5090.**
+
+No cloud · no subscription · no rate limits · nothing you type ever leaves your PC
+
+[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+[![Windows 11](https://img.shields.io/badge/Windows_11-one--click-0078D6?style=flat-square&logo=windows11&logoColor=white)](#get-started-3-steps)
+[![Linux](https://img.shields.io/badge/Linux-native-FCC624?style=flat-square&logo=linux&logoColor=black)](app/docs/LINUX.md)
+[![RTX 5090](https://img.shields.io/badge/RTX_5090-NVFP4_4--bit-76B900?style=flat-square&logo=nvidia&logoColor=white)](#why-nvfp4-on-a-5090)
+[![Model](https://img.shields.io/badge/Qwen3.8--27B-Apache_2.0-6f42c1?style=flat-square)](https://huggingface.co/Qwen/Qwen3.8-27B)
+[![Engine](https://img.shields.io/badge/engine-vLLM-ff6f00?style=flat-square)](https://github.com/vllm-project/vllm)
+
+<br>
+
+### [⬇️ &nbsp;DOWNLOAD ZIP&nbsp; ⬇️](https://github.com/Ark0N/Qwen5090/archive/refs/heads/main.zip)
+
+[![Download ZIP](https://img.shields.io/badge/⬇_Download_for_Windows_11-Qwen3.8--27B_NVFP4-76b900?style=for-the-badge&logo=nvidia&logoColor=white)](https://github.com/Ark0N/Qwen5090/archive/refs/heads/main.zip)
+
+**Unzip → double-click `Start Qwen 5090.cmd` → click Install. That's it.**
+
+<img src="app/docs/images/setup.png" alt="The Qwen 5090 control panel on first run: status pills across the top, and one Install / Repair button" width="820">
+
+<sub><em>First run. One button installs WSL2, Ubuntu, vLLM and the model.</em></sub>
+
+<br>
+
+**[Get started](#get-started-3-steps)** &nbsp;·&nbsp;
+**[Benchmarks](#how-good-is-it)** &nbsp;·&nbsp;
+**[Requirements](#what-you-need)** &nbsp;·&nbsp;
+**[Linux](#already-running-linux)** &nbsp;·&nbsp;
+**[Claude Code](#use-it-as-a-coding-agent-claude-code)** &nbsp;·&nbsp;
+**[Power users](#for-power-users)** &nbsp;·&nbsp;
+**[Troubleshooting](app/docs/TROUBLESHOOTING.md)**
+
+</div>
+
+---
 
 **It takes one click on your Windows 11 PC.** Unzip, double-click, press
 Install — the app sets up everything itself. When it finishes you can chat with
@@ -12,23 +48,6 @@ already know, answered by the GPU in your own machine.
 The model is Qwen3.8-27B, and it is not a toy: on real-world bug fixing it
 scores **61.7 against Claude Opus 4.6 Max's 53.4** — see
 [How good is it?](#how-good-is-it) for the full table and the honest caveats.
-
-<div align="center">
-
-### [⬇️ &nbsp;DOWNLOAD ZIP&nbsp; ⬇️](https://github.com/Ark0N/Qwen5090/archive/refs/heads/main.zip)
-
-[![Download ZIP](https://img.shields.io/badge/⬇_Download_for_Windows_11-Qwen3.8--27B_NVFP4-76b900?style=for-the-badge&logo=nvidia&logoColor=white)](https://github.com/Ark0N/Qwen5090/archive/refs/heads/main.zip)
-
-**Unzip → double-click `Start Qwen 5090.cmd` → click Install. That's it.**
-
-<img src="app/docs/images/setup.png" alt="The Qwen 5090 control panel on first run: status pills across the top, and one Install / Repair button" width="820">
-
-*First run. One button installs WSL2, Ubuntu, vLLM and the model.*
-
-</div>
-
-<!-- Maintainer note: while this repo is private, the ZIP link only works for
-     logged-in GitHub accounts with access. It works for everyone once public. -->
 
 ## Get started (3 steps)
 
@@ -55,7 +74,7 @@ computer-use benchmarks — while being Apache 2.0 and running on hardware you
 already own:
 
 | Benchmark | Qwen3.8-27B | Claude Opus 4.6 Max |
-|---|---|---|
+|---|:---:|:---:|
 | **SWE-bench Pro** — fixing real bugs in real repos | **61.7** | 53.4 |
 | **LiveCodeBench v6** — competitive programming | **90.3** | 88.8 |
 | **Terminal-Bench 2.1** — driving a shell | 73.0 | **78.2** |
@@ -75,34 +94,11 @@ Two things worth being straight about:
 
 | | |
 |---|---|
-| 💻 OS | Windows 11 — or **native Linux**, see [LINUX.md](app/docs/LINUX.md) |
-| 🎮 GPU | NVIDIA RTX 5090 (other RTX 50-series with ≥24 GB also work) |
-| 🔧 Driver | NVIDIA 570 or newer ([get the latest](https://www.nvidia.com/drivers)) |
-| 🧠 RAM | 16 GB minimum, 32 GB recommended (the installer sizes WSL's share for you) |
-| 💾 Disk | ~45 GB free (model ~22 GB, Python + CUDA libraries the rest) |
-
-## Already running Linux?
-
-Everything above describes the Windows 11 experience, where one click builds a
-WSL2 Ubuntu box because **vLLM only runs on Linux**. If your RTX 5090 is already
-in a Linux machine, skip all of it — the scripts under `app/scripts/` are plain
-bash and run directly:
-
-```bash
-git clone https://github.com/Ark0N/Qwen5090.git
-cd Qwen5090
-sudo apt-get install -y build-essential      # Triton needs a C compiler
-bash app/scripts/setup-linux.sh              # venv + vLLM + model (~20 GB)
-bash app/scripts/serve.sh                    # http://localhost:8000/v1
-bash app/scripts/claude-code.sh install && qwen-claude   # Claude Code on your GPU
-```
-
-Want it back after a reboot? `bash app/scripts/install-service.sh install`
-writes a systemd user unit (no root needed).
-
-No launcher, no GUI, no WSL. Verified on Ubuntu 26.04 with an RTX 5090.
-Full walkthrough — including the **262K-context + MTP** configuration that runs
-at ~139 tok/s — in **[app/docs/LINUX.md](app/docs/LINUX.md)**.
+| 💻 **OS** | Windows 11 — or **native Linux**, see [LINUX.md](app/docs/LINUX.md) |
+| 🎮 **GPU** | NVIDIA RTX 5090 (other RTX 50-series with ≥24 GB also work) |
+| 🔧 **Driver** | NVIDIA 570 or newer ([get the latest](https://www.nvidia.com/drivers)) |
+| 🧠 **RAM** | 16 GB minimum, 32 GB recommended (the installer sizes WSL's share for you) |
+| 💾 **Disk** | ~45 GB free (model ~22 GB, Python + CUDA libraries the rest) |
 
 ## What you get
 
@@ -140,6 +136,29 @@ at ~139 tok/s — in **[app/docs/LINUX.md](app/docs/LINUX.md)**.
 </tr>
 </table>
 
+## Already running Linux?
+
+Everything above describes the Windows 11 experience, where one click builds a
+WSL2 Ubuntu box because **vLLM only runs on Linux**. If your RTX 5090 is already
+in a Linux machine, skip all of it — the scripts under `app/scripts/` are plain
+bash and run directly:
+
+```bash
+git clone https://github.com/Ark0N/Qwen5090.git
+cd Qwen5090
+sudo apt-get install -y build-essential      # Triton needs a C compiler
+bash app/scripts/setup-linux.sh              # venv + vLLM + model (~20 GB)
+bash app/scripts/serve.sh                    # http://localhost:8000/v1
+bash app/scripts/claude-code.sh install && qwen-claude   # Claude Code on your GPU
+```
+
+Want it back after a reboot? `bash app/scripts/install-service.sh install`
+writes a systemd user unit (no root needed).
+
+No launcher, no GUI, no WSL. Verified on Ubuntu 26.04 with an RTX 5090.
+Full walkthrough — including the **262K-context + MTP** configuration that runs
+at ~139 tok/s — in **[app/docs/LINUX.md](app/docs/LINUX.md)**.
+
 ## How it works
 
 vLLM (currently the only engine that runs NVFP4) is Linux-only, so the
@@ -148,123 +167,31 @@ completely silently: no Linux prompts, a `qwen` user is created for you, and
 your Windows NVIDIA driver powers the GPU inside WSL automatically. The
 PowerShell scripts hide all of it; `localhost:8000` just works.
 
+```
+you ──► Start Qwen 5090.cmd ──► gui.ps1 ──► install.ps1 / run.ps1
+                                                 │
+                                      WSL2 · Ubuntu 24.04
+                                                 │
+                                  serve.sh ──► vLLM ──► your RTX 5090
+                                                 │
+                                   OpenAI API · localhost:8000/v1
+```
+
 What `install.ps1` actually does: checks Windows 11 + driver ≥ 570 → raises the
-GPU watchdog timeout, which needs one restart (not a cure-all — see the 0x116
-note in [TROUBLESHOOTING](app/docs/TROUBLESHOOTING.md#bluescreen-0x116-video_tdr_error)
-if the PC still bluescreens) → enables
-WSL2 (one reboot max, auto-resumes) → provisions Ubuntu unattended → installs
-`build-essential` (vLLM's kernel compiler needs a C compiler at runtime) →
-creates a Python 3.13 venv with `vllm`, `flashinfer`, and the CUTLASS DSL → downloads
+GPU watchdog timeout, which needs one restart → enables WSL2 (one reboot max,
+auto-resumes) → provisions Ubuntu unattended → installs `build-essential`
+(vLLM's kernel compiler needs a C compiler at runtime) → creates a Python 3.13
+venv with `vllm`, `flashinfer`, and the CUTLASS DSL → downloads
 [`unsloth/Qwen3.8-27B-NVFP4`](https://huggingface.co/unsloth/Qwen3.8-27B-NVFP4)
 (~22 GB, skippable) → desktop shortcut. Re-running is always safe.
 
-## For power users
-
-**Command line** (elevated PowerShell for install; scripts live in `app\`):
-
-```powershell
-.\app\install.ps1    # everything the GUI does; add -SkipDownload / -Unattended
-.\app\install.ps1 -WslMemoryOnly   # only re-size the WSL VM from this PC's RAM
-.\app\run.ps1        # serve on http://localhost:8000/v1
-.\app\chat.ps1       # terminal chat (second terminal)
-.\app\uninstall.ps1  # remove the distro, env, and model (what the Cleanup button runs)
-```
-
-**On native Linux** (no PowerShell, no WSL — see
-[LINUX.md](app/docs/LINUX.md)):
-
-```bash
-bash app/scripts/setup-linux.sh     # one-time: venv + vLLM + model
-bash app/scripts/serve.sh           # serve on http://localhost:8000/v1
-bash app/scripts/chat.py            # terminal chat
-bash app/scripts/claude-code.sh run # Claude Code against this server
-bash app/scripts/patch-mtp.sh apply # opt-in: MTP at the full 262K window
-bash app/scripts/install-service.sh install   # start automatically at boot
-```
-
-> **First time in a PowerShell window?** Windows blocks these scripts with
-> *"…is not digitally signed"* — GitHub's ZIP marks every file as
-> downloaded-from-the-internet. The double-click launcher passes
-> `-ExecutionPolicy Bypass` so it never sees this; run them by hand and you do.
-> Once per window:
->
-> ```powershell
-> Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
-> ```
->
-> Or permanently, from the unzipped folder: `Get-ChildItem -Recurse | Unblock-File`.
-
-<a id="uncensored-build"></a>
-**Uncensored build.** Pick *Uncensored (abliterated)* in the Setup tab's
-**Model** dropdown, or from PowerShell:
-
-```powershell
-.\app\install.ps1 -Uncensored   # one-time download (~19 GB), no account needed
-.\app\run.ps1 -Uncensored       # serve it
-.\app\run.ps1                   # back to the standard build
-```
-
-That is [`sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4`](https://huggingface.co/sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4) —
-[huihui-ai's abliterated Qwen3.8-27B](https://huggingface.co/huihui-ai/Huihui-Qwen3.8-27B-abliterated)
-re-quantized to NVFP4 with llm-compressor, Apache-2.0, MTP head preserved. It
-is a **public download**: no Hugging Face account, no token. At ~19 GB it is
-smaller than the standard build, so there is more room for KV cache.
-
-It has **no safety guardrails**. It answers what the standard model declines,
-including things that are illegal or dangerous to act on, and it is no more
-accurate while doing so — abliteration removes refusals, not mistakes. What you
-do with the output is on you. Both builds run entirely on your PC. The author
-also notes it occasionally drops a closing parenthesis when generating code.
-
-A third entry, *Uncensored - OrcaRouter (sign-in)*
-([`orcarouter/Qwen3.8-27B-Uncensored-NVFP4`](https://huggingface.co/orcarouter/Qwen3.8-27B-Uncensored-NVFP4),
-~23 GB), is a different abliteration of the same model. It is **gated**: sign in
-at Hugging Face, accept the terms on the model page, create a **read** token at
-[huggingface.co/settings/tokens](https://huggingface.co/settings/tokens), and
-paste it into the **HF token** box that lights up next to the dropdown. Stored
-inside WSL, so you do it once.
-
-Any other checkpoint works too: `run.ps1 -Model owner/name` (add
-`install.ps1 -Model owner/name` to download it). Serving flags follow the model
-id automatically — `serve.sh` knows which builds take `--kv-cache-dtype` from
-the command line versus their own `config.json`, how many MTP tokens to draft,
-and which need `--trust-remote-code`.
-
-**Tuning:**
-
-| Knob | Default | Notes |
-|---|---|---|
-| `run.ps1 -Ctx` | `131072` | Context window. 128K is the largest that still holds a higher-precision fp8 KV cache in 32 GB, which keeps MTP on and runs ~80 tok/s. `262144` is the model's native maximum, but above 128K the KV cache switches to 4-bit so it fits, which also turns MTP off (the two together corrupt the output) — so the full window runs at ~49 tok/s. Use `65536` if you are gaming at the same time. |
-| `run.ps1 -Port` | `8000` | API port. |
-| `run.ps1 -GpuUtil` | `0.90`, or `0.85` above 128K | Fraction of VRAM the server may claim. The Windows desktop shares the GPU, and at the full 262K window the 4-bit cache has capacity to spare — so it keeps a little more back for Windows there. Only pass this if you know you need to. |
-| `run.ps1 -NoMtp` | off | Disables speculative decoding if it misbehaves. |
-| `run.ps1 -PrefixCache` | on above 128K | Reuses the KV of a repeated prompt prefix instead of recomputing it. Above 128K a second request sharing a 32K prefix answered in 0.31 s against 3.80 s cold — worth most to agent tools like Claude Code, which resend the same long system prompt every turn. `-PrefixCache:$false` turns it off. |
-| `run.ps1 -Uncensored` | off | Serves the abliterated build instead (install it first). |
-| `run.ps1 -Model` | `unsloth/Qwen3.8-27B-NVFP4` | Any Hugging Face repo id or a path inside WSL. |
-| `chat.ps1 -NoThink` | off | Direct answers, no reasoning tokens. |
-| `chat.ps1 -Effort low\|medium\|xhigh` | model default | Qwen3.8's reasoning-effort dial. The chat template rejects every other value, `high` included. |
-
-**API example** (sampling: temperature 0.7, top-p 0.8, top-k 20, presence 1.5):
-
-```python
-from openai import OpenAI
-client = OpenAI(base_url="http://localhost:8000/v1", api_key="local")
-resp = client.chat.completions.create(
-    model="unsloth/Qwen3.8-27B-NVFP4",
-    messages=[{"role": "user", "content": "Explain NVFP4 in one paragraph."}],
-    extra_body={"chat_template_kwargs": {"enable_thinking": False}},
-)
-print(resp.choices[0].message.content)
-```
-
-Tool calling and the `qwen3` reasoning parser are enabled on the server.
-Quick benchmark while it runs (from WSL): `bash app/scripts/benchmark.sh`
-
 <a id="claude-code"></a>
-**Use it as a coding agent (Claude Code).** Point
-[Claude Code](https://claude.com/claude-code) at this server and it reads and
-writes your files, runs commands and edits code exactly as it normally does —
-with no Anthropic account, nothing billed, and nothing leaving your network.
+
+## Use it as a coding agent (Claude Code)
+
+Point [Claude Code](https://claude.com/claude-code) at this server and it reads
+and writes your files, runs commands and edits code exactly as it normally does
+— with no Anthropic account, nothing billed, and nothing leaving your network.
 
 Claude Code speaks the **Anthropic** API; vLLM serves the **OpenAI** API and has
 no `/v1/messages` endpoint at all. Neither side bends, so a small
@@ -273,7 +200,7 @@ translates in both directions — streaming, tool calls and token counting
 included:
 
 ```
-claude ──Anthropic /v1/messages──> bridge :4000 ──OpenAI /v1──> vLLM :8000
+claude ──Anthropic /v1/messages──► bridge :4000 ──OpenAI /v1──► vLLM :8000
                                   (LiteLLM)                     (your 5090)
 ```
 
@@ -283,13 +210,15 @@ sync. Claude Code itself installs the same way: the first session you open
 fetches it (about 30 seconds, no account, no Node.js), or click **Install Claude
 Code** on that tab to get it over with first.
 
-*On the same PC as the server.* Start the server first, then open the app's
+**On the same PC as the server.** Start the server first, then open the app's
 **Claude Code** tab and click **Open Claude Code** — it starts the bridge and
 opens a session in its own window. **Windows env** on the same tab is for a
 Claude Code installed on Windows rather than inside WSL: it copies the variables
 that one needs to the clipboard.
 
+<div align="center">
 <img src="app/docs/images/claude-code.png" alt="Claude Code tab: buttons to open a session, start or stop the bridge, install Claude Code, and run the doctor" width="820">
+</div>
 
 The same thing from PowerShell, if you prefer:
 
@@ -299,7 +228,7 @@ The same thing from PowerShell, if you prefer:
 .\app\claude-code.ps1 -Windows     # prints the env vars for a Windows-native Claude Code
 ```
 
-*From another machine* — a laptop, a Mac, another WSL box — the API has to be
+**From another machine** — a laptop, a Mac, another WSL box — the API has to be
 reachable off localhost first, so tick **Share on network** or run
 `.\app\share.ps1` on the 5090 PC. Then, on the machine you want to code from:
 
@@ -322,17 +251,158 @@ Expect a capable local assistant rather than a frontier one: well-scoped edits,
 refactors and file spelunking go fine; long multi-step planning is weaker, and
 it thinks for a few seconds before each reply (`QWEN_EFFORT=medium` trades some
 of that back). Full guide, settings and troubleshooting:
-[app/docs/CLAUDE-CODE.md](app/docs/CLAUDE-CODE.md).
+**[app/docs/CLAUDE-CODE.md](app/docs/CLAUDE-CODE.md)**.
 
-**Use it from your phone/laptop (LAN / Tailscale):** tick **Share on network**
-on the Server tab (one admin prompt per start), or run `.\app\run.ps1 -Share`.
-Any device on your Wi-Fi or tailnet can then use `http://<this-PC's-IP>:8000/v1`
-— for Tailscale, use the PC's Tailscale IP (`tailscale ip -4`) or MagicDNS
-name. Sharing forwards the port out of WSL and opens Windows Firewall on
-Private/Domain networks only (Tailscale counts as private; public Wi-Fi stays
-blocked). The API has no authentication, so only share on networks you trust.
+## For power users
+
+<details>
+<summary><b>Command line</b> — every button the GUI has, as a script</summary>
+
+<br>
+
+Elevated PowerShell for install; scripts live in `app\`:
+
+```powershell
+.\app\install.ps1    # everything the GUI does; add -SkipDownload / -Unattended
+.\app\install.ps1 -WslMemoryOnly   # only re-size the WSL VM from this PC's RAM
+.\app\run.ps1        # serve on http://localhost:8000/v1
+.\app\chat.ps1       # terminal chat (second terminal)
+.\app\uninstall.ps1  # remove the distro, env, and model (what the Cleanup button runs)
+```
+
+On native Linux (no PowerShell, no WSL — see [LINUX.md](app/docs/LINUX.md)):
+
+```bash
+bash app/scripts/setup-linux.sh     # one-time: venv + vLLM + model
+bash app/scripts/serve.sh           # serve on http://localhost:8000/v1
+bash app/scripts/chat.py            # terminal chat
+bash app/scripts/claude-code.sh run # Claude Code against this server
+bash app/scripts/patch-mtp.sh apply # opt-in: MTP at the full 262K window
+bash app/scripts/install-service.sh install   # start automatically at boot
+```
+
+> **First time in a PowerShell window?** Windows blocks these scripts with
+> *"…is not digitally signed"* — GitHub's ZIP marks every file as
+> downloaded-from-the-internet. The double-click launcher passes
+> `-ExecutionPolicy Bypass` so it never sees this; run them by hand and you do.
+> Once per window:
+>
+> ```powershell
+> Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+> ```
+>
+> Or permanently, from the unzipped folder: `Get-ChildItem -Recurse | Unblock-File`.
+
+</details>
+
+<details>
+<summary><b>Tuning</b> — context, VRAM share, speculative decoding</summary>
+
+<br>
+
+| Knob | Default | Notes |
+|---|---|---|
+| `run.ps1 -Ctx` | `131072` | Context window. 128K is the largest that still holds a higher-precision fp8 KV cache in 32 GB, which keeps MTP on and runs ~80 tok/s. `262144` is the model's native maximum, but above 128K the KV cache switches to 4-bit so it fits, which also turns MTP off (the two together corrupt the output) — so the full window runs at ~49 tok/s. Use `65536` if you are gaming at the same time. |
+| `run.ps1 -Port` | `8000` | API port. |
+| `run.ps1 -GpuUtil` | `0.90`, or `0.85` above 128K | Fraction of VRAM the server may claim. The Windows desktop shares the GPU, and at the full 262K window the 4-bit cache has capacity to spare — so it keeps a little more back for Windows there. Only pass this if you know you need to. |
+| `run.ps1 -NoMtp` | off | Disables speculative decoding if it misbehaves. |
+| `run.ps1 -PrefixCache` | on above 128K | Reuses the KV of a repeated prompt prefix instead of recomputing it. Above 128K a second request sharing a 32K prefix answered in 0.31 s against 3.80 s cold — worth most to agent tools like Claude Code, which resend the same long system prompt every turn. `-PrefixCache:$false` turns it off. |
+| `run.ps1 -Uncensored` | off | Serves the abliterated build instead (install it first). |
+| `run.ps1 -Model` | `unsloth/Qwen3.8-27B-NVFP4` | Any Hugging Face repo id or a path inside WSL. |
+| `chat.ps1 -NoThink` | off | Direct answers, no reasoning tokens. |
+| `chat.ps1 -Effort low\|medium\|xhigh` | model default | Qwen3.8's reasoning-effort dial. The chat template rejects every other value, `high` included. |
+
+</details>
+
+<details>
+<summary><b>API example</b> — it is just the OpenAI SDK</summary>
+
+<br>
+
+Recommended sampling: temperature 0.7, top-p 0.8, top-k 20, presence 1.5.
+
+```python
+from openai import OpenAI
+client = OpenAI(base_url="http://localhost:8000/v1", api_key="local")
+resp = client.chat.completions.create(
+    model="unsloth/Qwen3.8-27B-NVFP4",
+    messages=[{"role": "user", "content": "Explain NVFP4 in one paragraph."}],
+    extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+)
+print(resp.choices[0].message.content)
+```
+
+Tool calling and the `qwen3` reasoning parser are enabled on the server.
+Quick benchmark while it runs (from WSL): `bash app/scripts/benchmark.sh`
+
+</details>
+
+<a id="uncensored-build"></a>
+
+<details>
+<summary><b>Uncensored build</b> — abliterated, no account, no guardrails</summary>
+
+<br>
+
+Pick *Uncensored (abliterated)* in the Setup tab's **Model** dropdown, or from
+PowerShell:
+
+```powershell
+.\app\install.ps1 -Uncensored   # one-time download (~19 GB), no account needed
+.\app\run.ps1 -Uncensored       # serve it
+.\app\run.ps1                   # back to the standard build
+```
+
+That is [`sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4`](https://huggingface.co/sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4) —
+[huihui-ai's abliterated Qwen3.8-27B](https://huggingface.co/huihui-ai/Huihui-Qwen3.8-27B-abliterated)
+re-quantized to NVFP4 with llm-compressor, Apache-2.0, MTP head preserved. It
+is a **public download**: no Hugging Face account, no token. At ~19 GB it is
+smaller than the standard build, so there is more room for KV cache.
+
+> ⚠️ It has **no safety guardrails**. It answers what the standard model
+> declines, including things that are illegal or dangerous to act on, and it is
+> no more accurate while doing so — abliteration removes refusals, not mistakes.
+> What you do with the output is on you.
+
+Both builds run entirely on your PC. The author also notes it occasionally drops
+a closing parenthesis when generating code.
+
+A third entry, *Uncensored - OrcaRouter (sign-in)*
+([`orcarouter/Qwen3.8-27B-Uncensored-NVFP4`](https://huggingface.co/orcarouter/Qwen3.8-27B-Uncensored-NVFP4),
+~23 GB), is a different abliteration of the same model. It is **gated**: sign in
+at Hugging Face, accept the terms on the model page, create a **read** token at
+[huggingface.co/settings/tokens](https://huggingface.co/settings/tokens), and
+paste it into the **HF token** box that lights up next to the dropdown. Stored
+inside WSL, so you do it once.
+
+Any other checkpoint works too: `run.ps1 -Model owner/name` (add
+`install.ps1 -Model owner/name` to download it). Serving flags follow the model
+id automatically — `serve.sh` knows which builds take `--kv-cache-dtype` from
+the command line versus their own `config.json`, how many MTP tokens to draft,
+and which need `--trust-remote-code`.
+
+</details>
+
+<details>
+<summary><b>Use it from your phone or laptop</b> — LAN and Tailscale</summary>
+
+<br>
+
+Tick **Share on network** on the Server tab (one admin prompt per start), or run
+`.\app\run.ps1 -Share`. Any device on your Wi-Fi or tailnet can then use
+`http://<this-PC's-IP>:8000/v1` — for Tailscale, use the PC's Tailscale IP
+(`tailscale ip -4`) or MagicDNS name. Sharing forwards the port out of WSL and
+opens Windows Firewall on Private/Domain networks only (Tailscale counts as
+private; public Wi-Fi stays blocked).
+
+> ⚠️ **The API has no authentication**, so only share on networks you trust.
+
 Undo anytime: `.\app\share.ps1 -Remove`. HTTPS alternative with zero setup:
 `tailscale serve --bg 8000`.
+
+</details>
+
+<a id="why-nvfp4-on-a-5090"></a>
 
 **Why NVFP4 on a 5090:** the ~22 GB weights fit the 32 GB card with room for
 a 128K context at fp8 — or the full 262K with a 4-bit KV cache, thanks to
@@ -369,16 +439,24 @@ app/                       everything under the hood:
 
 ## Something not working?
 
-See [app/docs/TROUBLESHOOTING.md](app/docs/TROUBLESHOOTING.md),
-[app/docs/PERFORMANCE.md](app/docs/PERFORMANCE.md) and
-[app/docs/CLAUDE-CODE.md](app/docs/CLAUDE-CODE.md), or click
-**Collect diagnostics** in the app and share the ZIP it puts on your Desktop.
+| Guide | What is in it |
+|---|---|
+| **[TROUBLESHOOTING.md](app/docs/TROUBLESHOOTING.md)** | Install failures, GPU not found, out of memory, crashes |
+| **[PERFORMANCE.md](app/docs/PERFORMANCE.md)** | Measured throughput, context/speed trade-offs, tuning |
+| **[CLAUDE-CODE.md](app/docs/CLAUDE-CODE.md)** | The bridge, its settings, and what works versus what does not |
+| **[LINUX.md](app/docs/LINUX.md)** | Native Linux install, systemd, the 262K + MTP path |
+
+Still stuck? Click **Collect diagnostics** in the app — it puts a single ZIP of
+all logs and system state on your Desktop, which is exactly what an issue report
+needs.
 
 ## Credits & license
 
 - [Qwen team](https://huggingface.co/Qwen) — Qwen3.8-27B (Apache 2.0)
 - [Unsloth](https://unsloth.ai) — dynamic NVFP4 quantization
 - [vLLM](https://github.com/vllm-project/vllm) — inference engine
+- [huihui-ai](https://huggingface.co/huihui-ai) and [sakamakismile](https://huggingface.co/sakamakismile) — the abliterated build
+- [MiaAI-Lab](https://github.com/MiaAI-Lab/Qwen3.8-27B-NVFP4-RTX-5090) — the MTP-at-262K patch this repo backports
 
-Tooling in this repo is MIT-licensed. Not affiliated with Alibaba, Unsloth,
-NVIDIA, or the vLLM project.
+Tooling in this repo is [MIT-licensed](LICENSE). Not affiliated with Alibaba,
+Unsloth, NVIDIA, or the vLLM project.

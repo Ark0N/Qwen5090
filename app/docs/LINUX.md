@@ -56,7 +56,7 @@ bash app/scripts/serve.sh
 
 Defaults to `CTX=131072` on port 8000, which is the fastest sensible
 configuration (fp8 KV cache + MTP, ~80 tok/s). Every knob is an environment
-variable — see the table in [the main README](../../README.md#advanced) and the
+variable — see the table in [the main README](../../README.md#for-power-users) and the
 comments in `serve.sh` itself.
 
 ```bash
