@@ -610,13 +610,35 @@ kv=turboquant_4bit_nc max_seqs=1`, abliterated build, patched MTP-3, `xhigh`
 thinking, 1200-token outputs back to back. Logged per request to
 `~/.qwen5090/logs/soak-*.log` alongside the usual `gpu-telemetry-*.log`.
 
-At the 38-minute mark: **143 requests, 0 failures**, 171,600 tokens generated,
-77.2 tok/s mean decode (46.8–104.8), GPU mean 375.8 W, **peak 517.6 W**, 62 °C
-peak, no Xid, no `EngineDeadError`, never throttled, PCIe gen 5 x16 throughout.
+Ran **17:45:36 → 18:28:12, 42.6 minutes of unbroken load**, then stopped by the
+operator to continue the stress test under Windows:
 
-Read it against the yardstick: the eight crashes hit between ~30 minutes and a
-couple of hours of active serving, so 38 minutes is only the bottom edge of
-meaningful. Hours are a signal; a full day is the result worth writing down.
+| | |
+|---|---|
+| requests | **162, zero failures** |
+| tokens | 194,400 generated |
+| decode | 77.5 tok/s mean (46.8–104.8) |
+| GPU | 378.3 W mean, **517.6 W peak**, 62 °C peak, 1,310 samples |
+| faults | no Xid, no `EngineDeadError`, never throttled, PCIe gen 5 x16 throughout |
+
+**42.6 minutes is encouraging and is not yet a result.** The eight crashes hit
+between ~30 minutes and a couple of hours of active serving, so this run only
+just entered the window where survival starts to mean anything — it clears the
+fastest of the eight and nothing more. Hours are a signal; a full day is the
+result worth writing down. Do not describe the reseat as confirmed on this
+evidence.
+
+Note the load was *harder* than any crash: 378 W mean here against the 173.2 W
+mean of the fully-instrumented 17:11 crash, i.e. near-continuous decode rather
+than ordinary agent turns. Peak draw was lower (517.6 W vs 572.8 W) because
+back-to-back decode never produces the transient a cold prefill does — so this
+soak stresses sustained delivery well, and the worst-case spike less well. A
+mixed workload with large prefills is the better next test.
+
+The Windows half is the other arm of the same experiment: six of the eight
+crashes were 0x116 bugchecks there, so post-reseat Windows soak time counts
+toward the same question. Record it in the same terms — hours under active
+serving, and what the power limit actually read.
 
 **This run is uncapped at 600 W, and that is deliberate** — it makes the test
 stronger, not weaker. The 450 W cap reverted at the 17:42 reboot (persistence
