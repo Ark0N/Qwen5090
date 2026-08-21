@@ -12,7 +12,6 @@ the model right there, and you can point
 **[Claude Code](app/docs/CLAUDE-CODE.md)** straight at it: the same agent you
 already know, answered by the GPU in your own machine.
 
-[![Release](https://img.shields.io/github/v/release/Ark0N/Qwen5090?style=flat-square&color=76B900&label=release)](https://github.com/Ark0N/Qwen5090/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![Windows 11](https://img.shields.io/badge/Windows_11-one--click-0078D6?style=flat-square&logo=windows11&logoColor=white)](#get-started-3-steps)
 [![Linux](https://img.shields.io/badge/Linux-native-FCC624?style=flat-square&logo=linux&logoColor=black)](app/docs/LINUX.md)
