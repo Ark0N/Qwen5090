@@ -7,7 +7,7 @@
 No cloud · no subscription · no rate limits · nothing you type ever leaves your PC
 
 **It takes one click on your Windows 11 PC.** Unzip, double-click, press
-Install — the app sets up everything itself. When it finishes you can chat with
+Install - the app sets up everything itself. When it finishes you can chat with
 the model right there, and you can point
 **[Claude Code](app/docs/CLAUDE-CODE.md)** straight at it: the same agent you
 already know, answered by the GPU in your own machine.
