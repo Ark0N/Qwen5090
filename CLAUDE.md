@@ -120,7 +120,7 @@ and nvcc lives in the CUDA toolkit, not the driver:
   rather than refuse, so 262144 starts everywhere it is asked for — but it is **no longer the
   default**: 131072 is (2026-08-21), because the fp8 path keeps MTP and runs ~80 tok/s against ~49
   and avoids the prefill cliff. See the KV-precision contract below, and "Measured on the 5090".
-  The switch was **not** a bluescreen fix — see "The 0x116 bluescreens" below.
+  The switch was **not** a bluescreen fix — see "The GPU falls off under load" below.
 
 Both of the loose ends recorded here have since been fixed. The stale `.incomplete` blob (the reason
 setup printed "downloaded 21G of ~19 GB") is now cleared by setup-wsl.sh before each download - by
@@ -461,9 +461,9 @@ A full-window run — server started by `serve.sh`, a real code-generation task 
   The sizing stays raise-only, so an existing `.wslconfig` at 24 GB must be lowered
   by hand, then `wsl --shutdown`.
 
-## The 0x116 bluescreens (open; six dumps as of 2026-08-21)
+## The GPU falls off under load (open; six 0x116 dumps + one Linux Xid 79 as of 2026-08-21)
 
-This PC bluescreens with `0x116` VIDEO_TDR_ERROR, arg3 `0xc000009a`
+The **Windows** PC bluescreens with `0x116` VIDEO_TDR_ERROR, arg3 `0xc000009a`
 STATUS_INSUFFICIENT_RESOURCES, arg4 4, at the end of a serving run. Dumps:
 2026-08-16 20:20, 08-20 21:42, 08-20 23:32, 08-21 00:44, 08-21 02:36,
 **08-21 10:22**. `nvlddmkm` event-153 reset storms accompanied the early ones and
@@ -486,16 +486,86 @@ scratch, and do not ship any of them as a fix.**
    prefix_cache=0`), served ~2 minutes at 54–98 tok/s, and died mid-decode: last
    stat line 10:21:49 `0.0 tokens/s, Running: 1 reqs`, bugcheck at 10:22:30.
 
+### The Linux box does it too — Xid 79, 2026-08-21 16:38 (this is new)
+
+The **native Linux 5090** (Ubuntu 26.04, driver 595.84 — a different machine,
+a different OS and a different driver stack from the Windows PC) dropped its
+GPU mid-decode while driving a Claude Code session:
+
+```
+16:38:33  NVRM: Xid (PCI:0000:01:00): 79, GPU has fallen off the bus.
+16:38:33  NVRM: Xid 154, GPU recovery action changed 0x0 (None) -> 0x2 (Node Reboot Required)
+```
+
+vLLM saw it as `CUDA error: unspecified launch failure` -> `EngineDeadError`,
+and the bridge surfaced a `MidStreamFallbackError` into Claude Code. The
+desktop then died *on top of* the missing GPU and looked like the crash:
+`nvidia-modeset: Error while waiting for GPU progress` every 5 s for 3.5
+minutes, `ptyxis` segfaulting in `libnvidia-glcore`, GNOME Shell `SIGABRT`
+unwinding the VA space, reboot at 16:42:45. **The GUI dying is aftermath, not
+cause — read the Xid, not the segfault.**
+
+What it was doing (`serve-20260821-163547.log`, last stat line 16:38:28, 2m40s
+into the run): `53.8 tokens/s, Running: 1 reqs, GPU KV cache usage: 15.5%`,
+MTP accepting normally. An ordinary agent turn — *not* the prefill cliff
+(prompt throughput was 0.0), not memory pressure, one request.
+
+Ruled out on the spot: no PCIe AER or correctable errors, no link-down, no OOM
+killer, no MCE, no thermal event, no HW/SW throttle flags, no ECC or row-remap
+pending. The card was healthy again after the reboot (39 °C, 20 W idle, x16).
+
+It does **not** implicate the `patch-mtp.sh` path it happened to be running
+(`ctx=262144 gpu_util=0.93 mtp=1 kv=turboquant_4bit_nc max_seqs=1`): the
+identical config had already run twice that hour, at 16:09 and 16:22, without
+dying. Falsified theory 5 all over again, on the other platform.
+
+Why this matters more than a seventh Windows dump: it makes a *Windows*, WSL,
+`nvlddmkm`, TDR-watchdog or GPU-scheduling explanation impossible, and Xid 79
+is specifically the electrical/PCIe-link signature — power-delivery transient,
+seating, or a failing card. If the two machines really are two different 5090s,
+the shared factor is narrower than "this PC": PSU, 12VHPWR, card model, or the
+power-transient profile of this workload. **Establish whether they are two
+cards or one before theorising further.**
+
+Untried, and the cheapest next test: `sudo nvidia-smi -pl 450`. If the crash
+stops recurring at a 450 W cap, it is power delivery. (Persistence mode is
+Disabled on the Linux box, so the cap resets on driver unload.)
+
+`serve.sh` now samples the GPU every 2 s into
+`~/.qwen5090/logs/gpu-telemetry-*.log` (`GPU_TELEMETRY=0` disables): power,
+temperature, clocks, PCIe link and throttle reasons, plus a stamped
+`NVIDIA-SMI FAILED OR TIMED OUT` line at the moment the card stops answering.
+Five theories were argued and falsified for want of exactly that history — the
+next incident should not have to be.
+
+Its first load run already earned its keep. Five ordinary Claude Code turns
+(128 samples, 2026-08-21 17:02–17:07, `ctx=262144 mtp=1`, nothing exotic):
+
+| | |
+|---|---|
+| power | **572.8 W peak** against a 600 W limit, 100.9 W mean |
+| temperature | 56 °C peak — nowhere near thermal |
+| SM clock | 2,947 MHz peak, no HW/SW slowdown in any sample |
+| PCIe | gen 5 x16 under load, gen 1–2 at idle (normal downclock) |
+
+So the card transiently pulls ~95% of its power limit during a perfectly
+ordinary agent turn, while staying cold and unthrottled. That is exactly the
+profile in which an Xid 79 is a power-delivery transient rather than a thermal
+or a software fault, and it is the strongest argument yet for running the
+`nvidia-smi -pl 450` test above.
+
 So the crash is **not** specific to a KV precision, a context length, a
-`GPU_UTIL`, the driver, or GPU scheduling. What every crash does share is a vLLM
-decode/prefill workload on this card; a June `nvlddmkm` storm at an idle desktop
-(see TROUBLESHOOTING.md) says the fault predates the toolkit. Treat it as
+`GPU_UTIL`, the driver, GPU scheduling, an OS, or a driver stack. What every
+crash does share is a vLLM decode workload on an RTX 5090; a June `nvlddmkm` storm at an idle
+desktop (see TROUBLESHOOTING.md) says the fault predates the toolkit. Treat it as
 hardware/platform until something new says otherwise.
 
 131072 became the default on 2026-08-21 for speed (~80 tok/s vs ~49) and to
 avoid the prefill cliff — **not** as a crash fix. Do not describe it as one.
 
-Recording new incidents: check for a minidump *and* a Kernel-Power 41 first —
+Recording new incidents: on Linux, `journalctl -b -1 | grep -iE 'xid|fallen off'` —
+an Xid line is the whole diagnosis and everything after it is fallout. On
+Windows, check for a minidump *and* a Kernel-Power 41 first —
 the 08-21 01:01 freeze was commit exhaustion (`dwm.exe` `STATUS_COMMITMENT_LIMIT`)
 with vLLM not running, and does not belong in the count above. When reading old
 logs, `gpu_util=0.9` (one decimal) means a caller passed `-GpuUtil` explicitly,
