@@ -225,25 +225,62 @@ function Install-LlamaCpp {
 # ----------------------------------------------------------- model files ----
 # Enumerate through the Hub API rather than guessing names: one build is a
 # single 62 GB file, the next is four shards under a quant subfolder.
+# Sizes come back with the names: a 62 GB file that stopped early looks exactly
+# like a finished one on disk, and the only thing that tells them apart is what
+# the Hub says it should weigh.
 function Get-ModelFiles {
     param([string]$Repo, [string]$Quant)
-    $info = Invoke-RestMethod -Uri "https://huggingface.co/api/models/$Repo" -TimeoutSec 60
-    $files = $info.siblings | ForEach-Object { $_.rfilename } |
-             Where-Object { $_ -like "*.gguf" -and $_ -notlike "*dspark*" }
-    if ($Quant) { $files = $files | Where-Object { $_ -like "*$Quant*" } }
-    return @($files | Sort-Object)
+    $info = Invoke-RestMethod -Uri "https://huggingface.co/api/models/${Repo}?blobs=true" -TimeoutSec 60
+    $files = $info.siblings |
+             Where-Object { $_.rfilename -like "*.gguf" -and $_.rfilename -notlike "*dspark*" }
+    if ($Quant) { $files = $files | Where-Object { $_.rfilename -like "*$Quant*" } }
+    return @($files | Sort-Object -Property rfilename |
+             ForEach-Object { [pscustomobject]@{ Path = $_.rfilename; Size = [long]($_.size) } })
 }
 
 function Get-HubFile {
-    param([string]$Repo, [string]$RelPath, [string]$Dest)
+    param([string]$Repo, [string]$RelPath, [string]$Dest, [long]$ExpectedSize = 0)
     $url = "https://huggingface.co/$Repo/resolve/main/$RelPath"
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Dest) | Out-Null
-    # -C - resumes, which matters when a 62 GB transfer is interrupted; curl
-    # ships with Windows 10 1803 and later.
-    $curlArgs = @("-L", "--fail", "--retry", "5", "--retry-delay", "5", "-C", "-", "-o", $Dest, $url)
-    if ($env:HF_TOKEN) { $curlArgs = @("-H", "Authorization: Bearer $env:HF_TOKEN") + $curlArgs }
-    & curl.exe @curlArgs
-    if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 33) { Die "download failed: $RelPath (curl $LASTEXITCODE)" }
+
+    # Windows' own curl speaks TLS through Schannel, which drops multi-gigabyte
+    # transfers with
+    #   curl: (56) schannel: failed to read data from server: SEC_E_DECRYPT_FAILURE
+    # at some arbitrary point - measured here at 6.87 GB of 62. curl's --retry
+    # does not cover that: it retries timeouts and 5xx, not a receive error, so
+    # --retry-all-errors is the flag that matters. And because the failure
+    # recurs, one curl invocation is not enough either - each attempt resumes
+    # with -C - from what is already on disk, and the loop only gives up when
+    # an attempt adds nothing.
+    $stalled = 0
+    for ($attempt = 1; $attempt -le 40; $attempt++) {
+        $before = if (Test-Path $Dest) { (Get-Item $Dest).Length } else { 0 }
+        if ($ExpectedSize -gt 0 -and $before -ge $ExpectedSize) { return }
+        if ($attempt -gt 1) {
+            Say ("  resuming at {0:N1} GB (attempt {1})" -f ($before / 1GB), $attempt)
+        }
+        $curlArgs = @("-L", "--fail", "--retry", "10", "--retry-delay", "5",
+                      "--retry-all-errors", "-C", "-", "-o", $Dest, $url)
+        if ($env:HF_TOKEN) { $curlArgs = @("-H", "Authorization: Bearer $env:HF_TOKEN") + $curlArgs }
+        & curl.exe @curlArgs
+        $rc = $LASTEXITCODE
+        $after = if (Test-Path $Dest) { (Get-Item $Dest).Length } else { 0 }
+
+        # 33 is "this server will not let me resume", which is what curl says
+        # when the file is already complete.
+        if ($rc -eq 0 -or $rc -eq 33) {
+            if ($ExpectedSize -gt 0 -and $after -lt $ExpectedSize) {
+                Die ("$RelPath stopped at {0:N1} GB of {1:N1} GB and the server reported success. Run Install again to resume." -f ($after / 1GB), ($ExpectedSize / 1GB))
+            }
+            return
+        }
+        if ($after -le $before) { $stalled++ } else { $stalled = 0 }
+        if ($stalled -ge 3) {
+            Die "download failed: $RelPath (curl $rc) and three attempts in a row moved nothing.
+       What is on disk is kept, so a later run resumes rather than restarting."
+        }
+    }
+    Die "download failed: $RelPath - gave up after 40 resume attempts."
 }
 
 $localRepoDir = Join-Path $ModelDir ($repo -replace "/", "--")
@@ -253,14 +290,23 @@ if ($Download) {
     Say "listing $repo ($quant)"
     $wanted = Get-ModelFiles -Repo $repo -Quant $quant
     if (-not $wanted) { Die "no GGUF matching '$quant' in $repo" }
-    Say "$($wanted.Count) file(s) to fetch - this is tens of gigabytes and resumes if interrupted"
+    $totalGB = ($wanted | Measure-Object -Property Size -Sum).Sum / 1GB
+    Say ("$($wanted.Count) file(s), {0:N1} GB - interrupted transfers resume, they do not restart" -f $totalGB)
     foreach ($f in $wanted) {
-        $dest = Join-Path $localRepoDir $f
-        if ((Test-Path $dest) -and (Get-Item $dest).Length -gt 0) {
-            Say "  have $f"
+        $dest = Join-Path $localRepoDir $f.Path
+        $have = if (Test-Path $dest) { (Get-Item $dest).Length } else { 0 }
+        # Not "the file exists": a transfer that died at 6.87 GB leaves a file
+        # that exists, and skipping it here is how a truncated model reaches
+        # llama.cpp and fails there instead, saying something unrelated.
+        if ($f.Size -gt 0 -and $have -ge $f.Size) {
+            Say ("  have $($f.Path) ({0:N1} GB)" -f ($have / 1GB))
         } else {
-            Say "  get  $f"
-            Get-HubFile -Repo $repo -RelPath $f -Dest $dest
+            if ($have -gt 0) {
+                Say ("  resume $($f.Path) - {0:N1} of {1:N1} GB on disk" -f ($have / 1GB), ($f.Size / 1GB))
+            } else {
+                Say ("  get  $($f.Path) ({0:N1} GB)" -f ($f.Size / 1GB))
+            }
+            Get-HubFile -Repo $repo -RelPath $f.Path -Dest $dest -ExpectedSize $f.Size
         }
     }
 }
