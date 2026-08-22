@@ -219,15 +219,24 @@ if ($entry) {
     if ($Download -and $driveFreeGB -lt ($entry.SizeGB + 5)) {
         Die "$ModelDir has $driveFreeGB GB free and this needs about $($entry.SizeGB + 5) GB. Pick another drive with -ModelDir."
     }
-    if ($offerGB -ge $entry.ResidentGB) {
-        Write-Host "   fits in memory - no disk paging" -ForegroundColor Green
-    } elseif ($offerGB * 100 -lt $entry.SizeGB * 70) {
-        $msg = "$($entry.ResidentGB - $offerGB) GB short of the $($entry.ResidentGB) GB this build needs resident. " +
+    # Experts can only be resident where they are computed. With --cpu-moe that
+    # is system RAM and nothing else, so counting free VRAM toward residency
+    # overstates what this machine can hold - measured consequence: a 47-second
+    # fixed cost per request, which is the expert weights being re-read from
+    # the SSD every time. -NCpuMoe moves some of them onto the GPU and is the
+    # lever that actually reduces it.
+    $expertHomeGB = if ($NCpuMoe -gt 0) { $ramFreeGB + $vramFreeGB } else { $ramFreeGB }
+    if ($NCpuMoe -le 0 -and $vramFreeGB -gt 8) {
+        Write-Host ("   NOTE: --cpu-moe keeps every expert in RAM, so {0} GB of VRAM sits idle." -f $vramFreeGB)
+        Write-Host  "         -NCpuMoe 30 moves about 13 of the 43 layers' experts onto the GPU."
+    }
+    if ($expertHomeGB -ge $entry.ResidentGB) {
+        $msg = "$($entry.ResidentGB - $expertHomeGB) GB short of the $($entry.ResidentGB) GB this build needs resident. " +
                "Below about 70% of the weights in memory every token waits on the SSD, and the server reads as hung rather than slow."
         if (-not $Force) { Die "$msg`n       Pick a smaller build, add RAM, or pass -Force to try anyway." }
         Warn "$msg -Force given, going ahead."
     } else {
-        Warn "$($entry.ResidentGB - $offerGB) GB short of resident - that much pages off the SSD on every token. It works; it will not be fast."
+        Warn ("{0} GB short of resident - that much streams off the SSD on every request. Measured on a 32 GB machine: about 47 s of fixed cost per request before a token appears, then 46 tok/s of prefill and 4.5 tok/s of generation." -f ($entry.ResidentGB - $expertHomeGB))
     }
 }
 
@@ -455,6 +464,11 @@ $llamaArgs += @(
     "--alias", $Alias
     "--jinja"              # ...tool calling needs the real chat template
     "-fa", "on"
+    "--cache-reuse", "256" # An agent resends the same system prompt and tool
+                           # definitions on every step, and prefill here costs
+                           # 47 s of fixed overhead plus 46 tok/s. Reusing a
+                           # shared prefix through KV shifting is worth more on
+                           # this backend than on any fast one.
     "-ub", "128"           # small micro-batches: prefill against RAM-resident
                            # experts is bandwidth-bound, and a big batch just
                            # thrashes the page cache

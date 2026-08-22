@@ -217,6 +217,9 @@ ARGS+=(
   --alias "$ALIAS"
   --jinja           # ...and tool calling needs the real chat template
   -fa on
+  --cache-reuse 256 # an agent resends the same prefix every step, and prefill
+                    # here is 47s of fixed cost plus 46 tok/s - reuse is worth
+                    # more on this backend than on any fast one
   -ub 128           # prefill against RAM-resident experts is bandwidth-bound;
                     # a large micro-batch just thrashes the page cache
 )
