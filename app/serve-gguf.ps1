@@ -236,7 +236,17 @@ if ($entry) {
         if (-not $Force) { Die "$msg`n       Pick a smaller build, add RAM, or pass -Force to try anyway." }
         Warn "$msg -Force given, going ahead."
     } else {
-        Warn ("{0} GB short of resident - that much streams off the SSD on every request. Measured on a 32 GB machine: about 47 s of fixed cost per request before a token appears, then 46 tok/s of prefill and 4.5 tok/s of generation." -f ($entry.ResidentGB - $expertHomeGB))
+        # Two different regimes, and quoting the wrong one is worse than
+        # quoting none. With every expert on the CPU, 58 GiB cycles through a
+        # page cache too small to hold it and the re-read repeats on EVERY
+        # request. With a slice of them pinned in VRAM the working set fits,
+        # and the cost is paid once per server start instead.
+        $short = $entry.ResidentGB - $expertHomeGB
+        if ($NCpuMoe -gt 0) {
+            Warn ("{0} GB short of resident. Measured on a 32 GB machine with -NCpuMoe 30: about 33 s on the first request after a start, then ~2.4 s for a warm one, and 13.6-20.9 tok/s generation." -f $short)
+        } else {
+            Warn ("{0} GB short of resident, and with --cpu-moe that much streams off the SSD on EVERY request - the page cache cannot hold it, so nothing stays warm. Measured on a 32 GB machine: about 47 s of fixed cost per request, 46 tok/s prefill, 4.5 tok/s generation. -NCpuMoe 30 removed the per-request part entirely." -f $short)
+        }
     }
 }
 

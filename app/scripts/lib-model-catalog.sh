@@ -52,7 +52,7 @@ qwen5090_model_info() {
           MODEL_LABEL="DeepSeek V4-Flash 0731 REAP-150B - 2-bit (Q2_K)"
           MODEL_SIZE_GB=63
           MODEL_RESIDENT_GB=69
-          MODEL_NOTES="experts pruned 284B -> ~150B, then 2-bit. The only build in reach of a 32 GB machine, and still ~6 GB short of resident. Not the model the 82.7 Terminal-Bench figure was measured on."
+          MODEL_NOTES="experts pruned 284B -> ~150B, then 2-bit. The only build in reach of a 32 GB machine. Pin a slice of the experts in VRAM (N_CPU_MOE=30) or every request re-reads them from the SSD: 4.5 tok/s becomes 13-21 tok/s. Not the model the 82.7 Terminal-Bench figure was measured on."
           ;;
         IQ3_XXS)
           MODEL_LABEL="DeepSeek V4-Flash 0731 REAP-150B - 3-bit (IQ3_XXS)"
