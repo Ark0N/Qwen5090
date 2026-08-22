@@ -106,6 +106,27 @@ correct both times; with `read` gone the model reached for
 as designed rather than degrading. Cutting the preamble is the second lever on
 this path, after `-NCpuMoe`.
 
+### The prompt cache is worth ~15x, and costs no accuracy
+
+`--cache-reuse` is on by default, and it earns its place twice over. Identical
+tool-enabled request, four runs each way, `cache_prompt` toggled per request so
+nothing else changed:
+
+| | latency | tool calls |
+|---|---|---|
+| cache on | 63.1 s cold, then **3.9–6.0 s** | 4/4 |
+| cache off | 19.1–26.2 s | 4/4 |
+
+Two things worth reading off that table. The first request of a session pays
+for the whole preamble and there is no way around it; every one after it is an
+order of magnitude cheaper. And a reused prefix answered exactly as reliably as
+a freshly computed one — the cache is a speed feature with no accuracy cost, so
+leave it on.
+
+Note the cold request is *slower* than an uncached one: it computes the prefix
+and writes it. That is a one-time cost per server start, paid back within two
+requests.
+
 ## Levers, in order of impact
 
 1. **MTP (on by default).** Multi-token prediction drafts 3 tokens per step

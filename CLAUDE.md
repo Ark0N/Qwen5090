@@ -361,6 +361,62 @@ The `minimal` preset the 82.7 was measured with is a Web-surface concept - the
 headless profile mounts no preset roster - so the adapter approximates it by
 patching the system prompt, and labels every result accordingly.
 
+## Where the DeepSeek work stands (handed over 2026-08-22)
+
+Development moved to the Windows 11 machine on 2026-08-22 - it has the GPU, the
+weights on `E:`, and the server, so driving it from a second box on the tailnet
+bought nothing but latency. The Linux session's last act was this section.
+**Everything below is measured, not inferred**, and the open question at the
+bottom is the one that matters before any benchmark number is quoted.
+
+Working end to end: the model is served, tools reach it, tool calls come back as
+OpenAI `tool_calls`, and `dsh` drives a full agent loop against it.
+
+### Tool-call reliability: the KV cache is *not* the culprit
+
+Three `dsh` runs behaved differently on the same task - two called tools
+correctly, one emitted a Markdown ```bash fence and leaked `</think>` - and a
+fourth burned 600 s and **fabricated an answer**: it reported that `mul`
+"correctly returns the product of two numbers using the `*` operator" for a file
+whose body is `return a + b`. It never opened the file. Two candidates were on
+the table: 2-bit REAP quantization damage, or `--cache-reuse` shifting a reused
+KV prefix. The successes had been cache misses and the failure a cache hit,
+which made the cache look guilty.
+
+It is not. `cache_prompt` is settable **per request**, so the variable can be
+isolated without restarting the server. Identical tool-enabled request, 4 runs
+each way, 2026-08-22:
+
+| | tool calls | latency |
+|---|---|---|
+| `cache_prompt: true` | **4/4** | 63.1 s cold, then 3.9-6.0 s |
+| `cache_prompt: false` | **4/4** | 19.1-26.2 s |
+
+Eight for eight. The cache is exonerated as a correctness risk and confirmed as
+a large speed lever - a warm prefix is roughly 4x faster than a cold one and
+~15x faster than the first request of a session. Keep `--cache-reuse`.
+
+So the failures are not the KV cache, and this test does **not** clear the
+quant either: it used a ~400-token, 2-tool prompt, while `dsh` sends a large
+persona preamble even under the `minimal` preset. What changed between the
+reliable case and the unreliable one is prompt size and shape. That is the next
+thing to bisect - repeat the A/B at dsh's actual prompt size before blaming the
+weights.
+
+### Before quoting a Terminal-Bench number, read this
+
+The published 82.7 is the **0731** checkpoint intact. What fits on 32 GB is
+REAP-pruned to ~150B experts and then 2-bit - a different model, and the catalog
+entry says so. The fabrication above is the failure mode that matters for a
+benchmark: it does not crash, does not time out, and exits 0. It scores as a
+completed turn that happens to be wrong.
+
+So a low score here is not evidence the harness is misconfigured, and matching
+82.7 with this checkpoint would be surprising rather than reassuring. Run the
+pinned 15-task subset first (`terminal-bench.sh subset`), and if the tool-call
+fault is still present at that prompt size, fix that before spending an
+afternoon on the full 89.
+
 ## Architecture (three layers, one direction)
 
 1. **Launcher/GUI** — `Start Qwen 5090.cmd` → `app/gui.ps1`: a single-file WPF app (XAML string +
