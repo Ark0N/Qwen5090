@@ -87,10 +87,24 @@ warm server should carry that cache from one task into the next.
 
 What makes step 1 expensive is not the question, it is the preamble: dsh
 declares **25 tools** plus a ~1,000-token system prompt, and every one of those
-JSON schemas is prefilled. The harness's `minimal` preset - bash and
-`str_replace_editor` alone - exists precisely for this, and is also the
-configuration DeepSeek's published Terminal-Bench figure was measured with.
-Cutting 25 tools to 2 is the second lever on this path.
+JSON schemas is prefilled.
+
+The harness's `minimal` preset - bash and `str_replace_editor` alone - exists
+precisely for this, and is also the configuration DeepSeek's published
+Terminal-Bench figure was measured with. `deepseek-harness.sh minimal`
+composes it. Same task, same workspace, same server:
+
+| | 25 tools | minimal (2 tools) |
+|---|---|---|
+| step 1 | 828.8 s | **195.8 s** |
+| step 2 | 18.0 s | 15.0 s |
+| total | 846.8 s | **210.9 s** |
+
+**4x, for deleting tool definitions the task never needed.** The answer was
+correct both times; with `read` gone the model reached for
+`str_replace_editor` with `command: view` instead, which is the preset working
+as designed rather than degrading. Cutting the preamble is the second lever on
+this path, after `-NCpuMoe`.
 
 ## Levers, in order of impact
 
