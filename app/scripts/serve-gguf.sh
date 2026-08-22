@@ -53,6 +53,9 @@ CHAT_TEMPLATE="${CHAT_TEMPLATE:-}"
 # STOCK_TEMPLATE=1 serves the model's own instead: its answers are the
 # reference, it just cannot call tools.
 STOCK_TEMPLATE="${STOCK_TEMPLATE:-0}"
+# What /v1/models calls this. Without it llama.cpp reports the whole path, which
+# pins client configs to a drive letter and a quant tier.
+ALIAS="${ALIAS:-}"
 case "$REASONING_EFFORT" in
   ""|low|high|max) ;;
   *) printf 'ERROR: REASONING_EFFORT must be low, high or max (got "%s").\n' "$REASONING_EFFORT" >&2
@@ -204,7 +207,14 @@ if [[ -n "$CHAT_TEMPLATE" ]]; then
   if [[ -f "$CHAT_TEMPLATE" ]]; then ARGS+=(--chat-template-file "$CHAT_TEMPLATE")
   else ARGS+=(--chat-template "$CHAT_TEMPLATE"); fi
 fi
+if [[ -z "$ALIAS" ]]; then
+  case "$MODEL" in
+    *[Dd]eep[Ss]eek*) ALIAS="deepseek-v4-flash" ;;
+    *) ALIAS="$(basename "${FIRST%.gguf}")" ;;
+  esac
+fi
 ARGS+=(
+  --alias "$ALIAS"
   --jinja           # ...and tool calling needs the real chat template
   -fa on
   -ub 128           # prefill against RAM-resident experts is bandwidth-bound;

@@ -84,6 +84,12 @@ param(
     # Serve the model's own template even when a bundled one exists. Its
     # answers are the reference; it just cannot call tools.
     [switch]$StockTemplate,
+    # What /v1/models calls this. Without it llama.cpp reports the full path -
+    # "E:\Qwen5090\models\...\DeepSeek-V4-Flash-0731-reap-150b-Q2_K.gguf" - which
+    # pins every client config to a drive letter and a quant tier, and whose
+    # backslashes are invalid JSON escapes for anything that builds a request
+    # by hand.
+    [string]$Alias = "",
     [switch]$Share,
     [string]$ApiKey
 )
@@ -441,7 +447,12 @@ if ($ChatTemplate) {
         $llamaArgs += @("--chat-template", $ChatTemplate)
     }
 }
+if (-not $Alias) {
+    $Alias = if ($Model -match "(?i)deepseek") { "deepseek-v4-flash" }
+             else { [IO.Path]::GetFileNameWithoutExtension($first.Name) }
+}
 $llamaArgs += @(
+    "--alias", $Alias
     "--jinja"              # ...tool calling needs the real chat template
     "-fa", "on"
     "-ub", "128"           # small micro-batches: prefill against RAM-resident
@@ -462,7 +473,7 @@ if ($ApiKey)        { $llamaArgs += @("--api-key", $ApiKey) }
 
 $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $log = Join-Path $LogDir "serve-gguf-$stamp.log"
-Say "serving $($first.Name) on http://localhost:$Port/v1  (log: $log)"
+Say "serving $($first.Name) as `"$Alias`" on http://localhost:$Port/v1  (log: $log)"
 Say "reasoning=$ReasoningFormat$(if ($ReasoningEffort) { " effort=$ReasoningEffort" }) kv=$(if ($KvQuant) { $KvQuant } else { 'f16' }) cpu_moe=$(if ($NCpuMoe -gt 0) { "first $NCpuMoe layers" } else { 'all' })"
 Say "first load reads $(if ($entry) { $entry.SizeGB } else { '?' }) GB off the disk - give it a few minutes"
 if (-not $KvQuant) {
