@@ -20,12 +20,13 @@ That number is DeepSeek's own, measured with the harness's **minimal** agent
 preset at the max thinking tier. `minimal` is mounted by the Web surface -
 `dsh --profile web --dump-default-config` shows the `agent-presets` row with
 `default: standard` - and the headless profile does not mount the preset
-roster at all. So `minimal=True` here does not *select* that preset; it
-reproduces what the preset is documented to do, by patching the composition:
-the system prompt is fixed to the one sentence minimal uses, and tool mode is
-left native so the agent has persistent bash plus the editor and nothing else.
-Anything measured this way is an approximation of the published setup, and
-should be reported as one.
+roster at all. So `minimal=True` here does not *select* the preset; it
+composes it, and the composition is checkable: with the patch applied,
+`dsh --profile headless --dump-config` leaves exactly `tool-bash` and
+`tool-str-replace-editor` registered, against 25 tools without it.
+
+That is the documented content of the preset rather than a guess, but it is
+still a reconstruction - report any number measured this way as one.
 """
 
 import json
@@ -40,6 +41,19 @@ from harbor.models.agent.context import AgentContext
 
 # The one sentence the minimal preset fixes the whole system prompt to.
 MINIMAL_PERSONA = "You are a helpful software engineer assistant."
+
+# Every composition row that registers a model-facing tool, except the two the
+# minimal preset keeps: persistent bash and str_replace_editor. Disabling them
+# is not cosmetic - dsh otherwise declares 25 tools, and on this backend each
+# JSON schema is prefilled at tens of tokens per second. Measured: the first
+# step of a two-step task took 828.8 s with the full set.
+# (`tool-result-pruner` stays: it is a service, not a tool.)
+MINIMAL_DROP = [
+    "tool-pwsh", "tool-jobs", "tool-fs", "tool-fs-search", "tool-skill",
+    "tool-subagent-control", "tool-subagent-list-agents", "tool-subagent",
+    "tool-subagent-fork", "tool-subagent-report", "tool-workflow",
+    "tool-todo", "tool-goal", "tool-ralph", "tool-web",
+]
 
 
 class DeepSeekHarness(BaseInstalledAgent):
@@ -151,10 +165,22 @@ class DeepSeekHarness(BaseInstalledAgent):
         return json.dumps(doc, indent=2)
 
     def _patch_yaml(self) -> str | None:
-        """Home-level composition patch: the minimal preset, approximated."""
+        """Composition patch that rebuilds the minimal preset.
+
+        `minimal` is a Web-surface preset and the headless profile mounts no
+        preset roster at all, so it cannot be selected - it has to be composed.
+        Two halves: the system prompt fixed to one sentence, and every
+        model-facing tool row disabled except bash and str_replace_editor.
+        Verified against a running harness: the composition comes out with
+        exactly those two registered.
+        """
         if not self._minimal:
             return None
-        return json.dumps([{"id": "system-prompt", "config": {"persona": MINIMAL_PERSONA}}], indent=2)
+        rows: list[dict[str, Any]] = [
+            {"id": "system-prompt", "config": {"persona": MINIMAL_PERSONA}}
+        ]
+        rows += [{"id": row, "disabled": True} for row in MINIMAL_DROP]
+        return json.dumps(rows, indent=2)
 
     # ------------------------------------------------------------------ run --
     @override
