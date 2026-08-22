@@ -247,6 +247,29 @@ installing anything, and `uninstall` reverses it. `qwen-claude status|stop|docto
 manage the bridge, and `doctor` fires a real end-to-end request when something
 looks off.
 
+### Where the big files go
+
+The DeepSeek builds are 63 to 105 GB, so `serve-gguf.ps1` puts them — and
+llama.cpp itself — on **E:** by default, not on C:. Override with `-ModelDir`,
+or point `QWEN5090_DRIVE` at another letter; if E: is missing it falls back to
+whichever fixed drive has the most room and says so.
+
+The WSL half is different: the venv and the Qwen weights live *inside* the
+distro's virtual disk, which WSL keeps on C: with no setting to move it.
+Pointing `HF_HOME` at `/mnt/e` looks like the fix and is a trap — vLLM maps
+each weight shard with a private, **writable** mmap, which is exactly what
+Windows-drive filesystems cannot do from inside WSL. Move the whole distro
+instead:
+
+```powershell
+.\app\move-to-drive.ps1 -Drive E:          # show what it would do
+.\app\move-to-drive.ps1 -Drive E: -Apply   # export, unregister, re-import
+```
+
+It refuses while a server is running, keeps the export until the new copy has
+started and answered, and restores the default user — an imported distro
+otherwise comes back as root, which breaks every script here.
+
 ### Or DeepSeek Harness
 
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`) is

@@ -31,8 +31,9 @@ param(
     [string]$Model = "puwaer/DeepSeek-V4-Flash-0731-reap-150b-gguf:Q2_K",
     [int]$Ctx = 131072,
     [int]$Port = 8001,
-    # Where the weights live. Defaults to the fixed drive with the most room -
-    # these are 60 to 105 GB and rarely belong on C:.
+    # Where the weights live. E: by default - these are 60 to 105 GB and that is
+    # the drive with room for them. -ModelDir or QWEN5090_MODEL_DIR override it,
+    # and if E: is not there the roomiest fixed drive is used instead.
     [string]$ModelDir,
     [switch]$Download,
     # Fetch the weights and stop. What the app's Install button uses: the
@@ -53,10 +54,25 @@ param(
 $ErrorActionPreference = "Stop"
 
 # ------------------------------------------------------------------ paths ---
-$Root      = Split-Path -Parent $PSScriptRoot
-$LlamaHome = Join-Path $env:LOCALAPPDATA "Qwen5090\llamacpp"
-$LogDir    = Join-Path $env:LOCALAPPDATA "Qwen5090\logs"
+$Root   = Split-Path -Parent $PSScriptRoot
+$LogDir = Join-Path $env:LOCALAPPDATA "Qwen5090\logs"
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
+
+# Everything large this script downloads goes on the big drive: the weights,
+# and llama.cpp itself (its CUDA runtime alone unpacks to about a gigabyte).
+# Only the logs stay under %LOCALAPPDATA%, where collect-logs.ps1 looks for them.
+function Get-BigDrive {
+    $preferred = $env:QWEN5090_DRIVE
+    if (-not $preferred) { $preferred = "E:" }
+    if (Test-Path "$preferred\") { return $preferred }
+    $best = Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" |
+            Sort-Object -Property FreeSpace -Descending | Select-Object -First 1
+    if (-not $best) { return $env:SystemDrive }
+    Write-Host "WARNING: $preferred is not available - using $($best.DeviceID) instead." -ForegroundColor Yellow
+    return $best.DeviceID
+}
+$BigDrive  = Get-BigDrive
+$LlamaHome = Join-Path $BigDrive "Qwen5090\llamacpp"
 
 function Say  ($m) { Write-Host ">> $m" -ForegroundColor Cyan }
 function Warn ($m) { Write-Host "WARNING: $m" -ForegroundColor Yellow }
@@ -102,10 +118,7 @@ if (-not $ModelDir) {
     if ($env:QWEN5090_MODEL_DIR) {
         $ModelDir = $env:QWEN5090_MODEL_DIR
     } else {
-        $best = Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" |
-                Sort-Object -Property FreeSpace -Descending | Select-Object -First 1
-        if (-not $best) { Die "no fixed drive found to store the weights on" }
-        $ModelDir = Join-Path $best.DeviceID "Qwen5090\models"
+        $ModelDir = Join-Path $BigDrive "Qwen5090\models"
     }
 }
 New-Item -ItemType Directory -Force -Path $ModelDir | Out-Null
