@@ -80,6 +80,47 @@ The UI checks the `Host` header, so name the address it will be reached by:
 DSH_TRUSTED_HOSTS="tnode.example.ts.net:3080" bash app/scripts/deepseek-harness.sh restart
 ```
 
+## Running it on the Windows 11 machine itself
+
+The harness is Linux software, so on the Windows PC it runs **inside WSL** —
+the same Ubuntu distro the Qwen half already provisioned. The DeepSeek server
+does not: `serve.sh` refuses the llama.cpp path in WSL, because the distro gets
+a fixed slice of RAM (`.wslconfig`, 20 GB on a 32 GB PC) and a 62 GB model
+cannot be served out of it. So it runs natively on Windows and the two halves
+sit on opposite sides of the WSL boundary:
+
+```
+WSL (Ubuntu)                     Windows
+  dsh :3080  ──── /v1 ────>  llama-server :8001   (DeepSeek GGUF, on the GPU)
+  vLLM :8000  <── /v1 ────   (same distro, no boundary to cross)
+```
+
+That makes `localhost` mean two different things, which is the one thing to get
+right here. For vLLM it is correct — that server is in the distro with you. For
+llama.cpp it is the distro's own loopback and nothing is listening on it.
+
+`start` and `config` resolve this themselves: on WSL they probe loopback, then
+the default gateway, then the `resolv.conf` nameserver, and take the first that
+answers on 8001. Mirrored networking makes loopback work; the default NAT mode
+puts the host on the gateway. So the usual case needs no address at all:
+
+```bash
+bash app/scripts/deepseek-harness.sh start
+```
+
+If it finds nothing it says so, and the cause is almost always the Windows
+firewall rather than the address: a rule opened for the tailnet is scoped to
+that profile, and traffic arriving from the WSL adapter is a different one.
+Either widen the rule or name the address yourself:
+
+```bash
+DEEPSEEK_URL=http://<5090-ip>:8001 bash app/scripts/deepseek-harness.sh start
+```
+
+Using the machine's own Tailscale address from inside its own WSL looks like a
+detour and is a perfectly good answer — it is a single stable address that does
+not move when WSL's NAT subnet changes on reboot.
+
 ## What `config` writes, and why
 
 It merges two routes into `~/.dsh/settings.yaml` under `llm-pi-ai.providers`

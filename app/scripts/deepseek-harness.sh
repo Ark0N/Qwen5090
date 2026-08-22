@@ -25,13 +25,19 @@
 #   QWEN_URL=http://<5090-ip>:8000 bash deepseek-harness.sh start
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib-platform.sh
+source "$SCRIPT_DIR/lib-platform.sh"
+
 # ---------------------------------------------------------------- knobs -----
 # Where the servers are. Two routes because the two backends cannot share a GPU:
 # vLLM serves the Qwen NVFP4 builds on 8000, llama.cpp serves the DeepSeek GGUF
 # builds on 8001. Both are configured whenever they can be reached; whichever is
 # actually up is the one you pick in the model selector.
 QWEN_URL="${QWEN_URL:-http://localhost:8000}"
-DEEPSEEK_URL="${DEEPSEEK_URL:-http://localhost:8001}"
+# Resolved by resolve_deepseek_url() below - the right default depends on the
+# platform, and probing costs a round trip we should not pay on every call.
+DEEPSEEK_URL="${DEEPSEEK_URL:-}"
 
 DSH_HOME="${DSH_HOME:-$HOME/.dsh}"                # the harness's own state
 DSH_RUNTIME="${DSH_RUNTIME:-$HOME/.dsh-runtime}"  # where npm puts dsh itself
@@ -93,6 +99,39 @@ warn() { printf 'WARNING: %s\n' "$*" >&2; }
 die()  { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
 DSH_BIN="$DSH_RUNTIME/node_modules/.bin/dsh"
+
+# The DeepSeek server is not inside WSL, and that is by design: serve.sh refuses
+# the llama.cpp path in there because the distro gets a fixed slice of RAM
+# (.wslconfig, 20 GB on a 32 GB PC) and a 62 GB model cannot be served from it -
+# so it runs natively on Windows and this distro's "localhost" is its own
+# loopback, not the host's. Which address reaches the host depends on the
+# networking mode: `mirrored` shares the host's stack, so localhost works, while
+# the default NAT mode puts the host on this distro's default gateway. Probe
+# instead of guessing, and only when the caller has not already said.
+#
+# QWEN_URL needs none of this - vLLM is Linux-only and runs *inside* WSL, so
+# its localhost default is already right. The asymmetry is the whole point.
+resolve_deepseek_url() {
+  [[ -n "$DEEPSEEK_URL" ]] && return 0
+  local host gw ns
+  if qwen5090_is_wsl; then
+    gw="$(ip route show default 2>/dev/null | awk '{print $3; exit}' || true)"
+    ns="$(awk '/^nameserver/{print $2; exit}' /etc/resolv.conf 2>/dev/null || true)"
+    for host in localhost "$gw" "$ns"; do
+      [[ -n "$host" ]] || continue
+      if curl -fsS -m 2 -o /dev/null "http://$host:8001/health" 2>/dev/null; then
+        DEEPSEEK_URL="http://$host:8001"
+        [[ "$host" == localhost ]] || say "DeepSeek answered on the Windows host: $DEEPSEEK_URL"
+        return 0
+      fi
+    done
+    warn "no DeepSeek server answered on this distro's loopback, gateway or nameserver."
+    warn "If it is running on Windows, allow port 8001 through the firewall for the"
+    warn "WSL adapter, or set it explicitly: DEEPSEEK_URL=http://<host-ip>:8001"
+  fi
+  DEEPSEEK_URL="http://localhost:8001"
+}
+
 
 # ------------------------------------------------------------- discovery ----
 # Ask each server what it is serving rather than making the user type a model id
@@ -652,6 +691,11 @@ cmd_uninstall() {
 
 cmd="${1:-status}"
 if (( $# > 0 )); then shift; fi
+
+# Only the commands that actually address a server pay for the probe.
+case "$cmd" in
+  config|start|restart|status|doctor|env|minimal) resolve_deepseek_url ;;
+esac
 
 case "$cmd" in
   install)   ensure_dsh_installed; install_shim ;;
