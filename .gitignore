@@ -22,3 +22,9 @@ q5090-*.sh
 resp*.json
 stream.txt
 testap/
+
+# `harbor dataset download` unpacks the 89 Terminal-Bench tasks into the
+# working directory. The repo root is a product decision - ZIP users must see
+# one thing to click - so it never belongs here.
+terminal-bench-2-1/
+jobs/
