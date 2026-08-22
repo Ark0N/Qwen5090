@@ -1,0 +1,140 @@
+{#-
+  DeepSeek-V4-Flash chat template.
+
+  DeepSeek-V4-Flash-0731 ships no `chat_template` in tokenizer_config.json: it
+  builds prompts with the Python encoder in the base repository's `encoding/`
+  directory instead. This file reproduces `encode_messages()` from that encoder
+  so the checkpoint can be served through any OpenAI-compatible endpoint. The
+  encoder itself is shipped alongside, in `encoding/encoding_dsv4.py`, and is
+  the authority whenever the two disagree.
+
+  THINKING IS THE DEFAULT here. The encoder takes `thinking_mode` as a required
+  argument with no default; this template picks one, and picks the same mode the
+  base model is normally used in.
+
+      apply_chat_template(msgs, add_generation_prompt=True)                     -> thinking
+      apply_chat_template(msgs, add_generation_prompt=True, enable_thinking=False)
+
+      # SGLang / llama-server, per request:
+      {"messages": [...], "chat_template_kwargs": {"enable_thinking": false}}
+
+  `reasoning_effort` is "low" (the encoder's default), "high" or "max". It is
+  only ever a block of text prepended to the whole prompt, and only in thinking
+  mode -- see REASONING_EFFORT_PROMPTS in encoding_dsv4.py.
+
+  **The published benchmark numbers for this checkpoint were measured with
+  enable_thinking=false.** They are a measure of what expert compression cost,
+  not a claim about this default.
+
+  Four details that are easy to get wrong, all verified against the encoder:
+
+  * The assistant marker is a *transition* emitted at the end of a user turn
+    (encoding_dsv4.py:381-407), not at the start of the assistant turn -- so
+    `add_generation_prompt` needs no special case. It is emitted only when the
+    next message is an assistant turn, or when the user turn is the last one.
+  * In thinking mode that marker is followed by `<think>`, and in chat mode by
+    `</think>` -- the thinking *end* token, which closes the block before the
+    model can open it. Only the final turn opens a block: earlier user turns get
+    `</think>` even in thinking mode (:402-406).
+  * `drop_thinking` defaults to True, so `reasoning_content` on assistant turns
+    at or before the last user message is dropped (:359-363).
+  * Consecutive user messages are merged into one `<｜User｜>` block joined by
+    a blank line, by merge_tool_messages() before rendering.
+
+  Not implemented: tool calling, `latest_reminder`, `developer`, the internal
+  task tokens, and `context`. Use the bundled encoder if you need them.
+-#}
+{%- set thinking = enable_thinking if enable_thinking is defined else true -%}
+{%- set effort = reasoning_effort if reasoning_effort is defined else 'low' -%}
+{%- set effort_prompts = {
+    'low': '',
+    'high': 'Reasoning Effort: Absolute maximum with no shortcuts permitted.\nYou MUST be very thorough in your thinking and comprehensively decompose the problem to resolve the root cause, rigorously stress-testing your logic against all potential paths, edge cases, and adversarial scenarios.\nExplicitly write out your entire deliberation process, documenting every intermediate step, considered alternative, and rejected hypothesis to ensure absolutely no assumption is left unchecked.\n\n',
+    'max': 'Reasoning Effort: Beyond maximum — exhaustive, relentless, and uncompromising.\nYou MUST reason with the utmost depth and rigor, leaving absolutely nothing to chance: exhaustively decompose the problem into its most fundamental components, trace every causal chain to its root, and resolve the underlying cause rather than any surface symptom.\nDo not stop reasoning until you have independently verified the solution from multiple angles and are certain that no assumption remains unchecked and no error remains undiscovered.\n\n'
+} -%}
+{%- if effort not in effort_prompts -%}
+    {{- raise_exception('deepseek-v4 chat template: reasoning_effort must be low, high or max, got ' + effort) -}}
+{%- endif -%}
+{{- '<｜begin▁of▁sentence｜>' -}}
+{%- set ns = namespace(last_user = -1) -%}
+{%- for message in messages -%}
+    {%- if message['role'] == 'user' -%}
+        {%- set ns.last_user = loop.index0 -%}
+    {%- endif -%}
+{%- endfor -%}
+{%- if thinking -%}
+    {{- effort_prompts[effort] -}}
+{%- endif -%}
+{%- if tools is defined and tools -%}
+    {{- '
+
+You are a function calling AI model. You are provided with function signatures within <tools></tools> XML tags:
+<tools>
+' -}}
+    {%- for tool in tools -%}
+        {%- set fn = tool['function'] if tool['function'] is defined else tool -%}
+        {{- fn | tojson -}}
+        {{- '
+' -}}
+    {%- endfor -%}
+    {{- '</tools>
+
+For each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:
+<tool_call>
+' -}}
+    {{- '{"name": <function-name>, "arguments": <args-json-object>}' -}}
+    {{- '
+</tool_call>
+
+' -}}
+{%- endif -%}
+{%- for message in messages -%}
+    {%- if message['role'] == 'system' -%}
+        {{- message['content'] -}}
+    {%- elif message['role'] == 'user' -%}
+        {%- if loop.index0 > 0 and messages[loop.index0 - 1]['role'] == 'user' -%}
+            {{- '\n\n' + message['content'] -}}
+        {%- else -%}
+            {{- '<｜User｜>' + message['content'] -}}
+        {%- endif -%}
+        {%- if loop.last or messages[loop.index0 + 1]['role'] == 'assistant' -%}
+            {{- '<｜Assistant｜>' -}}
+            {%- if thinking and loop.index0 >= ns.last_user -%}
+                {{- '<think>' -}}
+            {%- else -%}
+                {{- '</think>' -}}
+            {%- endif -%}
+        {%- endif -%}
+    {%- elif message['role'] == 'assistant' -%}
+        {%- if thinking and loop.index0 > ns.last_user -%}
+            {{- message.get('reasoning_content', '') + '</think>' -}}
+        {%- endif -%}
+        {{- message['content'] if message['content'] else '' -}}
+        {%- if message['tool_calls'] is defined and message['tool_calls'] -%}
+            {%- for tc in message['tool_calls'] -%}
+                {%- set fx = tc['function'] -%}
+                {%- set ag = fx['arguments'] -%}
+                {{- '
+<tool_call>
+{"name": ' -}}
+                {{- fx['name'] | tojson -}}
+                {{- ', "arguments": ' -}}
+                {%- if ag is string -%}{{- ag -}}{%- else -%}{{- ag | tojson -}}{%- endif -%}
+                {{- '}
+</tool_call>' -}}
+            {%- endfor -%}
+        {%- endif -%}
+        {{- '<｜end▁of▁sentence｜>' -}}
+    {%- elif message['role'] == 'tool' -%}
+        {{- '<｜User｜><tool_response>
+' -}}
+        {{- message['content'] -}}
+        {{- '
+</tool_response>' -}}
+        {%- if loop.last or messages[loop.index0 + 1]['role'] != 'tool' -%}
+            {{- '<｜Assistant｜>' -}}
+            {%- if thinking -%}{{- '<think>' -}}{%- else -%}{{- '</think>' -}}{%- endif -%}
+        {%- endif -%}
+    {%- else -%}
+        {{- raise_exception('deepseek-v4 chat template: unsupported role ' + message['role']) -}}
+    {%- endif -%}
+{%- endfor -%}
