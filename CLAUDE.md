@@ -266,6 +266,63 @@ reinstall. The prefill cliff above ~30K tokens is unchanged by any of this.
 - `Start-Process -ArgumentList` gets a single pre-quoted string (array form doesn't quote paths
   with spaces on PS 5.1).
 
+## The second backend: DeepSeek V4-Flash (2026-08-22)
+
+vLLM is no longer the only server. DeepSeek V4-Flash is 284B total / 13B
+active, which does not fit in 32 GB of VRAM at **any** quantization - vLLM's
+own recipe starts at a 96 GB card - so `llama.cpp` serves it with the weights
+in system RAM. `scripts/lib-model-catalog.sh` is the one place that maps a
+checkpoint to its backend, its size, and its resident floor; `serve.sh` asks it
+before touching the venv.
+
+- **The llama.cpp path runs natively on Windows** (`app/serve-gguf.ps1`), not
+  in WSL, and `serve.sh` *refuses* it on WSL rather than trying. WSL2 gets a
+  fixed slice of RAM (`.wslconfig`, 20 GB on a 32 GB machine) and a model
+  bigger than that slice cannot be served from inside it. Windows maps the file
+  and lets its own page cache shrink under pressure - slow instead of
+  impossible. mmap stays **on** for the same reason; `--no-mmap` would try to
+  read 62 GB into 25 GB of free RAM.
+- **Which checkpoint matters more than which quant.** Every published agent
+  number for V4-Flash is the **0731** retrain (82.7 on Terminal-Bench 2.1
+  against the earlier preview's 61.8). The smallest *intact* 0731 GGUF is
+  82.5 GB - out of reach on 32 GB. The only build that fits is REAP-pruned
+  (284B -> ~150B experts, then 2-bit, 62.4 GB). It is a different model, and
+  the catalog entry says so. A 61.5 GB `teamblobfish` build exists and is the
+  **May** checkpoint - do not reach for it because the size looks right.
+- **Big files go on E:** (`QWEN5090_DRIVE`): the GGUFs and llama.cpp itself.
+  For the WSL side, pointing `HF_HOME` at `/mnt/e` is a trap - vLLM maps each
+  shard with a private *writable* mmap, which Windows-drive filesystems cannot
+  do from inside WSL. `app/move-to-drive.ps1` relocates the whole distro
+  instead (export/unregister/import; `-Apply` required, and it restores the
+  default user, which an imported distro otherwise loses).
+
+## DeepSeek Harness, and measuring it
+
+`scripts/deepseek-harness.sh` points DeepSeek's own agent runtime (`dsh`) at
+this server. No bridge: its pi-ai adapter speaks OpenAI natively, so the whole
+integration is a provider route in `$DSH_HOME/settings.yaml`. Four fields are
+load-bearing - `compat.supportsDeveloperRole:false`,
+`compat.maxTokensField:max_tokens` (pi-ai addresses an unrecognised base URL as
+though it were OpenAI itself), `reasoningEfforts` (which keeps `high` - the
+level clients default to and the template 400s on - off the menu), and
+`apiKeyEnv` (a route naming no credential is refused even for a keyless
+server). The merge into that file is surgical: the harness's own Settings page
+writes there too.
+
+Two install traps, both measured: **npm cannot install `@deepseek-ai/dsh`**
+(twelve minutes at 97% CPU, 3.3 GB resident, zero files written) - use pnpm,
+which `dsh plugin` needs on PATH anyway; and every published version is a
+prerelease, so a bare `pnpm add` picks 0.1.0-rc.8 over the newer 0.1.1-rc.2.
+`dsh web --host` accepts **only** 127.0.0.1 or 0.0.0.0, so the tailnet is
+reached with `tailscale serve` in front of a loopback UI - which is also the
+safer half of the trade, since the harness runs shell commands.
+
+`scripts/terminal-bench.sh` + `scripts/tb_dsh_agent.py` run Terminal-Bench 2.1
+(through Harbor, one Docker container per task, compose v2 plugin required).
+The `minimal` preset the 82.7 was measured with is a Web-surface concept - the
+headless profile mounts no preset roster - so the adapter approximates it by
+patching the system prompt, and labels every result accordingly.
+
 ## Architecture (three layers, one direction)
 
 1. **Launcher/GUI** — `Start Qwen 5090.cmd` → `app/gui.ps1`: a single-file WPF app (XAML string +
