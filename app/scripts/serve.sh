@@ -9,6 +9,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib-build-tools.sh"
 # shellcheck source=lib-platform.sh
 source "$SCRIPT_DIR/lib-platform.sh"
+# shellcheck source=lib-model-catalog.sh
+source "$SCRIPT_DIR/lib-model-catalog.sh"
 
 VENV="${QWEN5090_VENV:-$HOME/.qwen5090/venv}"
 MODEL="${MODEL:-unsloth/Qwen3.8-27B-NVFP4}"   # or sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4
@@ -39,6 +41,36 @@ LOG_FILE="$LOG_DIR/serve-$(date +%Y%m%d-%H%M%S).log"
 exec > >(tee -a "$LOG_FILE") 2>&1
 trap 'echo "ERROR: serve.sh failed at line $LINENO (exit $?)"' ERR
 echo ">> logging to $LOG_FILE"
+
+# Not every checkpoint this toolkit offers is a vLLM one. The DeepSeek V4-Flash
+# builds are 284B total parameters: they do not fit in 32 GB of VRAM at any
+# quantization - vLLM's own recipe starts at a 96 GB card - so they are served
+# by llama.cpp with most of the weights in system RAM. Decide before spending
+# ten minutes on a venv that cannot load them.
+qwen5090_model_info "$MODEL"
+if [[ "$MODEL_BACKEND" == "llamacpp" ]]; then
+  if qwen5090_is_wsl; then
+    # Refusing rather than serving, and the reason is memory, not politics:
+    # WSL2 gets a fixed slice of RAM (.wslconfig, 20 GB on a 32 GB machine),
+    # and a model larger than that slice cannot be served from inside it at
+    # all. Windows maps the file and lets its own page cache shrink under
+    # pressure instead, which is the difference between slow and impossible.
+    cat >&2 <<EOF
+ERROR: $MODEL_LABEL is a llama.cpp model, and this is WSL.
+
+  These weights are $MODEL_SIZE_GB GB and mostly live in system RAM. WSL2 only
+  has the slice .wslconfig gives it, so serve it from Windows instead, where
+  the file is memory-mapped and the page cache can use everything free:
+
+      .\\app\\serve-gguf.ps1 -Model "$MODEL" -Download
+
+  Nothing else changes: it serves the same OpenAI API, on port 8001.
+EOF
+    exit 1
+  fi
+  # Native Linux has no such cap, so serve it here.
+  exec bash "$SCRIPT_DIR/serve-gguf.sh"
+fi
 
 # vLLM is exec'd below by absolute path rather than through an activated venv,
 # so the venv's bin/ never makes it onto PATH. FlashInfer's JIT shells out to
