@@ -242,7 +242,8 @@ if os.path.exists(path):
 
 providers = doc.setdefault("llm-pi-ai", {}).setdefault("providers", {})
 
-def route(key, url, model_id, ctx, display, efforts, compat, default_ctx=0):
+def route(key, url, model_id, ctx, display, efforts, compat, default_ctx=0,
+          timeouts=None, retry=None):
     profile = providers.get(key)
     if not isinstance(profile, dict):
         profile = {}
@@ -265,6 +266,10 @@ def route(key, url, model_id, ctx, display, efforts, compat, default_ctx=0):
     })
     if default_ctx:
         profile["defaultContextWindow"] = default_ctx
+    if timeouts:
+        profile.update(timeouts)
+    if retry:
+        profile["retryPolicy"] = retry
     model = {"id": model_id, "name": display}
     # "0" is what a server that reports no window looks like after the shell
     # is done with it, and it is truthy. A zero here would declare a model that
@@ -308,15 +313,44 @@ if route(os.environ["QWEN_ROUTE"], os.environ["QWEN_URL"],
          dict(BASE_COMPAT)):
     wrote.append(os.environ["QWEN_ROUTE"])
 
-# DeepSeek V4's own tiers: non-think, think high, think max. No `off` key and
-# no thinkingFormat until the GGUF chat template's own spelling for them is
-# measured against a running llama-server rather than guessed - the wrong guess
-# is a silent one, since the server answers 200 either way.
+# DeepSeek V4's own tiers, read off the chat template rather than guessed: it
+# validates the value itself and raises on anything outside these three -
+#   deepseek-v4 chat template: reasoning_effort must be low, high or max
+# with `low` the default. Thinking itself is a separate boolean the template
+# calls `enable_thinking`, which is what `off` has to send; the two
+# chat-template thinking formats are the ones that carry it, and
+# `qwen-chat-template` emits exactly {enable_thinking: bool}.
+DS_COMPAT = dict(BASE_COMPAT)
+# `chat-template`, not `qwen-chat-template`: the latter sends only
+# enable_thinking and drops the effort entirely, so every tier would be the
+# same request. This one carries both variables the template actually reads.
+DS_COMPAT["thinkingFormat"] = "chat-template"
+DS_COMPAT["chatTemplateKwargs"] = {
+    "enable_thinking": {"$var": "thinking.enabled"},
+    "reasoning_effort": {"$var": "thinking.effort"},
+}
+# llama.cpp does not take OpenAI's `strict` in a tool definition.
+DS_COMPAT["supportsStrictMode"] = False
+# `off` maps to `low` rather than to nothing, and that is not cosmetic: the
+# template validates reasoning_effort OUTSIDE its `if thinking` guard, so a
+# null one raises even with thinking disabled. Measured against the server -
+# null and "medium" both fail the request, low/high/max all render.
 if route(os.environ["DEEPSEEK_ROUTE"], os.environ["DEEPSEEK_URL"],
          os.environ["DS_ID"], os.environ["DS_CTX"], "DeepSeek V4-Flash 5090",
-         {"high": "high", "max": "max"},
-         dict(BASE_COMPAT),
-         default_ctx=int(os.environ.get("DEEPSEEK_CTX") or 0)):
+         {"off": "low", "low": "low", "high": "high", "max": "max"},
+         DS_COMPAT,
+         default_ctx=int(os.environ.get("DEEPSEEK_CTX") or 0),
+         # pi-ai gives up after five minutes without a token and then retries
+         # five times, which is right for a cloud API and wrong for this. The
+         # weights live in system RAM, so prefill of an agent's system prompt
+         # and tool definitions - thousands of tokens - takes longer than that
+         # before the first token appears. Measured: one dsh task spent 25
+         # minutes on five identical timeouts and never reached the model's
+         # answer, while a direct 17-token request answered in 14 seconds.
+         # One retry, not five: at these durations a retry storm hides the
+         # failure instead of surviving it.
+         timeouts={"streamIdleTimeoutMs": 1800000, "timeoutMs": 1800000},
+         retry={"mode": "normal", "maxRetries": 1}):
     wrote.append(os.environ["DEEPSEEK_ROUTE"])
 
 if not providers:
