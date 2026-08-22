@@ -48,6 +48,11 @@ REASONING_EFFORT="${REASONING_EFFORT:-}"
 # The V4 template renders no tools, so an agent client's tool definitions never
 # reach the model without this.
 CHAT_TEMPLATE="${CHAT_TEMPLATE:-}"
+# Empty plus a DeepSeek model picks up the tools-capable template shipped in
+# app/templates - the only reason an agent client can drive this model at all.
+# STOCK_TEMPLATE=1 serves the model's own instead: its answers are the
+# reference, it just cannot call tools.
+STOCK_TEMPLATE="${STOCK_TEMPLATE:-0}"
 case "$REASONING_EFFORT" in
   ""|low|high|max) ;;
   *) printf 'ERROR: REASONING_EFFORT must be low, high or max (got "%s").\n' "$REASONING_EFFORT" >&2
@@ -70,6 +75,11 @@ QUANT=""
 [[ "$MODEL" == *:* ]] && QUANT="${MODEL##*:}"
 
 qwen5090_model_preflight "$MODEL" || exit 1
+
+if [[ -z "$CHAT_TEMPLATE" && "$STOCK_TEMPLATE" != "1" && "$MODEL" == *[Dd]eep[Ss]eek* ]]; then
+  bundled="$SCRIPT_DIR/../templates/deepseek-v4-hermes.jinja"
+  [[ -f "$bundled" ]] && CHAT_TEMPLATE="$bundled"
+fi
 
 # ------------------------------------------------------------- llama.cpp ----
 # The release page ships no CUDA build for Linux - only CPU, Vulkan and SYCL -

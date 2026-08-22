@@ -77,7 +77,13 @@ param(
     # prompt is byte-identical with and without a tools array, so an agent
     # client's tool definitions never reach the model. A built-in name
     # (deepseek3 and the rest of llama.cpp's list) or a path to a .jinja file.
+    # Left empty, a DeepSeek model picks up the tools-capable template shipped
+    # in app/templates - which is the whole point, since an agent client sends
+    # tools on every request.
     [string]$ChatTemplate = "",
+    # Serve the model's own template even when a bundled one exists. Its
+    # answers are the reference; it just cannot call tools.
+    [switch]$StockTemplate,
     [switch]$Share,
     [string]$ApiKey
 )
@@ -142,6 +148,15 @@ $Catalog = @{
 
 $entry = $Catalog[$Model]
 $label = if ($entry) { $entry.Label } else { $Model }
+
+# The template that makes tool calling work, kept in the repo rather than on
+# whichever drive it was first written to: it is part of the product, it needs
+# to survive a re-download, and it is the only reason an agent client can drive
+# this model at all.
+if (-not $ChatTemplate -and -not $StockTemplate -and $Model -match "(?i)deepseek") {
+    $bundled = Join-Path $PSScriptRoot "templates\deepseek-v4-hermes.jinja"
+    if (Test-Path $bundled) { $ChatTemplate = $bundled }
+}
 
 # Bytes of KV cache per token, read off the GGUF header rather than guessed:
 # deepseek4 is 43 blocks with head_count_kv=1 and key/value lengths of 512, so

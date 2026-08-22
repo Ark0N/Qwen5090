@@ -296,6 +296,44 @@ before touching the venv.
   instead (export/unregister/import; `-Apply` required, and it restores the
   default user, which an imported distro otherwise loses).
 
+## Tool calling on the DeepSeek path: three traps, one template
+
+The checkpoint cannot call tools as shipped, and an agent client sends tools on
+every request - so this is the difference between "a chat model" and "something
+dsh can drive". All three findings are measured against a running server.
+
+- **The stock template renders no tools.** `POST /apply-template` returns a
+  byte-identical 93-character prompt with and without a `tools` array, because
+  the template reproduces the base repo's Python encoder and that encoder has
+  no tool support. The model is not failing to call the tool; it is never told
+  one exists - its own reply says "we don't have a specific tool listed".
+  llama.cpp's generic fallback does not engage either.
+- **A built-in `--chat-template` name is silently swallowed after `--jinja`.**
+  From llama.cpp's own help: *only commonly used templates are accepted
+  (unless `--jinja` is set before this flag)*. With `--jinja` earlier on the
+  line, `deepseek3` stops being a lookup and becomes a literal jinja template -
+  one with no variables, so it renders to those nine characters and **that is
+  the model's entire prompt**. It starts cleanly and answers nonsense. Settle
+  the template before `--jinja` joins the line; prefer `--chat-template-file`,
+  which has no ordering sensitivity.
+- **PEG-native tool output is parsed by an auto-generated parser, and it is
+  brittle.** llama.cpp rejected syntactically correct JSON:
+  `common_chat_peg_parse: unparsed peg-native output: {"tool_calls": [...`.
+  Target a format llama.cpp has a *hand-written* parser for instead. Hermes
+  style (`<tool_call>…</tool_call>`) is the one to pick: plain text, no special
+  vocabulary the model has to know, a lenient parser, and it emits standard
+  OpenAI `tool_calls` - which is exactly what pi-ai, and therefore dsh, expects
+  back.
+- **`tojson` returns Markup, and concatenating it with a literal HTML-escapes
+  the literal.** A template that builds `'<tool_call>' + x|tojson` emits
+  `&lt;tool_call&gt;` and nothing parses. Emit the pieces separately.
+
+`app/templates/deepseek-v4-hermes.jinja` is the result: the V4 encoder's
+structure with Hermes tool tags added. `serve-gguf.ps1` and `serve-gguf.sh`
+select it automatically for a DeepSeek model; `-StockTemplate` /
+`STOCK_TEMPLATE=1` serves the model's own instead, which is the reference for
+answer quality and cannot call tools.
+
 ## DeepSeek Harness, and measuring it
 
 `scripts/deepseek-harness.sh` points DeepSeek's own agent runtime (`dsh`) at
