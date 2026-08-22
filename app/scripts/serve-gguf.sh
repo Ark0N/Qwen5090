@@ -35,6 +35,21 @@ DRAFT="${DRAFT:-}"
 # Quantize the KV cache: it sits in VRAM beside the attention layers, and at a
 # long context it, not the weights, is what decides whether the server starts.
 KV_QUANT="${KV_QUANT:-}"
+# Where the model's thinking ends up. llama.cpp defaults to `auto`, and auto
+# does not engage for the V4 template: a bare `</think>` arrives inside
+# message.content with reasoning_content empty, because the template opens
+# thinking implicitly and the parser has no opening tag to match.
+REASONING_FORMAT="${REASONING_FORMAT:-deepseek}"
+# The tier handed to the chat template. The template validates this itself and
+# raises on anything outside low/high/max - `medium` and `xhigh` are accepted by
+# llama.cpp and would break every request. Empty keeps the template's default.
+REASONING_EFFORT="${REASONING_EFFORT:-}"
+case "$REASONING_EFFORT" in
+  ""|low|high|max) ;;
+  *) printf 'ERROR: REASONING_EFFORT must be low, high or max (got "%s").\n' "$REASONING_EFFORT" >&2
+     printf '       The deepseek-v4 chat template raises on anything else.\n' >&2
+     exit 1 ;;
+esac
 
 LOG_DIR="${QWEN5090_LOG_DIR:-$HOME/.qwen5090/logs}"
 mkdir -p "$LOG_DIR" "$MODEL_DIR"
@@ -171,6 +186,8 @@ ARGS=(
 )
 # ...except the experts, which do not fit.
 if (( N_CPU_MOE > 0 )); then ARGS+=(--n-cpu-moe "$N_CPU_MOE"); else ARGS+=(--cpu-moe); fi
+[[ -n "$REASONING_FORMAT" ]] && ARGS+=(--reasoning-format "$REASONING_FORMAT")
+[[ -n "$REASONING_EFFORT" ]] && ARGS+=(--reasoning-effort "$REASONING_EFFORT")
 [[ -n "$KV_QUANT" ]] && ARGS+=(-ctk "$KV_QUANT" -ctv "$KV_QUANT")
 [[ -n "$DRAFT"   ]] && ARGS+=(-md "$DRAFT")
 [[ -n "$API_KEY" ]] && ARGS+=(--api-key "$API_KEY")

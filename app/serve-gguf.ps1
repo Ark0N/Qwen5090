@@ -55,6 +55,23 @@ param(
     # measuring; q4_0 halves it again if even that will not fit.
     [ValidateSet("", "q8_0", "q4_0")]
     [string]$KvQuant = "",
+    # Where the model's thinking ends up. The default is `auto`, and auto does
+    # not engage for this template - measured 2026-08-22 against the running
+    # server: a bare `</think>` arrived inside message.content with
+    # reasoning_content empty, because the template opens thinking implicitly
+    # and the parser has no opening tag to match. Naming `deepseek` puts the
+    # thoughts in reasoning_content where a client can ignore them.
+    [ValidateSet("deepseek", "deepseek-legacy", "none", "auto")]
+    [string]$ReasoningFormat = "deepseek",
+    # The tier handed to the chat template, and the set is not llama.cpp's.
+    # This template validates the value itself and raises on anything else:
+    #   deepseek-v4 chat template: reasoning_effort must be low, high or max
+    # so `medium` or `xhigh` - both of which llama.cpp accepts - would break
+    # every request. Empty keeps the template's own default, which is `low`.
+    # The level is a block of instruction text prepended to the prompt, and it
+    # only applies in thinking mode.
+    [ValidateSet("", "low", "high", "max")]
+    [string]$ReasoningEffort = "",
     [switch]$Share,
     [string]$ApiKey
 )
@@ -399,6 +416,8 @@ $llamaArgs = @(
 # ...except the experts, which do not fit. 0 means all of them stay on the CPU,
 # which is the setting that always starts.
 if ($NCpuMoe -gt 0) { $llamaArgs += @("--n-cpu-moe", "$NCpuMoe") } else { $llamaArgs += "--cpu-moe" }
+if ($ReasoningFormat) { $llamaArgs += @("--reasoning-format", $ReasoningFormat) }
+if ($ReasoningEffort) { $llamaArgs += @("--reasoning-effort", $ReasoningEffort) }
 if ($KvQuant)       { $llamaArgs += @("-ctk", $KvQuant, "-ctv", $KvQuant) }
 if ($draftPath)     { $llamaArgs += @("-md", $draftPath) }
 if ($ApiKey)        { $llamaArgs += @("--api-key", $ApiKey) }
@@ -406,6 +425,7 @@ if ($ApiKey)        { $llamaArgs += @("--api-key", $ApiKey) }
 $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $log = Join-Path $LogDir "serve-gguf-$stamp.log"
 Say "serving $($first.Name) on http://localhost:$Port/v1  (log: $log)"
+Say "reasoning=$ReasoningFormat$(if ($ReasoningEffort) { " effort=$ReasoningEffort" }) kv=$(if ($KvQuant) { $KvQuant } else { 'f16' }) cpu_moe=$(if ($NCpuMoe -gt 0) { "first $NCpuMoe layers" } else { 'all' })"
 Say "first load reads $(if ($entry) { $entry.SizeGB } else { '?' }) GB off the disk - give it a few minutes"
 if (-not $KvQuant) {
     Write-Host "   if it dies allocating the KV cache, retry with a smaller -Ctx or -KvQuant q8_0" -ForegroundColor DarkGray
