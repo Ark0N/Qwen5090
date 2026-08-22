@@ -183,6 +183,18 @@ ARGS=(
   --host 0.0.0.0 --port "$PORT"
   -c "$CTX"
   -ngl 999          # every layer on the GPU...
+)
+# ...and the template, which must be settled BEFORE --jinja. From llama.cpp's
+# help: "only commonly used templates are accepted (unless --jinja is set
+# before this flag)" - so with --jinja already on the line a built-in name is
+# taken as a literal jinja template. "deepseek3" is a valid template with no
+# variables, so it renders to itself and those nine characters become the
+# model's entire prompt, silently.
+if [[ -n "$CHAT_TEMPLATE" ]]; then
+  if [[ -f "$CHAT_TEMPLATE" ]]; then ARGS+=(--chat-template-file "$CHAT_TEMPLATE")
+  else ARGS+=(--chat-template "$CHAT_TEMPLATE"); fi
+fi
+ARGS+=(
   --jinja           # ...and tool calling needs the real chat template
   -fa on
   -ub 128           # prefill against RAM-resident experts is bandwidth-bound;
@@ -190,10 +202,6 @@ ARGS=(
 )
 # ...except the experts, which do not fit.
 if (( N_CPU_MOE > 0 )); then ARGS+=(--n-cpu-moe "$N_CPU_MOE"); else ARGS+=(--cpu-moe); fi
-if [[ -n "$CHAT_TEMPLATE" ]]; then
-  if [[ -f "$CHAT_TEMPLATE" ]]; then ARGS+=(--chat-template-file "$CHAT_TEMPLATE")
-  else ARGS+=(--chat-template "$CHAT_TEMPLATE"); fi
-fi
 [[ -n "$REASONING_FORMAT" ]] && ARGS+=(--reasoning-format "$REASONING_FORMAT")
 [[ -n "$REASONING_EFFORT" ]] && ARGS+=(--reasoning-effort "$REASONING_EFFORT")
 [[ -n "$KV_QUANT" ]] && ARGS+=(-ctk "$KV_QUANT" -ctv "$KV_QUANT")

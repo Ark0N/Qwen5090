@@ -410,6 +410,23 @@ $llamaArgs = @(
     "--port", "$Port"
     "-c", "$Ctx"
     "-ngl", "999"          # every layer on the GPU...
+)
+# ...and the template, which has to be settled BEFORE --jinja. llama.cpp's own
+# help: "only commonly used templates are accepted (unless --jinja is set
+# before this flag)" - so with --jinja already on the line, a built-in name is
+# no longer looked up, it is taken as a literal jinja template. `deepseek3`
+# is a valid template with no variables, so it renders to the nine characters
+# "deepseek3" and that becomes the model's entire prompt. Silently: no error,
+# no warning, just a server answering nonsense.
+if ($ChatTemplate) {
+    if (Test-Path $ChatTemplate) {
+        # A file is unambiguous and needs no ordering care.
+        $llamaArgs += @("--chat-template-file", (Resolve-Path $ChatTemplate).Path)
+    } else {
+        $llamaArgs += @("--chat-template", $ChatTemplate)
+    }
+}
+$llamaArgs += @(
     "--jinja"              # ...tool calling needs the real chat template
     "-fa", "on"
     "-ub", "128"           # small micro-batches: prefill against RAM-resident
@@ -422,10 +439,6 @@ $llamaArgs = @(
 # ...except the experts, which do not fit. 0 means all of them stay on the CPU,
 # which is the setting that always starts.
 if ($NCpuMoe -gt 0) { $llamaArgs += @("--n-cpu-moe", "$NCpuMoe") } else { $llamaArgs += "--cpu-moe" }
-if ($ChatTemplate) {
-    if (Test-Path $ChatTemplate) { $llamaArgs += @("--chat-template-file", $ChatTemplate) }
-    else                         { $llamaArgs += @("--chat-template", $ChatTemplate) }
-}
 if ($ReasoningFormat) { $llamaArgs += @("--reasoning-format", $ReasoningFormat) }
 if ($ReasoningEffort) { $llamaArgs += @("--reasoning-effort", $ReasoningEffort) }
 if ($KvQuant)       { $llamaArgs += @("-ctk", $KvQuant, "-ctv", $KvQuant) }
