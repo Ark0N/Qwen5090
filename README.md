@@ -247,6 +247,22 @@ installing anything, and `uninstall` reverses it. `qwen-claude status|stop|docto
 manage the bridge, and `doctor` fires a real end-to-end request when something
 looks off.
 
+### Or DeepSeek Harness
+
+[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`) is
+DeepSeek's own open-source agent runtime, and it speaks the OpenAI API
+natively — so it needs no bridge at all, just a provider route:
+
+```bash
+bash app/scripts/deepseek-harness.sh install
+QWEN_URL=http://<5090-ip>:8000 bash app/scripts/deepseek-harness.sh start
+```
+
+That serves its Web UI on <http://127.0.0.1:3080>. `service` keeps it running
+across reboots and `share` publishes it to your tailnet over HTTPS. Details,
+and the four settings that decide whether the requests are accepted at all, in
+**[app/docs/DEEPSEEK-HARNESS.md](app/docs/DEEPSEEK-HARNESS.md)**.
+
 Expect a capable local assistant rather than a frontier one: well-scoped edits,
 refactors and file spelunking go fine; long multi-step planning is weaker, and
 it thinks for a few seconds before each reply (`QWEN_EFFORT=medium` trades some
