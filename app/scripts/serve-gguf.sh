@@ -44,6 +44,10 @@ REASONING_FORMAT="${REASONING_FORMAT:-deepseek}"
 # raises on anything outside low/high/max - `medium` and `xhigh` are accepted by
 # llama.cpp and would break every request. Empty keeps the template's default.
 REASONING_EFFORT="${REASONING_EFFORT:-}"
+# Replace the template baked into the GGUF - a built-in name or a file path.
+# The V4 template renders no tools, so an agent client's tool definitions never
+# reach the model without this.
+CHAT_TEMPLATE="${CHAT_TEMPLATE:-}"
 case "$REASONING_EFFORT" in
   ""|low|high|max) ;;
   *) printf 'ERROR: REASONING_EFFORT must be low, high or max (got "%s").\n' "$REASONING_EFFORT" >&2
@@ -186,6 +190,10 @@ ARGS=(
 )
 # ...except the experts, which do not fit.
 if (( N_CPU_MOE > 0 )); then ARGS+=(--n-cpu-moe "$N_CPU_MOE"); else ARGS+=(--cpu-moe); fi
+if [[ -n "$CHAT_TEMPLATE" ]]; then
+  if [[ -f "$CHAT_TEMPLATE" ]]; then ARGS+=(--chat-template-file "$CHAT_TEMPLATE")
+  else ARGS+=(--chat-template "$CHAT_TEMPLATE"); fi
+fi
 [[ -n "$REASONING_FORMAT" ]] && ARGS+=(--reasoning-format "$REASONING_FORMAT")
 [[ -n "$REASONING_EFFORT" ]] && ARGS+=(--reasoning-effort "$REASONING_EFFORT")
 [[ -n "$KV_QUANT" ]] && ARGS+=(-ctk "$KV_QUANT" -ctv "$KV_QUANT")

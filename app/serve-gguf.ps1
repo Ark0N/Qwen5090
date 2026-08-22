@@ -72,6 +72,12 @@ param(
     # only applies in thinking mode.
     [ValidateSet("", "low", "high", "max")]
     [string]$ReasoningEffort = "",
+    # Replace the template baked into the GGUF. Needed because the one this
+    # build ships renders no tools at all - measured with /apply-template, the
+    # prompt is byte-identical with and without a tools array, so an agent
+    # client's tool definitions never reach the model. A built-in name
+    # (deepseek3 and the rest of llama.cpp's list) or a path to a .jinja file.
+    [string]$ChatTemplate = "",
     [switch]$Share,
     [string]$ApiKey
 )
@@ -416,6 +422,10 @@ $llamaArgs = @(
 # ...except the experts, which do not fit. 0 means all of them stay on the CPU,
 # which is the setting that always starts.
 if ($NCpuMoe -gt 0) { $llamaArgs += @("--n-cpu-moe", "$NCpuMoe") } else { $llamaArgs += "--cpu-moe" }
+if ($ChatTemplate) {
+    if (Test-Path $ChatTemplate) { $llamaArgs += @("--chat-template-file", $ChatTemplate) }
+    else                         { $llamaArgs += @("--chat-template", $ChatTemplate) }
+}
 if ($ReasoningFormat) { $llamaArgs += @("--reasoning-format", $ReasoningFormat) }
 if ($ReasoningEffort) { $llamaArgs += @("--reasoning-effort", $ReasoningEffort) }
 if ($KvQuant)       { $llamaArgs += @("-ctk", $KvQuant, "-ctv", $KvQuant) }
