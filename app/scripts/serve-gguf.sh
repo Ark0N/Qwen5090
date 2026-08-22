@@ -32,6 +32,9 @@ N_CPU_MOE="${N_CPU_MOE:-0}"
 DOWNLOAD="${DOWNLOAD:-1}"
 API_KEY="${API_KEY:-}"
 DRAFT="${DRAFT:-}"
+# Quantize the KV cache: it sits in VRAM beside the attention layers, and at a
+# long context it, not the weights, is what decides whether the server starts.
+KV_QUANT="${KV_QUANT:-}"
 
 LOG_DIR="${QWEN5090_LOG_DIR:-$HOME/.qwen5090/logs}"
 mkdir -p "$LOG_DIR" "$MODEL_DIR"
@@ -168,6 +171,7 @@ ARGS=(
 )
 # ...except the experts, which do not fit.
 if (( N_CPU_MOE > 0 )); then ARGS+=(--n-cpu-moe "$N_CPU_MOE"); else ARGS+=(--cpu-moe); fi
+[[ -n "$KV_QUANT" ]] && ARGS+=(-ctk "$KV_QUANT" -ctv "$KV_QUANT")
 [[ -n "$DRAFT"   ]] && ARGS+=(-md "$DRAFT")
 [[ -n "$API_KEY" ]] && ARGS+=(--api-key "$API_KEY")
 

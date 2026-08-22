@@ -48,6 +48,13 @@ param(
     [int]$NCpuMoe = 0,
     # DSpark speculative decoding. The drafter is a separate ~11 GB download.
     [switch]$Draft,
+    # Quantize the KV cache. The weights are the obvious memory problem here,
+    # but the cache is the one that decides whether a long context starts at
+    # all: it lives in VRAM next to the attention layers, and there are only
+    # 32 GB. q8_0 halves it against the f16 default at no quality cost worth
+    # measuring; q4_0 halves it again if even that will not fit.
+    [ValidateSet("", "q8_0", "q4_0")]
+    [string]$KvQuant = "",
     [switch]$Share,
     [string]$ApiKey
 )
@@ -325,6 +332,7 @@ $llamaArgs = @(
 # ...except the experts, which do not fit. 0 means all of them stay on the CPU,
 # which is the setting that always starts.
 if ($NCpuMoe -gt 0) { $llamaArgs += @("--n-cpu-moe", "$NCpuMoe") } else { $llamaArgs += "--cpu-moe" }
+if ($KvQuant)       { $llamaArgs += @("-ctk", $KvQuant, "-ctv", $KvQuant) }
 if ($draftPath)     { $llamaArgs += @("-md", $draftPath) }
 if ($ApiKey)        { $llamaArgs += @("--api-key", $ApiKey) }
 
@@ -332,6 +340,9 @@ $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $log = Join-Path $LogDir "serve-gguf-$stamp.log"
 Say "serving $($first.Name) on http://localhost:$Port/v1  (log: $log)"
 Say "first load reads $(if ($entry) { $entry.SizeGB } else { '?' }) GB off the disk - give it a few minutes"
+if (-not $KvQuant) {
+    Write-Host "   if it dies allocating the KV cache, retry with a smaller -Ctx or -KvQuant q8_0" -ForegroundColor DarkGray
+}
 
 & $server @llamaArgs 2>&1 | Tee-Object -FilePath $log
 exit $LASTEXITCODE
