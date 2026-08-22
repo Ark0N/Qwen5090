@@ -120,6 +120,14 @@ $Catalog = @{
 $entry = $Catalog[$Model]
 $label = if ($entry) { $entry.Label } else { $Model }
 
+# Bytes of KV cache per token, read off the GGUF header rather than guessed:
+# deepseek4 is 43 blocks with head_count_kv=1 and key/value lengths of 512, so
+# 43 * 1024 * 2 bytes at f16. The experts live in system RAM on this path, but
+# the cache does not - it is in VRAM, and at a long context it is the thing
+# that decides whether the server starts. An upper bound: V4's hybrid attention
+# compresses some layers, so the real figure is this or lower.
+$KvBytesPerToken = 43 * 1024 * 2
+
 # ------------------------------------------------------------- model dir ----
 if (-not $ModelDir) {
     if ($env:QWEN5090_MODEL_DIR) {
@@ -149,6 +157,19 @@ if ($entry) { Write-Host "   $($entry.Note)" }
 Write-Host ("   weights {0} GB | this machine offers {1} GB ({2} VRAM + {3} RAM free of {4} total)" -f `
     $(if ($entry) { $entry.SizeGB } else { "?" }), $offerGB, $vramFreeGB, $ramFreeGB, $ramTotalGB)
 Write-Host "   models  : $ModelDir ($driveFreeGB GB free)"
+
+# Same arithmetic vLLM's profiler does on the other backend, for the same
+# reason: saying it now beats a CUDA allocation failure four minutes in.
+$kvGB = [math]::Round(($Ctx * $KvBytesPerToken) / 1GB, 1)
+$kvNote = if ($KvQuant -eq "q8_0") { " (halved by -KvQuant q8_0)" }
+          elseif ($KvQuant -eq "q4_0") { " (quartered by -KvQuant q4_0)" } else { "" }
+if ($KvQuant -eq "q8_0") { $kvGB = [math]::Round($kvGB / 2, 1) }
+if ($KvQuant -eq "q4_0") { $kvGB = [math]::Round($kvGB / 4, 1) }
+Write-Host ("   KV cache: about {0} GB in VRAM for {1} tokens{2}" -f $kvGB, $Ctx, $kvNote)
+if ($vramFreeGB -gt 0 -and $kvGB -gt ($vramFreeGB - 4)) {
+    Warn ("that leaves under 4 GB of VRAM for the layers and the compute buffers. " +
+          "Either drop -Ctx, or pass -KvQuant q8_0 to halve the cache.")
+}
 
 if ($entry) {
     if ($Download -and $driveFreeGB -lt ($entry.SizeGB + 5)) {
