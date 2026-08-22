@@ -480,5 +480,12 @@ if (-not $KvQuant) {
     Write-Host "   if it dies allocating the KV cache, retry with a smaller -Ctx or -KvQuant q8_0" -ForegroundColor DarkGray
 }
 
+# EAP back to Continue before the server runs, and this is not tidiness: with
+# it left at Stop, `2>&1` promotes native stderr into PowerShell's error stream
+# where a single line becomes a TERMINATING error. llama.cpp writes its entire
+# log to stderr, so the server was killed by its own first line of output -
+# loaded 58 GB, printed one line, died. The redirection is what makes the log
+# file complete, so the preference is what has to give.
+$ErrorActionPreference = "Continue"
 & $server @llamaArgs 2>&1 | Tee-Object -FilePath $log
 exit $LASTEXITCODE
