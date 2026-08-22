@@ -576,6 +576,10 @@ $xaml = @'
                             ToolTip="sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4 - huihui-ai's abliterated Qwen3.8-27B re-quantized to NVFP4, about 19 GB, public download. Refusals removed."/>
               <ComboBoxItem Content="Uncensored (sign-in)" Tag="orcarouter/Qwen3.8-27B-Uncensored-NVFP4"
                             ToolTip="orcarouter/Qwen3.8-27B-Uncensored-NVFP4 - a different abliterated build, about 23 GB. Gated on Hugging Face: accept its terms there and paste a read token."/>
+              <ComboBoxItem Content="DeepSeek V4-Flash (pruned, 63 GB)" Tag="puwaer/DeepSeek-V4-Flash-0731-reap-150b-gguf:Q2_K"
+                            ToolTip="DeepSeek V4-Flash 0731 with its experts pruned from 284B to about 150B, then quantized to 2-bit. 63 GB on disk, served by llama.cpp from system RAM instead of vLLM from VRAM - so expect single-digit tokens per second on a 32 GB machine, not 80. Needs about 69 GB of RAM+VRAM to avoid paging off the SSD."/>
+              <ComboBoxItem Content="DeepSeek V4-Flash (full, 105 GB)" Tag="unsloth/DeepSeek-V4-Flash-0731-GGUF:UD-IQ3_XXS"
+                            ToolTip="The intact DeepSeek V4-Flash 0731 weights at 3-bit: 105 GB, and about 112 GB of RAM+VRAM to hold them. This one needs a 128 GB machine - on 32 GB it will not start."/>
             </ComboBox>
             <TextBlock Text="HF token" Style="{StaticResource FieldLabel}"/>
             <!-- Tag is the shared TextBox style's placeholder text (shown while empty). -->
@@ -800,6 +804,13 @@ function Get-SelectedModel {
     return $script:ModelStandard
 }
 
+# A GGUF entry names its quant after a colon and is served by llama.cpp, not
+# vLLM - a different binary, a different port, and not through WSL at all.
+function Test-GgufModel([string]$id) {
+    if (-not $id) { return $false }
+    return ($id -match ":" -or $id -match "(?i)gguf")
+}
+
 function Get-ModelLabel([string]$id) {
     # The repo name without the owner: short enough for the status pill, but it
     # says which checkpoint - "uncensored" alone did not.
@@ -813,10 +824,14 @@ function Get-SelectedModelLabel {
 
 function Update-ModelChoice {
     # Only the OrcaRouter entry is gated; the others download without an account.
-    $gated = (Get-SelectedModel) -eq $script:ModelGated
+    $sel = Get-SelectedModel
+    $gated = $sel -eq $script:ModelGated
     $TxtHfToken.IsEnabled = $gated
     if ($gated) {
         $TxtModelHint.Text = "Gated: accept the terms on huggingface.co, then paste a read token (once)."
+    } elseif (Test-GgufModel $sel) {
+        # Say the cost here rather than three hours into a download.
+        $TxtModelHint.Text = "Served from system RAM by llama.cpp - tens of GB to download, and far slower than the Qwen builds."
     } else {
         $TxtModelHint.Text = ""
     }
@@ -943,6 +958,26 @@ function Set-ServerStatus([string]$text, [string]$color) {
 
 # ------------------------------------------------------------------ setup
 function Start-Install {
+    # A GGUF build needs none of this: no distro, no venv, no elevation - just
+    # the weights, on a Windows drive, because llama.cpp serves them from there.
+    $model = Get-SelectedModel
+    if (Test-GgufModel $model) {
+        $BtnInstall.IsEnabled = $false
+        $BtnCleanup.IsEnabled = $false
+        $ts = Get-Date -Format "yyyyMMdd-HHmmss"
+        $outLog = Join-Path $script:LogDir "install-$ts.out.log"
+        $errLog = Join-Path $script:LogDir "install-$ts.err.log"
+        Add-Tail $outLog $TxtSetupLog
+        Add-Tail $errLog $TxtSetupLog
+        Add-Log $TxtSetupLog "Model: $model"
+        Add-Log $TxtSetupLog "Downloading the weights - this is tens of GB and resumes if interrupted."
+        $psArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$script:RepoRoot\serve-gguf.ps1`" -Model `"$model`" -Download -DownloadOnly"
+        Write-GuiLog "gguf download started | args: $psArgs"
+        $script:SetupProc = Start-Process powershell -ArgumentList $psArgs -PassThru -WindowStyle Hidden `
+            -RedirectStandardOutput $outLog -RedirectStandardError $errLog
+        $null = $script:SetupProc.Handle
+        return
+    }
     if (-not $script:IsAdmin) {
         $r = [Windows.MessageBox]::Show("Installing needs Administrator rights.`nRelaunch the app as Administrator?",
             "Qwen 5090", "YesNo", "Question")
@@ -1090,13 +1125,22 @@ function Start-Server {
     Add-Tail $outLog $TxtServerLog
     Add-Tail $errLog $TxtServerLog
     $model = Get-SelectedModel
-    $psArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$script:RepoRoot\run.ps1`" -Port $port -Ctx $ctx -Distro $Distro -Model $model"
-    if (-not $ChkMtp.IsChecked) { $psArgs += " -NoMtp" }
-    if ($ChkShare.IsChecked) {
-        $psArgs += " -Share"
-        Add-Log $TxtServerLog "Network sharing requested - approve the admin prompt that appears."
+    if (Test-GgufModel $model) {
+        # llama.cpp, natively on Windows - MTP is a vLLM feature and there is no
+        # WSL in this path, so neither flag applies.
+        $psArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$script:RepoRoot\serve-gguf.ps1`" -Port $port -Ctx $ctx -Model `"$model`""
+        if ($ChkShare.IsChecked) { $psArgs += " -Share" }
+        Add-Log $TxtServerLog "Starting $model on port $port (context $ctx) with llama.cpp."
+        Add-Log $TxtServerLog "This model is served from system RAM, so the first load reads tens of GB off the disk and generation is far slower than the Qwen builds."
+    } else {
+        $psArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$script:RepoRoot\run.ps1`" -Port $port -Ctx $ctx -Distro $Distro -Model $model"
+        if (-not $ChkMtp.IsChecked) { $psArgs += " -NoMtp" }
+        if ($ChkShare.IsChecked) {
+            $psArgs += " -Share"
+            Add-Log $TxtServerLog "Network sharing requested - approve the admin prompt that appears."
+        }
+        Add-Log $TxtServerLog "Starting $model on port $port (context $ctx)... first start takes a minute or two."
     }
-    Add-Log $TxtServerLog "Starting $model on port $port (context $ctx)... first start takes a minute or two."
     Add-Log $TxtServerLog "Logging to $outLog"
     Write-GuiLog "server starting | args: $psArgs"
     Set-ServerStatus "starting..." "#FFE0B84C"
@@ -1106,6 +1150,8 @@ function Start-Server {
 
 function Stop-Server {
     try { & wsl -d $Distro -- bash -c "pkill -f 'vllm serve'" 2>$null } catch { }
+    # The llama.cpp backend is a Windows process, so wsl pkill never sees it.
+    try { Get-Process llama-server -ErrorAction SilentlyContinue | Stop-Process -Force } catch { }
     if ($script:ServerProc -and -not $script:ServerProc.HasExited) {
         try { $script:ServerProc.Kill() } catch { }
     }

@@ -8,6 +8,7 @@
   .\run.ps1 -Ctx 65536          # smaller window, if you are gaming at the same time
   .\run.ps1 -Port 8080 -NoMtp
   .\run.ps1 -Uncensored         # serve the abliterated build instead
+  .\run.ps1 -Model "puwaer/DeepSeek-V4-Flash-0731-reap-150b-gguf:Q2_K"   # DeepSeek, via llama.cpp
   .\run.ps1 -Share              # also reachable from LAN/Tailscale (one admin prompt)
 #>
 [CmdletBinding()]
@@ -37,6 +38,18 @@ $ErrorActionPreference = "Stop"
 if ($Uncensored -and $Model -eq "unsloth/Qwen3.8-27B-NVFP4") {
     # The ungated abliterated NVFP4 re-quant; -Model takes any other repo id.
     $Model = "sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4"
+}
+
+# Not every checkpoint is a vLLM one. The DeepSeek V4-Flash builds are 284B
+# parameters and do not fit in VRAM at any quantization, so llama.cpp serves
+# them from system RAM - natively on Windows, with no WSL involved. Hand over
+# before touching the distro.
+if ($Model -match ":" -or $Model -match "(?i)gguf") {
+    $ggufArgs = @("-Model", "`"$Model`"", "-Ctx", $Ctx, "-Port", $Port)
+    if ($Share) { $ggufArgs += "-Share" }
+    Write-Host "$Model is a llama.cpp model - handing over to serve-gguf.ps1" -ForegroundColor Cyan
+    & "$PSScriptRoot\serve-gguf.ps1" @ggufArgs
+    exit $LASTEXITCODE
 }
 
 $repoWin = $PSScriptRoot -replace '\\', '/'

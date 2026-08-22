@@ -35,6 +35,10 @@ param(
     # these are 60 to 105 GB and rarely belong on C:.
     [string]$ModelDir,
     [switch]$Download,
+    # Fetch the weights and stop. What the app's Install button uses: the
+    # download is the long part and wants its own progress, and nothing should
+    # start occupying the GPU behind it.
+    [switch]$DownloadOnly,
     # Serve even when the preflight says it will page off the disk.
     [switch]$Force,
     # How many layers keep their experts on the CPU. 0 = all of them, which is
@@ -224,6 +228,7 @@ function Get-HubFile {
 
 $localRepoDir = Join-Path $ModelDir ($repo -replace "/", "--")
 $wanted = @()
+if ($DownloadOnly) { $Download = $true }
 if ($Download) {
     Say "listing $repo ($quant)"
     $wanted = Get-ModelFiles -Repo $repo -Quant $quant
@@ -249,6 +254,11 @@ if (-not $local) {
 }
 $first = ($local | Where-Object { $_.Name -like "*-00001-of-*" } | Select-Object -First 1)
 if (-not $first) { $first = $local | Select-Object -First 1 }
+
+if ($DownloadOnly) {
+    Say "downloaded - start it from the app, or with:  .\app\serve-gguf.ps1 -Model `"$Model`""
+    exit 0
+}
 
 # ---------------------------------------------------------------- drafter ---
 $draftPath = $null
