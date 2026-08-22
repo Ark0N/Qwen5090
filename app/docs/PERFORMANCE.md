@@ -45,6 +45,53 @@ having just printed `Available KV cache memory: N GiB`, the profiling was fine
 and something else on the GPU grew — close the browser and retry before
 changing any setting.
 
+## The DeepSeek V4-Flash path (llama.cpp, 2026-08-22)
+
+A different backend with a different bottleneck. The Qwen numbers above are a
+model that fits in VRAM; this one is 150B parameters with its experts in system
+RAM, and **where the experts live decides everything**.
+
+Measured on the same 32 GB machine, same weights, same 64K window:
+
+| | `--cpu-moe` (all 43 layers on CPU) | `-NCpuMoe 30` (~13 layers in VRAM) |
+|---|---|---|
+| first request after a start | 47 s, and **repeated on every request** | 33 s, **once** |
+| warm request | nothing stayed warm | 2.4 s |
+| generation | 4.5 tok/s | 13.6–20.9 tok/s |
+| prefill | 46 tok/s marginal, 47 s fixed | prefix reused (`cache_n` 129 of 149) |
+
+The difference is whether the working set fits. With every expert on the CPU,
+58 GiB cycles through a page cache too small to hold it, so the re-read repeats
+forever and ~19 GB of VRAM sits idle. `-NCpuMoe 30` pins a slice of them and
+the cost is paid once per server start. **Set it.** It is the single largest
+lever on this path, worth more than context size, quant tier or thinking level.
+
+Raw prefill against `--cpu-moe`, thinking off, for the shape of the curve:
+
+    412 tokens     51.7 s     8.0 tok/s
+  2,417 tokens    109.0 s    22.2 tok/s
+  4,823 tokens    149.1 s    32.3 tok/s      -> 47.4 s fixed + 46 tok/s marginal
+
+### What an agent turn actually costs
+
+One `dsh --profile headless` task, end to end, against a freshly started server:
+
+    step 1   828.8 s   model reads the prompt, calls the `read` tool
+    step 2    18.0 s   model answers from the tool result
+    total    846.8 s   turn completed, answer correct
+
+Step 2 is 46× cheaper than step 1 because `--cache-reuse` kept the prefix. So
+the cost of an agent session is **one expensive first step, then cheap ones** -
+and since the system prompt and tool schemas are identical across tasks, a
+warm server should carry that cache from one task into the next.
+
+What makes step 1 expensive is not the question, it is the preamble: dsh
+declares **25 tools** plus a ~1,000-token system prompt, and every one of those
+JSON schemas is prefilled. The harness's `minimal` preset - bash and
+`str_replace_editor` alone - exists precisely for this, and is also the
+configuration DeepSeek's published Terminal-Bench figure was measured with.
+Cutting 25 tools to 2 is the second lever on this path.
+
 ## Levers, in order of impact
 
 1. **MTP (on by default).** Multi-token prediction drafts 3 tokens per step
