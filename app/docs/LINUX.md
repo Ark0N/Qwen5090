@@ -287,6 +287,48 @@ telemetry file's `power.limit` column before reading anything into a throughput
 number), and **VRAM** still held after the server is gone, which is a stuck
 process rather than a busy one.
 
+## Chassis fans: making them follow the GPU
+
+The board's fan controller (a Nuvoton NCT6799D on the ROG Strix X670E-F) is
+invisible to Linux until `nct6775` is loaded, so out of the box the only thing
+managing airflow is the BIOS SmartFan curve — which is tuned for gaming bursts,
+not for a 5090 pulling 350–600 W for an hour at a stretch.
+
+```bash
+sudo bash app/scripts/fan-curve.sh status      # what is bound, what is spinning
+sudo bash app/scripts/fan-curve.sh test        # 8s ramp to full, then restore
+sudo bash app/scripts/fan-curve.sh install     # module + unit + config, at boot
+sudo bash app/scripts/fan-curve.sh uninstall   # hand the fans back to the BIOS
+```
+
+`install` loads the module, writes `/etc/modules-load.d/qwen5090-fans.conf` so
+it survives a reboot, records the **current BIOS PWM value as a floor**, and
+enables a systemd **system** unit. A system unit, unlike the rootless user unit
+in "Starting automatically at boot" above: writing `/sys/class/hwmon/*/pwm*`
+needs root and there is no way around that.
+
+Settings are in `/etc/qwen5090/fan-curve.env` — edit and
+`systemctl restart qwen5090-fans`. Two of them are safety properties rather
+than preferences:
+
+- **`FAN_FLOOR`** is a hard lower clamp recorded from the BIOS at install time.
+  The daemon can raise fans above it and can never drive them below it, so the
+  worst a bad curve can do is make the machine loud rather than hot. Lower it
+  deliberately if you want a quieter idle — that is safe once you know which
+  header drives what, and it is what buys back range if your BIOS baseline is
+  already high.
+- **`FAN_EXCLUDE`** lists channels the daemon must never write. **Channel 7 is
+  the AIO pump on this machine** — `pwm=255` with the only live tach. A pump is
+  not a fan and must not be modulated by a temperature curve.
+
+Note that on this board only `fan7` reports RPM; `fan1`–`fan6` read 0 whether
+or not something is connected, because ASUS routes those tach lines through its
+own EC. So there is no software way to confirm a chassis PWM write did
+anything — use `fan-curve.sh test` and your ears. It also means per-fan curves
+are not practical here (`pwmconfig` identifies fans by stopping them and
+watching RPM, and there is no RPM to watch), which is why all the chassis
+channels are driven together as one group.
+
 ## Differences from the Windows path
 
 | | Windows 11 | Native Linux |
