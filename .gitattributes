@@ -3,6 +3,9 @@
 *.sh text eol=lf
 *.py text eol=lf
 *.md text eol=lf
+# Chat templates are prompt text: a CRLF checkout would feed a literal \r into
+# every rendered prompt. llama.cpp reads LF fine on Windows too.
+*.jinja text eol=lf
 *.ps1 text eol=crlf
 # Screenshots: never let the eol rules near them.
 *.png binary
