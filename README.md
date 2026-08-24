@@ -161,7 +161,18 @@ bash app/scripts/claude-code.sh install && qwen-claude   # Claude Code on your G
 Want it back after a reboot? `bash app/scripts/install-service.sh install`
 writes a systemd user unit (no root needed).
 
-No launcher, no GUI, no WSL. Verified on Ubuntu 26.04 with an RTX 5090.
+**Want the GUI's status pills?** There is no WPF on Linux, but there is a small
+local web dashboard — model and backend, GPU utilisation, power against the
+limit, temperature, VRAM and what is holding it, CPU per core, RAM and swap:
+
+```bash
+bash app/scripts/dashboard.sh                # http://127.0.0.1:8600
+```
+
+Read-only, standard library only, nothing to install.
+
+No launcher, no WSL, and no GUI beyond that dashboard. Verified on Ubuntu 26.04
+with an RTX 5090.
 Full walkthrough — including the **262K-context + MTP** configuration that runs
 at ~139 tok/s — in **[app/docs/LINUX.md](app/docs/LINUX.md)**.
 
@@ -510,6 +521,7 @@ app/                       everything under the hood:
     claude-code.sh             the Claude Code bridge (LiteLLM)
     patch-mtp.sh               opt-in vLLM PR #40914 backport: MTP at 262K ctx
     install-service.sh         systemd user unit so the server survives reboot
+    dashboard.sh, dashboard.py the Linux status page (model, GPU, CPU, memory)
     chat.py, benchmark.sh      clients against the OpenAI endpoint
     lib-*.sh                   shared helpers (build tools, WSL/Linux detection)
   docs/                      troubleshooting, performance, Claude Code, Linux, NInfer

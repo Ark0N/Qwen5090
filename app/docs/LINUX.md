@@ -243,6 +243,50 @@ line for minutes. It reads as a hang and is not one. Prefix caching (on by
 default with the 4-bit cache) makes this survivable for agent use, since Claude
 Code resends the same large prefix every turn.
 
+## The dashboard: what is loaded, and what the box is doing
+
+The Windows GUI has status pills — model, GPU, server. Linux had nothing but the
+server log and `nvidia-smi` in another terminal. This is the equivalent:
+
+```bash
+bash app/scripts/dashboard.sh          # http://127.0.0.1:8600
+```
+
+It shows the model and backend the server reports, whether the systemd unit is
+up, GPU utilisation, power against the limit, temperature, clocks, PCIe link,
+throttle state, VRAM with the processes holding it, CPU per core, load average,
+and RAM and swap — refreshing every 2 seconds with four minutes of history
+behind the sparklines.
+
+**It is read-only on purpose.** There is no start, stop or reconfigure button;
+those paths belong to `serve.sh`, `install-service.sh` and `systemctl`, which is
+where the safeguards are. Nothing you can click here can take the server down.
+
+It also imports nothing outside Python's standard library, so it still runs when
+the venv is missing or half-rebuilt — which is one of the times you most want to
+look at it. A fallen-off GPU is reported as its own state rather than a hang:
+every `nvidia-smi` call is bounded, because a card that has dropped off the bus
+makes `nvidia-smi` block rather than fail.
+
+| Variable | Default | |
+|---|---|---|
+| `DASH_PORT` | `8600` | |
+| `DASH_HOST` | `127.0.0.1` | `0.0.0.0` to reach it from the LAN — it warns when you do |
+| `QWEN_URL` | `http://127.0.0.1:8000` | which server to ask; a remote one works |
+| `DASH_ACCESS_LOG` | unset | `1` restores per-request logging |
+
+To leave one running:
+
+```bash
+nohup bash app/scripts/dashboard.sh >/dev/null 2>&1 &
+```
+
+Two things it is worth watching for on this hardware: the **throttle** row
+turning red (`at power cap` means the card is bumping `power.limit` — check the
+telemetry file's `power.limit` column before reading anything into a throughput
+number), and **VRAM** still held after the server is gone, which is a stuck
+process rather than a busy one.
+
 ## Differences from the Windows path
 
 | | Windows 11 | Native Linux |
@@ -250,7 +294,8 @@ Code resends the same large prefix every turn.
 | Entry point | `Start Qwen 5090.cmd` → WPF app | `bash app/scripts/setup-linux.sh` |
 | Install | `install.ps1` (WSL2, Ubuntu, UAC, reboot) | not needed |
 | Memory sizing | `.wslconfig` written by `install.ps1` | host RAM is already the real RAM |
-| GUI, Chat tab, Cleanup | yes | no — use `chat.py` or any OpenAI client |
+| Status at a glance | GUI status pills | `dashboard.sh` — a local web page |
+| Chat tab, Cleanup, install buttons | yes | no — use `chat.py` or any OpenAI client |
 | Sharing on the LAN | `share.ps1` (netsh portproxy + firewall) | `serve.sh` already binds `0.0.0.0` |
 | Logs | `%LOCALAPPDATA%\Qwen5090\logs` | `~/.qwen5090/logs` |
 
