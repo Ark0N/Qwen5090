@@ -28,3 +28,6 @@ testap/
 # one thing to click - so it never belongs here.
 terminal-bench-2-1/
 jobs/
+
+# pre-git backup copies from the ZIP-handover era on the Windows box
+_prehead-backups/
