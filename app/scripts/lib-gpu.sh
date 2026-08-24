@@ -33,13 +33,26 @@ qwen5090_apply_power_limit() {
   [[ -n "$limit" ]] || return 0
   command -v nvidia-smi >/dev/null 2>&1 || return 0
 
-  local pl_rc=0
+  local pl_rc=0 pl_out=""
   if [[ "$(id -u)" == "0" ]]; then
-    nvidia-smi -pl "$limit" >/dev/null 2>&1 || pl_rc=$?
-  elif sudo -n true 2>/dev/null; then
-    sudo -n nvidia-smi -pl "$limit" >/dev/null 2>&1 || pl_rc=$?
+    pl_out=$(nvidia-smi -pl "$limit" 2>&1) || pl_rc=$?
   else
-    pl_rc=126
+    # Try the real command and read the failure, rather than probing first.
+    # Neither probe is trustworthy: `sudo -n true` asks a broader question than
+    # the one being asked and gets it wrong under the narrowly-scoped drop-in
+    # that is the recommended fix for this box -
+    #     testuser ALL=(root) NOPASSWD: /usr/bin/nvidia-smi -pl *
+    # - where `sudo -n nvidia-smi -pl 450` succeeds while `sudo -n true` still
+    # demands a password, so the probe warn-skips a cap that was about to work.
+    # That is the silent-revert failure this knob exists to prevent. `sudo -l`
+    # is no better in the other direction: it reports whether a command is
+    # *permitted*, not whether it needs a password, and returns 0 here for a
+    # command that would prompt. -n guarantees no prompt can block a server
+    # start, so simply attempting it is both safe and exact.
+    pl_out=$(sudo -n nvidia-smi -pl "$limit" 2>&1) || pl_rc=$?
+    if (( pl_rc != 0 )) && [[ "$pl_out" == *password* || "$pl_out" == *authentication* ]]; then
+      pl_rc=126
+    fi
   fi
 
   if [[ $pl_rc -eq 0 ]]; then
