@@ -537,6 +537,13 @@ $xaml = @'
               <TextBlock x:Name="TxtBridgeS" Text="bridge stopped" FontSize="12" Foreground="#8A93A5" VerticalAlignment="Center"/>
             </StackPanel>
           </Border>
+          <Border Style="{StaticResource StatusPill}" Margin="0,0,0,4">
+            <StackPanel Orientation="Horizontal">
+              <Ellipse x:Name="DotDsh" Width="8" Height="8" Fill="#4A5261" VerticalAlignment="Center" Margin="0,0,7,0"/>
+              <TextBlock Text="HARNESS" Style="{StaticResource PillLabel}"/>
+              <TextBlock x:Name="TxtDshS" Text="stopped" FontSize="12" Foreground="#8A93A5" VerticalAlignment="Center"/>
+            </StackPanel>
+          </Border>
         </WrapPanel>
       </Grid>
     </Border>
@@ -740,6 +747,45 @@ $xaml = @'
         </Grid>
       </TabItem>
 
+      <TabItem>
+        <TabItem.Header>
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Style="{x:Null}" Text="&#xE774;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                       FontSize="14" VerticalAlignment="Center" Margin="0,0,7,0"/>
+            <TextBlock Style="{x:Null}" Text="DeepSeek Harness" VerticalAlignment="Center"/>
+          </StackPanel>
+        </TabItem.Header>
+        <Grid>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+          </Grid.RowDefinitions>
+          <WrapPanel Grid.Row="0" Margin="0,0,0,6">
+            <Button x:Name="BtnDshOpen" Content="Open harness" Style="{StaticResource AccentButton}"
+                    ToolTip="Start the harness if it is not up, then open its Web UI in your browser"/>
+            <Button x:Name="BtnDshStart" Content="Start" Margin="0,0,8,6"
+                    ToolTip="Start the harness without opening a browser"/>
+            <Button x:Name="BtnDshStop" Content="Stop" IsEnabled="False" Margin="0,0,16,6"/>
+            <TextBlock Text="UI port" Style="{StaticResource FieldLabel}"/>
+            <TextBox x:Name="TxtDshPort" Text="3080" Width="92" Height="30" Padding="6,0" TextAlignment="Center"
+                     VerticalAlignment="Center" Margin="0,0,0,6" ToolTip="Where the harness Web UI listens (1-65535). Change it only if something else already uses 3080."/>
+          </WrapPanel>
+          <WrapPanel Grid.Row="1" Margin="0,0,0,6">
+            <Button x:Name="BtnDshInstall" Content="Install harness" Margin="0,0,8,6"
+                    ToolTip="Install the harness inside Linux (about a minute). Starting it does this for you the first time - this button is here if you would rather get it over with."/>
+            <Button x:Name="BtnDshConfig" Content="Re-read server" Margin="0,0,8,6"
+                    ToolTip="Point the harness at whatever the server is currently serving. Worth clicking after switching model or engine."/>
+            <Button x:Name="BtnDshDoctor" Content="Doctor" Margin="0,0,16,6"
+                    ToolTip="Check the harness end to end and print what it finds below"/>
+            <TextBlock x:Name="TxtDshHint" Text="" FontSize="11" Foreground="#8A93A5"
+                       VerticalAlignment="Center" Margin="0,0,0,6"/>
+          </WrapPanel>
+          <TextBox x:Name="TxtDshLog" Grid.Row="2" Style="{StaticResource LogBox}"
+                   Text="The DeepSeek Harness - a coding agent you drive in your browser, answered by&#10;the model on this PC.&#10;&#10;Unlike Claude Code it speaks the same API the server does, so there is no&#10;translation bridge here. It just needs to be told where the server is, which&#10;these buttons do.&#10;&#10;   Open harness     starts it if needed, then opens the Web UI in your browser&#10;   Re-read server   re-point it after you switch model or engine&#10;&#10;Start the model server on the Server tab first - the harness asks it what it is&#10;serving and writes that into its own settings.&#10;"/>
+        </Grid>
+      </TabItem>
+
     </TabControl>
   </Grid>
 </Window>
@@ -753,7 +799,9 @@ foreach ($name in 'TxtGpuS','TxtWslS','TxtModelS','TxtServerS','TxtBridgeS','Btn
                   'BtnStart','BtnStop','TxtPort','CmbCtx','ChkMtp','ChkShare','TxtServerLog',
                   'ChkThink','CmbEffort','BtnClear','RtbChat','TxtInput','BtnSend',
                   'BtnCcOpen','BtnCcStart','BtnCcStop','CmbCcEffort','TxtCcPort',
-                  'BtnCcInstall','BtnCcEnv','BtnCcDoctor','ChkCcDebug','TxtCcHint','TxtCcLog') {
+                  'BtnCcInstall','BtnCcEnv','BtnCcDoctor','ChkCcDebug','TxtCcHint','TxtCcLog',
+                  'DotDsh','TxtDshS','BtnDshOpen','BtnDshStart','BtnDshStop','TxtDshPort',
+                  'BtnDshInstall','BtnDshConfig','BtnDshDoctor','TxtDshHint','TxtDshLog') {
     Set-Variable -Name $name -Value $Window.FindName($name)
 }
 
@@ -778,6 +826,16 @@ $script:BridgeConfirmBy = $null
 # Set when the user asked for a session and Claude Code had to be installed
 # first: the install runs as a child, so the session opens when it finishes.
 $script:CcOpenAfterInstall = $false
+# DeepSeek Harness: same shape as the bridge above - a child per one-shot
+# action, its own health ping, and state independent of $ServerProc because the
+# harness outlives this window and one started outside the GUI must show up.
+$script:DshProc = $null
+$script:DshAction = ""
+$script:DshUp = $false
+$script:DshPingTask = $null
+# Set when the user asked to open the browser and the harness had to be
+# installed or started first: the browser opens when that child finishes.
+$script:DshOpenAfter = $false
 $script:DiagZip = $null
 $script:ServerUp = $false
 # The id the running server reports (used in chat requests); the id the user
@@ -1529,6 +1587,263 @@ function Test-BridgeHealth {
     $script:BridgePingTask = $script:Http.GetAsync("http://127.0.0.1:$port/health/liveliness")
 }
 
+# ------------------------------------------------------------------ harness
+function Set-DshStatus([string]$text, [string]$color) {
+    $TxtDshS.Text = $text
+    $TxtDshS.Foreground = New-Brush $color
+    Set-Dot $DotDsh $color
+}
+
+function Get-DshPorts {
+    # Returns @(serverPort, uiPort), or $null after complaining about whichever
+    # one is wrong. Both matter: the harness is told where the model server is,
+    # and a typo there writes a route that points at nothing.
+    $ui = 0
+    if (-not [int]::TryParse($TxtDshPort.Text, [ref]$ui) -or $ui -lt 1 -or $ui -gt 65535) {
+        [Windows.MessageBox]::Show("Invalid harness UI port: $($TxtDshPort.Text)", "Qwen 5090") | Out-Null
+        return $null
+    }
+    $server = 0
+    if (-not [int]::TryParse($TxtPort.Text, [ref]$server) -or $server -lt 1 -or $server -gt 65535) {
+        [Windows.MessageBox]::Show("Invalid server port on the Server tab: $($TxtPort.Text)", "Qwen 5090") | Out-Null
+        return $null
+    }
+    return @($server, $ui)
+}
+
+function Start-DshAction([string]$action, [string]$switches) {
+    # One child at a time, for the same reason the bridge serialises: start
+    # waits for the port to open and stop waits for it to close, so two at once
+    # would race for the same port and both lose.
+    if ($script:DshProc) {
+        Add-Log $TxtDshLog "Busy with '$($script:DshAction)' - wait for it to finish."
+        return
+    }
+    $ports = Get-DshPorts
+    if (-not $ports) { return }
+    $ts = Get-Date -Format "yyyyMMdd-HHmmss"
+    $outLog = Join-Path $script:LogDir "deepseek-harness-$action-$ts.log"
+    $errLog = Join-Path $script:LogDir "deepseek-harness-$action-$ts.err.log"
+    Add-Tail $outLog $TxtDshLog
+    Add-Tail $errLog $TxtDshLog
+    $psArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$script:RepoRoot\deepseek-harness.ps1`"" +
+              " -Distro $Distro -Port $($ports[0]) -UiPort $($ports[1]) $switches"
+    Write-GuiLog "deepseek-harness $action | args: $psArgs"
+    $script:DshAction = $action
+    $script:DshProc = Start-Process powershell -ArgumentList $psArgs -PassThru -WindowStyle Hidden `
+        -RedirectStandardOutput $outLog -RedirectStandardError $errLog
+    $BtnDshStart.IsEnabled = $false
+    $BtnDshStop.IsEnabled = $false
+    $BtnDshOpen.IsEnabled = $false
+    $BtnDshInstall.IsEnabled = $false
+    $BtnDshConfig.IsEnabled = $false
+    $BtnDshDoctor.IsEnabled = $false
+}
+
+function Test-DshInstalled {
+    # Same shape and the same caveat as Test-ClaudeInstalled: one warm
+    # `wsl -d ... bash -c`, and NO `PATH=...` assignment prefix. $HOME and $PATH
+    # would be expanded before the inner bash parses the line, and the inherited
+    # Windows PATH holds "C:\Program Files (x86)\..." on virtually every machine,
+    # whose bare "(" dies with a syntax error that looks just like "not found".
+    try {
+        & wsl -d $Distro -- bash -c "test -x `"`$HOME/.dsh-runtime/node_modules/.bin/dsh`"" 2>$null
+        return ($LASTEXITCODE -eq 0)
+    } catch { return $false }
+}
+
+function Test-DshNode {
+    # The harness needs Node >= 22.19 and deliberately will not install one. It
+    # matters here because Ubuntu 24.04 - what install.ps1 provisions - ships
+    # Node 18, so this is the expected state on a fresh box rather than an edge
+    # case. Returns $true when node is new enough.
+    try {
+        & wsl -d $Distro -- bash -c "command -v node >/dev/null && node -e 'process.exit(process.versions.node.split(`".`").map(Number)[0]>=22?0:1)'" 2>$null
+        return ($LASTEXITCODE -eq 0)
+    } catch { return $false }
+}
+
+function Update-DshHint {
+    if (Test-DshInstalled) {
+        $TxtDshHint.Text = "Harness is installed."
+    } else {
+        $TxtDshHint.Text = "Harness is not installed yet - Start installs it (about a minute)."
+    }
+}
+
+function Test-DshReady {
+    # The harness writes its provider route from whatever the server reports, so
+    # starting it without one produces a harness with nothing to talk to.
+    if ($script:ServerUp) { return $true }
+    $r = [Windows.MessageBox]::Show(
+        "The model server is not running, and the harness configures itself from it.`n`nStart the server first (Server tab)?",
+        "Qwen 5090", "YesNo", "Warning")
+    if ($r -eq "Yes") { Start-Server }
+    return $false
+}
+
+function Install-DshNode {
+    Add-Log $TxtDshLog "Installing Node.js inside Linux (about 25 MB, no root, one time)..."
+    Start-DshAction "install-node" "-InstallNode"
+}
+
+function Install-Dsh {
+    # Node first, and asked rather than assumed: it is a language runtime going
+    # onto the user's machine, so it gets its own yes/no even though the button
+    # they clicked was about the harness.
+    if (-not (Test-DshNode)) {
+        $r = [Windows.MessageBox]::Show(
+            "The harness needs Node.js 22 or newer, and this Linux box does not have it." +
+            "`n`n(Ubuntu 24.04 ships Node 18, so this is normal on a fresh install.)" +
+            "`n`nInstall Node into your Linux home directory now? About 25 MB, no root needed.",
+            "Qwen 5090", "YesNo", "Question")
+        if ($r -ne "Yes") {
+            Add-Log $TxtDshLog "Node was not installed, so the harness cannot be installed either."
+            return
+        }
+        $script:DshOpenAfter = $false
+        Install-DshNode
+        return
+    }
+    Add-Log $TxtDshLog "Installing the harness inside Linux (about a minute)..."
+    Start-DshAction "install" "-Install"
+}
+
+function Start-Dsh {
+    if (-not (Test-DshReady)) { return }
+    if (-not (Test-DshNode)) { Install-Dsh; return }
+    Add-Log $TxtDshLog "Starting the harness on port $($TxtDshPort.Text)..."
+    Set-DshStatus "starting..." "#FFE0B84C"
+    Start-DshAction "start" ""
+}
+
+function Stop-Dsh {
+    Add-Log $TxtDshLog "Stopping the harness..."
+    Start-DshAction "stop" "-Stop"
+}
+
+function Start-DshDoctor { Start-DshAction "doctor" "-Doctor" }
+
+function Update-DshConfig {
+    if (-not (Test-DshReady)) { return }
+    Add-Log $TxtDshLog "Re-reading the server and rewriting the harness route..."
+    Start-DshAction "config" "-Config"
+}
+
+function Open-DshBrowser {
+    $port = 0
+    if (-not [int]::TryParse($TxtDshPort.Text, [ref]$port) -or $port -lt 1 -or $port -gt 65535) {
+        [Windows.MessageBox]::Show("Invalid harness UI port: $($TxtDshPort.Text)", "Qwen 5090") | Out-Null
+        return
+    }
+    $url = "http://127.0.0.1:$port"
+    Add-Log $TxtDshLog "Opening $url in your browser."
+    try {
+        Start-Process $url | Out-Null
+    } catch {
+        Write-GuiLog "could not open browser: $($_.Exception.Message)"
+        Add-Log $TxtDshLog "Could not open a browser automatically - go to $url yourself."
+    }
+}
+
+function Open-Dsh {
+    # Start it if it is not up, and open the browser once it is. When a start is
+    # needed the browser waits for the child to finish, because a page opened
+    # against a port that is not listening yet just shows a refusal.
+    if ($script:DshUp) { Open-DshBrowser; return }
+    if (-not (Test-DshReady)) { return }
+    $script:DshOpenAfter = $true
+    Start-Dsh
+}
+
+function Complete-DshAction {
+    $action = $script:DshAction
+    $code = -1
+    try { $code = $script:DshProc.ExitCode } catch { }
+    $script:DshProc = $null
+    $script:DshAction = ""
+    $BtnDshOpen.IsEnabled = $true
+    $BtnDshInstall.IsEnabled = $true
+    $BtnDshConfig.IsEnabled = $true
+    $BtnDshDoctor.IsEnabled = $true
+    $BtnDshStart.IsEnabled = -not $script:DshUp
+    $BtnDshStop.IsEnabled = $script:DshUp
+    Write-GuiLog "deepseek-harness $action exited with $code"
+
+    if ($code -ne 0) {
+        $script:DshOpenAfter = $false
+        Add-Log $TxtDshLog "'$action' failed (exit $code) - see the output above."
+        if ($action -eq "start") { Set-DshStatus "failed to start" "#FFFF6B6B" }
+        return
+    }
+    if ($action -eq "install-node") {
+        Add-Log $TxtDshLog "Node installed - installing the harness now."
+        Install-Dsh
+        return
+    }
+    if ($action -eq "install") {
+        Update-DshHint
+        Add-Log $TxtDshLog "Harness installed."
+        return
+    }
+    if ($action -eq "stop") {
+        $script:DshUp = $false
+        Set-DshStatus "stopped" "#FF8A93A5"
+        $BtnDshStart.IsEnabled = $true
+        $BtnDshStop.IsEnabled = $false
+        return
+    }
+    if ($action -eq "start") {
+        Update-DshHint
+        Add-Log $TxtDshLog "Harness start finished - confirming it is reachable..."
+        return
+    }
+}
+
+function Test-DshHealth {
+    # Same async shape as Test-BridgeHealth: started on one tick, read on a
+    # later one, so a harness that is not there costs the UI nothing. Polled
+    # whatever the GUI itself did, so one started outside it is picked up too.
+    if ($script:DshPingTask) {
+        if (-not $script:DshPingTask.IsCompleted) { return }
+        $task = $script:DshPingTask
+        $script:DshPingTask = $null
+        $alive = $false
+        try {
+            $resp = $task.Result
+            $alive = $resp.IsSuccessStatusCode
+            $resp.Dispose()
+        } catch { $alive = $false }
+
+        if ($alive -and -not $script:DshUp) {
+            $script:DshUp = $true
+            Set-DshStatus "on port $($TxtDshPort.Text)" "#FF76B900"
+            if (-not $script:DshProc) {
+                $BtnDshStart.IsEnabled = $false
+                $BtnDshStop.IsEnabled = $true
+            }
+            Write-GuiLog "harness detected UP on port $($TxtDshPort.Text)"
+            Add-Log $TxtDshLog "Harness is up on http://127.0.0.1:$($TxtDshPort.Text)"
+            if ($script:DshOpenAfter) {
+                $script:DshOpenAfter = $false
+                Open-DshBrowser
+            }
+        } elseif (-not $alive -and $script:DshUp) {
+            $script:DshUp = $false
+            Set-DshStatus "stopped" "#FF8A93A5"
+            if (-not $script:DshProc) {
+                $BtnDshStart.IsEnabled = $true
+                $BtnDshStop.IsEnabled = $false
+            }
+            Write-GuiLog "harness went DOWN"
+        }
+        return
+    }
+    $port = 0
+    if (-not [int]::TryParse($TxtDshPort.Text, [ref]$port) -or $port -lt 1 -or $port -gt 65535) { return }
+    $script:DshPingTask = $script:Http.GetAsync("http://127.0.0.1:$port/")
+}
+
 # ------------------------------------------------------------------ chat
 $chatWorker = {
     param($url, $json, $queue)
@@ -1663,6 +1978,12 @@ $BtnCcStop.Add_Click({ Stop-Bridge })
 $BtnCcEnv.Add_Click({ Copy-BridgeEnv })
 $BtnCcDoctor.Add_Click({ Start-BridgeDoctor })
 $BtnCcInstall.Add_Click({ Install-ClaudeCode })
+$BtnDshOpen.Add_Click({ Open-Dsh })
+$BtnDshStart.Add_Click({ Start-Dsh })
+$BtnDshStop.Add_Click({ Stop-Dsh })
+$BtnDshInstall.Add_Click({ Install-Dsh })
+$BtnDshConfig.Add_Click({ Update-DshConfig })
+$BtnDshDoctor.Add_Click({ Start-DshDoctor })
 $BtnClear.Add_Click({
     $script:Messages.Clear()
     # One paragraph per message now, so clearing the current one would leave
@@ -1685,6 +2006,7 @@ $timer.Add_Tick({
     # Spinner in the header: something is running that the user cannot see,
     # because every child process is hidden and logs into a tab below.
     $busy = [bool]($script:SetupProc -or $script:CleanupProc -or $script:DiagProc -or $script:BridgeProc -or
+                   $script:DshProc -or
                    $script:ChatBusy -or ($script:ServerProc -and -not $script:ServerUp))
     if ($busy) {
         # [int] rounds to even, which makes the spinner stutter; floor it.
@@ -1696,6 +2018,7 @@ $timer.Add_Tick({
     if ($script:SetupProc -and $script:SetupProc.HasExited) { Complete-Install }
     if ($script:CleanupProc -and $script:CleanupProc.HasExited) { Complete-Cleanup }
     if ($script:BridgeProc -and $script:BridgeProc.HasExited) { Complete-BridgeAction }
+    if ($script:DshProc -and $script:DshProc.HasExited) { Complete-DshAction }
     if ($script:BridgeConfirmBy -and (Get-Date) -gt $script:BridgeConfirmBy) {
         $script:BridgeConfirmBy = $null
         if (-not $script:BridgeUp) {
@@ -1730,6 +2053,7 @@ $timer.Add_Tick({
     if ($script:TickCount % 7 -eq 0) { Test-ServerHealth }
     # Offset from the server ping so the two never fire on the same tick.
     if ($script:TickCount % 7 -eq 3) { Test-BridgeHealth }
+    if ($script:TickCount % 7 -eq 5) { Test-DshHealth }
 })
 $timer.Start()
 
@@ -1766,6 +2090,7 @@ $Window.Add_Loaded({
     Update-ModelChoice
     Update-Status
     Update-CcHint
+    Update-DshHint
     Add-ChatRun "Local Qwen3.8-27B chat - start the server on the Server tab, then ask anything. Dim italic text is the model thinking.`n" "#FF8A93A5" -Italic
     if ($AutoInstall -and $script:IsAdmin) { Start-Install }
     # Confirmed pre-elevation in Start-Cleanup; the elevated instance just runs it.

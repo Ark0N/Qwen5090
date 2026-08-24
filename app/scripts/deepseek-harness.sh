@@ -7,6 +7,7 @@
 # the Web UI.
 #
 #   bash deepseek-harness.sh install     # install dsh itself (needs Node >= 22.19)
+#   bash deepseek-harness.sh install-node # opt-in: Node into ~/.local, no root
 #   bash deepseek-harness.sh config      # write the provider routes, nothing else
 #   bash deepseek-harness.sh start       # config, then start the Web UI
 #   bash deepseek-harness.sh status|stop|restart|doctor|env
@@ -230,19 +231,90 @@ PY
 
 # ---------------------------------------------------------------- install ---
 NODE_MIN="22.19.0"
+# What `install-node` fetches. Pinned rather than "latest" so two installs a
+# month apart produce the same thing.
+NODE_VERSION="${NODE_VERSION:-22.22.1}"
 
-check_node() {
-  command -v node >/dev/null 2>&1 || die "the harness needs Node.js >= $NODE_MIN and none is installed.
-Install it with your package manager, or:
-    curl -fsSL https://fnm.vercel.app/install | bash   # then: fnm install 22"
+# Non-fatal: prints the version it found and returns 1 if it is missing or too
+# old, so a caller can offer to fix it rather than dying. check_node() is the
+# fatal wrapper around this.
+node_ok() {
+  command -v node >/dev/null 2>&1 || return 1
   local have
-  have=$(node -v | sed 's/^v//')
-  python3 - "$have" "$NODE_MIN" <<'PY' || die "Node $have is too old - the harness needs >= $NODE_MIN"
+  have=$(node -v 2>/dev/null | sed 's/^v//') || return 1
+  [[ -n "$have" ]] || return 1
+  python3 - "$have" "$NODE_MIN" <<'PY'
 import sys
 def parts(v):
     return [int(x) for x in v.split("-")[0].split(".")]
 sys.exit(0 if parts(sys.argv[1]) >= parts(sys.argv[2]) else 1)
 PY
+}
+
+check_node() {
+  node_ok && return 0
+  local have="none"
+  command -v node >/dev/null 2>&1 && have="$(node -v 2>/dev/null || echo unknown)"
+  die "the harness needs Node.js >= $NODE_MIN and this box has $have.
+
+Install one without root, into your home directory:
+    bash deepseek-harness.sh install-node
+
+Or use your package manager - Ubuntu 26.04's own nodejs is new enough
+(sudo apt-get install -y nodejs); Ubuntu 24.04's is not."
+}
+
+# Node, unpacked into the user's own directory. Deliberately not fnm or nvm:
+# both work by hooking an interactive shell's startup, and everything here runs
+# through a non-login `bash -c` that reads no profile - so a node installed
+# that way is invisible seconds later, which is the exact failure this project
+# has already been bitten by twice. A tarball plus symlinks into $INSTALL_BIN,
+# which is put on PATH at the top of this script, has no such dependency.
+#
+# Opt-in only. `install` and `start` will not call this: they refuse and point
+# at it instead, because silently installing a language runtime is not
+# something a script should decide for you.
+install_node() {
+  if node_ok; then
+    say "Node $(node -v) is already new enough (>= $NODE_MIN) - nothing to do."
+    return 0
+  fi
+  local arch tarball url dest
+  case "$(uname -m)" in
+    x86_64)  arch="linux-x64" ;;
+    aarch64) arch="linux-arm64" ;;
+    *) die "no prebuilt Node for $(uname -m) - install it with your package manager." ;;
+  esac
+  tarball="node-v$NODE_VERSION-$arch.tar.xz"
+  url="https://nodejs.org/dist/v$NODE_VERSION/$tarball"
+  dest="$HOME/.local/node-v$NODE_VERSION-$arch"
+
+  if [[ ! -x "$dest/bin/node" ]]; then
+    say "downloading Node $NODE_VERSION ($arch) - about 25 MB, one time"
+    mkdir -p "$HOME/.local"
+    local tmp
+    tmp=$(mktemp -d)
+    # shellcheck disable=SC2064
+    trap "rm -rf '$tmp'" RETURN
+    curl -fsSL -o "$tmp/$tarball" "$url" || die "could not download $url"
+    tar -xJf "$tmp/$tarball" -C "$HOME/.local" || die "could not unpack $tarball"
+    [[ -x "$dest/bin/node" ]] || die "unpacked $tarball but $dest/bin/node is missing"
+  else
+    say "Node $NODE_VERSION is already unpacked at $dest"
+  fi
+
+  mkdir -p "$INSTALL_BIN"
+  local b
+  for b in node npm npx; do
+    [[ -e "$dest/bin/$b" ]] || continue
+    ln -sf "$dest/bin/$b" "$INSTALL_BIN/$b"
+  done
+  hash -r 2>/dev/null || true
+  node_ok || die "installed Node $NODE_VERSION but $INSTALL_BIN is not winning on PATH.
+Check for another node earlier in PATH: command -v -a node"
+  say "Node $(node -v) installed -> $INSTALL_BIN/node"
+  say "It is on PATH for this project's scripts. For your own interactive shell, add:"
+  say "    export PATH=\"\$HOME/.local/bin:\$PATH\""
 }
 
 # pnpm, not npm, and not as a preference: `npm install @deepseek-ai/dsh` does
@@ -877,7 +949,8 @@ case "$cmd" in
 esac
 
 case "$cmd" in
-  install)   ensure_dsh_installed; install_shim ;;
+  install)      ensure_dsh_installed; install_shim ;;
+  install-node) install_node ;;
   config)    cmd_config "$@" ;;
   start)     cmd_start "$@" ;;
   stop)      cmd_stop "$@" ;;
@@ -892,5 +965,5 @@ case "$cmd" in
   uninstall) cmd_uninstall "$@" ;;
   -h|--help|help)
     sed -n '2,${/^#/!q;p;}' "$0" | sed 's/^# \{0,1\}//' ;;
-  *) die "unknown command '$cmd' - try: install config start stop status doctor service minimal" ;;
+  *) die "unknown command '$cmd' - try: install install-node config start stop status doctor service minimal" ;;
 esac

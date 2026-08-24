@@ -50,6 +50,10 @@ Save-Section "wsl-env.txt" "GPU inside WSL" { & wsl -d $Distro -- bash -c "nvidi
 Save-Section "wsl-env.txt" "venv versions" { & wsl -d $Distro -- bash -c "~/.qwen5090/venv/bin/python --version 2>&1; ~/.qwen5090/venv/bin/vllm --version 2>&1" }
 Save-Section "wsl-env.txt" "disk space" { & wsl -d $Distro -- bash -c "df -h / 2>&1" }
 Save-Section "wsl-env.txt" "memory" { & wsl -d $Distro -- bash -c "free -h 2>&1" }
+# Version and liveness only. Deliberately NOT ~/.dsh/settings.yaml: the Web UI's
+# own Models page writes credentials into that document, so it can hold a real
+# cloud API key - and this bundle is made to be attached to a bug report.
+Save-Section "wsl-env.txt" "DeepSeek Harness" { & wsl -d $Distro -- bash -c "node -v 2>&1; `$HOME/.dsh-runtime/node_modules/.bin/dsh --version 2>&1 || echo 'dsh not installed'; curl -sf -o /dev/null -m 3 http://127.0.0.1:3080/ && echo 'web UI: up' || echo 'web UI: not running'" }
 Save-Section "wsl-logs.txt" "WSL-side logs (last 400 lines each)" {
     & wsl -d $Distro -- bash -c "for f in `$HOME/.qwen5090/logs/*.log; do [ -f `$f ] || continue; echo; echo '----- '`$f; tail -n 400 `$f; done"
 }

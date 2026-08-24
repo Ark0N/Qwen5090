@@ -81,6 +81,10 @@ Write-Host "Resume-after-reboot entry removed (if it existed)."
 
 Step "Cleanup complete"
 Write-Host "Removed        :  $Distro (Python env + model), sharing rules, shortcut, startup entry"
+# Both agent clients live inside the distro - Claude Code and its bridge in
+# ~/.qwen5090, the harness in ~/.dsh and ~/.dsh-runtime - so unregistering it
+# takes them with it. Said out loud because the harness keeps your sessions.
+Write-Host "Removed        :  Claude Code bridge, and the DeepSeek Harness incl. its saved sessions"
 Write-Host "Kept           :  the WSL2 platform (small, other distros may use it)"
 Write-Host "Kept           :  logs in $script:LogDir (auto-deleted after 14 days)"
 Write-Host "Last step      :  delete this folder in Explorer if you want everything gone"
