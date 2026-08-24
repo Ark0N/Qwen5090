@@ -524,17 +524,53 @@ preference resolution including the missing-artifact fallback, the full
 `run.ps1`'s branching under portable pwsh 7.6.5 with a stub `wsl`. All ten
 `.ps1` parse, PSScriptAnalyzer is clean at Error severity, the XAML still parses.
 
-**Nothing has touched a 5090.** Untested and needing the real machine, in
-priority order: (1) the CMake configure and compile, especially against the
-vendored-wheel toolkit - that is the likeliest thing to be wrong; (2) whether
-`--kv-capacity auto` leaves the Windows desktop enough VRAM on WSL, where vLLM
-needed `GPU_UTIL` dropped to 0.85 for exactly that reason and NInfer has no such
-dial; (3) the 21 GB download and its checksum; (4) the GUI dropdown and
-preselect, which need WPF. Do not quote any NInfer throughput figure in this
-file as measured *here* - they are NInfer's published numbers, and the MTP
-acceptance on the Qwen3.8 artifact (46%) is notably worse than on its Qwen3.6
-ones (69%), so its real-world margin over vLLM may be smaller than the table
-suggests.
+**Installed and serving on the native Linux 5090, 2026-08-24 03:37.** Three of
+the four open items above are now closed, and the prediction that (1) was "the
+likeliest thing to be wrong" was correct.
+
+- **(1) the compile — needed a fix.** Against the vendored-wheel toolkit it
+  fails ~130 files into 423: the wheel ships nvcc **13.3.73** beside a
+  `cuda_runtime_api.h` declaring `CUDART_VERSION 13020` (**13.2**), and CCCL
+  hard-errors on the pair (`cuda_toolkit.h:41: "CUDA compiler and CUDA toolkit
+  headers are incompatible"`). This is the *same* mismatch this file already
+  records for FlashInfer's JIT, with the same escape hatch:
+  `-DCCCL_DISABLE_CTK_COMPATIBILITY_CHECK`, now passed via `CMAKE_CUDA_FLAGS`
+  when — and only when — the two versions are detected to disagree. With that,
+  423 targets build clean in about 7 minutes at 11 jobs.
+- **(2) `--kv-capacity auto` — fine here, still unproven on WSL.** On this box
+  it took the whole window: `resolved=252928 tokens ... free-after-weights=10.75
+  GiB free-after-startup=1.81 GiB headroom=1.00 GiB`, with a GNOME desktop
+  attached and 30,257 MiB of 32,607 in use. That is *thinner* than the 4.4 GiB
+  vLLM leaves at `GPU_UTIL=0.85`, so the WSL question is genuinely still open —
+  1.81 GiB is not obviously enough for a Windows desktop, and there is no dial.
+- **(3) the download and checksum — needed a fix.** See the resume loop in
+  `lib-ninfer.sh`; the transfer died twice, once at 2.4 GB and once at 19.7 GB.
+  Byte count and SHA-256 both verify.
+- **(4) the GUI dropdown** still needs WPF and a human. Unchanged.
+
+**Measured here, at last** (single stream, `MAX_SEQS=1`, int8 KV, MTP-3,
+`ctx=252928`, uncapped at 600 W):
+
+| | |
+|---|---|
+| weights load | **4.4 s** (vLLM: 8.6 s warm / ~60 s cold, ~78 s to "startup complete") |
+| time to first token | 44–50 ms |
+| prefill | 1,599–1,845 tok/s on short prompts |
+| decode, 1,200-token generation | **117.5 tok/s** (105.6 capped at 450 W) |
+| decode, 26-token generation | 170.8 tok/s |
+| MTP acceptance | **29.6%** long / 59.3% short |
+| peak power | **596.6 W**, 54 °C, PCIe gen 5 x16 |
+
+So it is real and it is roughly **1.5× the vLLM path's ~80 tok/s** — but the
+caveat above was well founded and is now quantified: NInfer's published 151–195
+tok/s did not reproduce here, because MTP acceptance on this artifact collapses
+to ~30% on a long generation. The published figure is plausible at the ~59%
+acceptance seen on short ones. **Quote 117.5 tok/s, not 195.** The prefill claim
+is the one that stands unqualified, and it is the one that mattered most: no
+cliff, against vLLM's 371 tok/s at ~90K and an abort at ~139K.
+
+Not yet measured here: a genuinely long prompt (the 260K prefill claim), and
+anything at concurrency > 1.
 
 ## Architecture (three layers, one direction)
 
@@ -964,6 +1000,35 @@ exact revert-on-reboot failure it was written to prevent. If the cap test is
 ever resumed, fix it first with a sudoers drop-in
 (`<user> ALL=(root) NOPASSWD: /usr/bin/nvidia-smi -pl *`) and confirm with
 the telemetry `power.limit` column, not with intent.
+
+**Fixed 2026-08-24, and the diagnosis above was half wrong.** The drop-in is
+installed on this box (`/etc/sudoers.d/qwen5090-nopasswd`, also covering
+`apt-get`/`apt`) — but adding it alone would *not* have fixed the knob. The
+actual defect was in `lib-gpu.sh`: it probed with `sudo -n true` before
+attempting the cap, and under a rule scoped to `nvidia-smi -pl` that probe
+still fails, so the warn-skip fires on a cap that was about to work. `sudo -l`
+is no better — it reports whether a command is *permitted*, not whether it
+needs a password, and returns 0 here for one that would prompt. It now attempts
+the real command and classifies the failure. **Two adjacent scripts had the same
+shape of bug**: `qwen5090_apt` ran `sudo -n env DEBIAN_FRONTEND=… apt-get`, so
+sudo matched `/usr/bin/env` rather than `/usr/bin/apt-get` and a package-scoped
+rule denied every unattended install.
+
+The lesson generalises: **a scoped sudoers rule is matched against the exact
+argv, so never probe sudo with a stand-in command, and never wrap the real one.**
+
+Confirmed working: `>> GPU power limit set to 450 W (GPU_POWER_LIMIT)`, with the
+telemetry `power.limit` column reading `450.00`.
+
+**The cap is nevertheless off again as of 2026-08-24**, at the owner's
+instruction and for a new reason: it throttles NInfer. Capped at 450 W the SW
+power cap was active in 6 of 47 samples and decode ran 105.6 tok/s; lifted to
+600 W the same request ran **117.5 tok/s**, and the card peaked at **596.6 W** —
+*above* the 572.8 W peak of the fully-instrumented 17:11 crash. So this backend
+stresses power delivery harder than anything in the eight incidents, which makes
+it the better reseat-validation load and the worse thing to be surprised by.
+`GPU_POWER_LIMIT` is commented out in `~/.qwen5090/server.env`; re-enable that
+one line to resume the cap test.
 
 ### The 450 W cap test (2026-08-21 17:37 — superseded by the reseat)
 
