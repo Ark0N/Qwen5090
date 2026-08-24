@@ -27,9 +27,9 @@ already know, answered by the GPU in your own machine.
 
 **Unzip → double-click `Start Qwen 5090.cmd` → click Install. That's it.**
 
-<img src="app/docs/images/setup.png" alt="The Qwen 5090 control panel on first run: status pills across the top, and one Install / Repair button" width="820">
+<img src="app/docs/images/setup.png" alt="The Qwen 5090 control panel: status pills across the top, a model picker, and one Install / Repair button" width="820">
 
-<sub><em>First run. One button installs WSL2, Ubuntu, vLLM and the model.</em></sub>
+<sub><em>The control panel. One button installs WSL2, Ubuntu, the AI engine and the model.</em></sub>
 
 <br>
 
@@ -141,7 +141,7 @@ Two things worth being straight about:
 
 <table>
 <tr>
-<td width="50%"><img src="app/docs/images/server.png" alt="Server tab: the green SERVER pill reads running on port 8000, with vLLM startup output ending in Server is READY"></td>
+<td width="50%"><img src="app/docs/images/server.png" alt="Server tab: the green SERVER pill reads running on port 8000, with startup output ending in Server is READY"></td>
 <td width="50%"><img src="app/docs/images/chat.png" alt="Chat tab: a question and the model's reply, with its reasoning shown above the answer in dim italic"></td>
 </tr>
 <tr>
@@ -350,7 +350,18 @@ otherwise comes back as root, which breaks every script here.
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`) is
 DeepSeek's own open-source agent runtime, and it speaks the OpenAI API
 natively — so it needs no bridge at all, just a provider route. You work in a
-browser rather than a terminal, and it brings subagents and its own tool set:
+browser rather than a terminal, and it brings subagents and its own tool set.
+
+On the 5090 PC it is one button: start the model server, open the app's
+**DeepSeek Harness** tab, and click **Open harness** — it installs Node.js and
+the harness on first use (each with its own yes/no), starts it, and opens the
+Web UI in your browser.
+
+<div align="center">
+<img src="app/docs/images/deepseek-harness.png" alt="DeepSeek Harness tab: Open harness, Install harness, Re-read server and Doctor buttons, with the HARNESS pill green on port 3080" width="820">
+</div>
+
+The same thing from a shell — including a machine that is not the 5090:
 
 ```bash
 bash app/scripts/deepseek-harness.sh install
@@ -374,7 +385,7 @@ Expect a capable local assistant rather than a frontier one: well-scoped edits,
 refactors and file spelunking go fine; long multi-step planning is weaker, and
 it thinks for a few seconds before each reply (`QWEN_EFFORT=medium` trades some
 of that back). Full guide, settings and troubleshooting:
-**[app/docs/CLAUDE-CODE.md](app/docs/CLAUDE-CODE.md)**.
+**[app/docs/DEEPSEEK-HARNESS.md](app/docs/DEEPSEEK-HARNESS.md)**.
 
 ## For power users
 
@@ -580,6 +591,8 @@ app/                       everything under the hood:
 | **[TROUBLESHOOTING.md](app/docs/TROUBLESHOOTING.md)** | Install failures, GPU not found, out of memory, crashes |
 | **[PERFORMANCE.md](app/docs/PERFORMANCE.md)** | Measured throughput, context/speed trade-offs, tuning |
 | **[CLAUDE-CODE.md](app/docs/CLAUDE-CODE.md)** | The bridge, its settings, and what works versus what does not |
+| **[DEEPSEEK-HARNESS.md](app/docs/DEEPSEEK-HARNESS.md)** | The dsh agent runtime: install, routes, Web UI, headless mode |
+| **[NINFER.md](app/docs/NINFER.md)** | The NInfer backend: what it is faster at, knobs, build issues |
 | **[LINUX.md](app/docs/LINUX.md)** | Native Linux install, systemd, the 262K + MTP path |
 
 Still stuck? Click **Collect diagnostics** in the app — it puts a single ZIP of
