@@ -294,7 +294,12 @@ before touching the venv.
   shard with a private *writable* mmap, which Windows-drive filesystems cannot
   do from inside WSL. `app/move-to-drive.ps1` relocates the whole distro
   instead (export/unregister/import; `-Apply` required, and it restores the
-  default user, which an imported distro otherwise loses).
+  default user, which an imported distro otherwise loses). Since 2026-08-24 a
+  **fresh** install does not need the move: `install.ps1` resolves the same
+  big-drive policy (`Resolve-DistroLocation`, override with `-DistroLocation`,
+  `'default'` = WSL's stock path) and registers the distro there via
+  `wsl --install --location`, with a retry at the stock location for pre-2.4.4
+  WSL builds that lack the flag. A C:-only PC is unaffected.
 
 ## Tool calling on the DeepSeek path: three traps, one template
 

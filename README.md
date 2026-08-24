@@ -328,11 +328,13 @@ or point `QWEN5090_DRIVE` at another letter; if E: is missing it falls back to
 whichever fixed drive has the most room and says so.
 
 The WSL half is different: the venv and the Qwen weights live *inside* the
-distro's virtual disk, which WSL keeps on C: with no setting to move it.
-Pointing `HF_HOME` at `/mnt/e` looks like the fix and is a trap — vLLM maps
-each weight shard with a private, **writable** mmap, which is exactly what
-Windows-drive filesystems cannot do from inside WSL. Move the whole distro
-instead:
+distro's virtual disk. A **fresh** install puts that disk on the big drive too
+(`E:\Qwen5090\wsl\`, same `QWEN5090_DRIVE` override; a C:-only PC keeps WSL's
+default, and `install.ps1 -DistroLocation` picks any directory you like).
+For a distro that is **already installed** on C:, pointing `HF_HOME` at
+`/mnt/e` looks like the fix and is a trap — vLLM maps each weight shard with a
+private, **writable** mmap, which is exactly what Windows-drive filesystems
+cannot do from inside WSL. Move the whole distro instead:
 
 ```powershell
 .\app\move-to-drive.ps1 -Drive E:          # show what it would do

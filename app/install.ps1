@@ -25,6 +25,13 @@
 [CmdletBinding()]
 param(
     [string]$Distro = "Ubuntu-24.04",
+    # Where the distro's virtual disk (ext4.vhdx) goes on a fresh install. WSL's
+    # own default is %LOCALAPPDATA% on C:, and the venv plus the model weights
+    # all live inside that disk - so when a big drive exists (QWEN5090_DRIVE,
+    # default E:, same policy as serve-gguf.ps1) the distro is installed there
+    # instead. Pass a directory to override, or 'default' for WSL's own choice.
+    # Only affects new installs; move-to-drive.ps1 relocates an existing one.
+    [string]$DistroLocation = "",
     # Which checkpoint to download. -Uncensored is the abliterated NVFP4
     # re-quant, a public download. -HfToken is only needed for a gated repo
     # passed via -Model (the GUI hands it over in QWEN5090_HF_TOKEN).
@@ -405,11 +412,48 @@ function Confirm-DistroDefaultUser {
     }
 }
 
+function Get-BigDrive {
+    # Same policy as serve-gguf.ps1: QWEN5090_DRIVE, default E:, else the
+    # fixed drive with the most free space.
+    $preferred = $env:QWEN5090_DRIVE
+    if (-not $preferred) { $preferred = "E:" }
+    if (Test-Path "$preferred\") { return $preferred }
+    $best = Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" |
+            Sort-Object -Property FreeSpace -Descending | Select-Object -First 1
+    if (-not $best) { return $env:SystemDrive }
+    return $best.DeviceID
+}
+
+function Resolve-DistroLocation {
+    # Returns the directory the distro should be installed into, or $null for
+    # WSL's stock location. Default policy: use the big drive when it is not
+    # the Windows drive; a C:-only PC keeps WSL's own default, so nothing
+    # changes for machines without a second drive.
+    if ($DistroLocation -eq 'default') { return $null }
+    if ($DistroLocation) { return $DistroLocation }
+    $drive = Get-BigDrive
+    if ($drive.TrimEnd('\') -ieq $env:SystemDrive.TrimEnd('\')) { return $null }
+    return (Join-Path $drive "Qwen5090\wsl\$Distro")
+}
+
 function Install-DistroUnattended {
     # Silent provisioning: register the distro without OOBE, create a 'qwen'
     # user with passwordless sudo, and make it the default. Returns $true on success.
     Write-Host "Step 1/3: Downloading and registering $Distro (several hundred MB - progress below)..."
-    $code = Invoke-Streamed -Activity "the $Distro download" -FilePath "wsl" -Arguments "--install -d $Distro --no-launch"
+    $loc = Resolve-DistroLocation
+    if ($loc) {
+        # '--location' needs WSL 2.4.4+; the retry below covers older builds.
+        Write-Host "   (the Linux disk will live at $loc, keeping $env:SystemDrive free)"
+        New-Item -ItemType Directory -Force -Path $loc | Out-Null
+        $code = Invoke-Streamed -Activity "the $Distro download" -FilePath "wsl" -Arguments "--install -d $Distro --no-launch --location `"$loc`""
+        if ($code -ne 0) {
+            Write-Host "   Install with --location failed (older WSL builds lack it) - retrying at WSL's default location." -ForegroundColor Yellow
+            Write-Host "   (You can move it later with move-to-drive.ps1.)" -ForegroundColor Yellow
+            $code = Invoke-Streamed -Activity "the $Distro download" -FilePath "wsl" -Arguments "--install -d $Distro --no-launch"
+        }
+    } else {
+        $code = Invoke-Streamed -Activity "the $Distro download" -FilePath "wsl" -Arguments "--install -d $Distro --no-launch"
+    }
     if ($code -ne 0) { return $false }
 
     Write-Host "Step 2/3: Unpacking the Linux filesystem (usually 1-2 minutes, produces little output)..."
@@ -596,7 +640,16 @@ if ($registered) {
             # If it is already registered, '--install' is a no-op - opening a
             # shell is what actually runs the first-time setup.
             if ((Get-InstalledDistros) -contains $Distro) { Start-Process wsl -ArgumentList "-d $Distro" -Wait }
-            else { Start-Process wsl -ArgumentList "--install -d $Distro" -Wait }
+            else {
+                $loc = Resolve-DistroLocation
+                $wslInstallArgs = "--install -d $Distro"
+                if ($loc) { New-Item -ItemType Directory -Force -Path $loc | Out-Null; $wslInstallArgs += " --location `"$loc`"" }
+                Start-Process wsl -ArgumentList $wslInstallArgs -Wait
+                if ($loc -and ((Get-InstalledDistros) -notcontains $Distro)) {
+                    # Older WSL rejects --location; give the stock path a chance.
+                    Start-Process wsl -ArgumentList "--install -d $Distro" -Wait
+                }
+            }
             if ((Get-InstalledDistros) -notcontains $Distro) { Fail "Failed to install $Distro. Run 'wsl --install -d $Distro' manually, then re-run this script." }
         }
     }
