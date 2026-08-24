@@ -23,10 +23,37 @@ qwen5090_apt() {
   # that the GUI started with no console attached.
   if [[ "$(id -u)" == "0" ]]; then
     DEBIAN_FRONTEND=noninteractive apt-get "$@"
-  elif command -v sudo >/dev/null 2>&1; then
+    return
+  fi
+  command -v sudo >/dev/null 2>&1 || return 1
+
+  # Which sudo form works is a property of this machine's sudoers, so settle it
+  # once and remember it.
+  #
+  # `sudo -n env DEBIAN_FRONTEND=noninteractive apt-get ...` is the form that
+  # gets DEBIAN_FRONTEND past sudo's env_reset - but the command sudo matches
+  # against sudoers is then /usr/bin/env, not /usr/bin/apt-get. Under a blanket
+  # rule that is invisible; under a rule scoped to the package manager, which
+  # is the *safe* way to grant this and what this project recommends -
+  #     testuser ALL=(root) NOPASSWD: /usr/bin/apt-get, /usr/bin/apt
+  # - it is denied outright, and unattended installs fail on a machine whose
+  # owner did exactly what they were told to do.
+  #
+  # So fall back to invoking apt-get directly, which such a rule does match.
+  # The cost is only that DEBIAN_FRONTEND may be stripped; every call site here
+  # already passes -y and -qq, which is what keeps our packages from prompting.
+  if [[ -z "${QWEN5090_APT_SUDO_FORM:-}" ]]; then
+    if sudo -n env DEBIAN_FRONTEND=noninteractive apt-get --version >/dev/null 2>&1; then
+      QWEN5090_APT_SUDO_FORM=env
+    else
+      QWEN5090_APT_SUDO_FORM=direct
+    fi
+  fi
+
+  if [[ "$QWEN5090_APT_SUDO_FORM" == "env" ]]; then
     sudo -n env DEBIAN_FRONTEND=noninteractive apt-get "$@"
   else
-    return 1
+    sudo -n apt-get "$@"
   fi
 }
 
