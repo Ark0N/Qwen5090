@@ -37,7 +37,7 @@ already know, answered by the GPU in your own machine.
 **[Benchmarks](#how-good-is-it)** &nbsp;·&nbsp;
 **[Requirements](#what-you-need)** &nbsp;·&nbsp;
 **[Linux](#already-running-linux)** &nbsp;·&nbsp;
-**[Claude Code](#use-it-as-a-coding-agent-claude-code)** &nbsp;·&nbsp;
+**[Coding agents](#use-it-as-a-coding-agent)** &nbsp;·&nbsp;
 **[Power users](#for-power-users)** &nbsp;·&nbsp;
 **[Troubleshooting](app/docs/TROUBLESHOOTING.md)**
 
@@ -118,6 +118,14 @@ Two things worth being straight about:
   NVFP4 4-bit format built for your 5090's Blackwell tensor cores. Expect
   ~80 tokens/s at the default 128K context, or ~49 at the full 262K — see
   [PERFORMANCE.md](app/docs/PERFORMANCE.md).
+- **Two coding agents, both talking to your own GPU.** Point
+  [Claude Code](https://claude.com/claude-code) at it through a small bridge, or
+  run the [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
+  (`dsh`) — DeepSeek's own agent runtime, with a browser UI, subagents and its
+  own tool set. The harness needs no bridge at all, and one command points it at
+  whichever engine you are running. Both read and write your files and run
+  commands; nothing is billed and nothing leaves your network. See
+  [Use it as a coding agent](#use-it-as-a-coding-agent).
 - **A control panel** (pure Windows, no Electron): one-button install with live
   progress, server start/stop with health light, and streaming chat where the
   model's "thinking" renders dim. Thinking mode and effort (low → xhigh) are
@@ -158,8 +166,19 @@ bash app/scripts/serve.sh                    # http://localhost:8000/v1
 bash app/scripts/claude-code.sh install && qwen-claude   # Claude Code on your GPU
 ```
 
+Prefer a browser to a terminal? The DeepSeek Harness runs here too, and on
+Linux it is the simpler of the two — no bridge process, and it discovers the
+model and context window by itself:
+
+```bash
+sudo apt-get install -y nodejs                    # 26.04 ships 22.22.1
+bash app/scripts/deepseek-harness.sh install
+bash app/scripts/deepseek-harness.sh start        # http://127.0.0.1:3080
+```
+
 Want it back after a reboot? `bash app/scripts/install-service.sh install`
-writes a systemd user unit (no root needed).
+writes a systemd user unit (no root needed), and
+`bash app/scripts/deepseek-harness.sh service` does the same for the harness.
 
 **Want the GUI's status pills?** There is no WPF on Linux, but there is a small
 local web dashboard — model and backend, GPU utilisation, power against the
@@ -234,7 +253,14 @@ venv with `vllm`, `flashinfer`, and the CUTLASS DSL → downloads
 
 <a id="claude-code"></a>
 
-## Use it as a coding agent (Claude Code)
+## Use it as a coding agent
+
+Two clients work against this server, and you can have both installed at once —
+they are ordinary API clients, so neither touches the serving path. **Claude
+Code** is below; **[the DeepSeek Harness](#or-the-deepseek-harness)** is the
+browser-based alternative that needs no bridge.
+
+### Claude Code
 
 Point [Claude Code](https://claude.com/claude-code) at this server and it reads
 and writes your files, runs commands and edits code exactly as it normally does
@@ -317,11 +343,12 @@ It refuses while a server is running, keeps the export until the new copy has
 started and answered, and restores the default user — an imported distro
 otherwise comes back as root, which breaks every script here.
 
-### Or DeepSeek Harness
+### Or the DeepSeek Harness
 
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`) is
 DeepSeek's own open-source agent runtime, and it speaks the OpenAI API
-natively — so it needs no bridge at all, just a provider route:
+natively — so it needs no bridge at all, just a provider route. You work in a
+browser rather than a terminal, and it brings subagents and its own tool set:
 
 ```bash
 bash app/scripts/deepseek-harness.sh install
@@ -526,13 +553,21 @@ app/                       everything under the hood:
     serve.sh                   vLLM with 5090-tuned flags; dispatches to the others
     setup-ninfer.sh            opt-in: build the NInfer engine + fetch its artifact
     serve-ninfer.sh            NInfer, the fast backend (same port, same API)
+    serve-gguf.sh              llama.cpp, for the DeepSeek GGUF builds
     claude-code.sh             the Claude Code bridge (LiteLLM)
+    deepseek-harness.sh        the DeepSeek Harness (dsh): install, route, Web UI
+    terminal-bench.sh          run Terminal-Bench 2.1 against this server
+    tb_dsh_agent.py            the harness adapter Terminal-Bench drives
     patch-mtp.sh               opt-in vLLM PR #40914 backport: MTP at 262K ctx
     install-service.sh         systemd user unit so the server survives reboot
     dashboard.sh, dashboard.py the Linux status page (model, GPU, CPU, memory)
+    fan-curve.sh               drive the chassis fans off GPU temperature
     chat.py, benchmark.sh      clients against the OpenAI endpoint
-    lib-*.sh                   shared helpers (build tools, WSL/Linux detection)
-  docs/                      troubleshooting, performance, Claude Code, Linux, NInfer
+    lib-*.sh                   shared helpers (build tools, model catalog,
+                               NInfer, GPU telemetry, WSL/Linux detection)
+  templates/                 chat templates (DeepSeek V4 + Hermes tool calls)
+  docs/                      troubleshooting, performance, Claude Code,
+                             DeepSeek Harness, Linux, NInfer
     images/                    control-panel screenshots used by this README
 ```
 
