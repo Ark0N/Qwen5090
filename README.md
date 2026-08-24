@@ -330,8 +330,16 @@ QWEN_URL=http://<5090-ip>:8000 bash app/scripts/deepseek-harness.sh start
 
 That serves its Web UI on <http://127.0.0.1:3080>. `service` keeps it running
 across reboots and `share` publishes it to your tailnet over HTTPS. Details,
-and the four settings that decide whether the requests are accepted at all, in
+and the five settings that decide whether the requests are accepted at all, in
 **[app/docs/DEEPSEEK-HARNESS.md](app/docs/DEEPSEEK-HARNESS.md)**.
+
+It follows whatever is serving on port 8000 — vLLM or NInfer — without being
+told which: `config` reads that off the server and adjusts the route to match.
+On NInfer it also probes the real context window, because that backend does not
+publish one, and offers an `off` thinking tier that the vLLM path does not
+have. If you run it there, `MAX_SEQS=1` is worth raising to 2 in
+`~/.qwen5090/server.env`: the harness runs subagents, and at 1 they queue
+behind each other.
 
 Expect a capable local assistant rather than a frontier one: well-scoped edits,
 refactors and file spelunking go fine; long multi-step planning is weaker, and

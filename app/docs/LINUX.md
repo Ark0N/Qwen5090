@@ -84,6 +84,45 @@ process** — your normal `claude` is untouched.
 
 Full detail in [CLAUDE-CODE.md](CLAUDE-CODE.md).
 
+## DeepSeek Harness against your own GPU
+
+The other agent client, and on Linux it is the easier of the two: `dsh` speaks
+the OpenAI API natively, so there is no bridge process at all — just a provider
+route in its own settings file.
+
+```bash
+sudo apt-get install -y nodejs                    # 26.04 ships 22.22.1, new enough
+bash app/scripts/deepseek-harness.sh install      # pnpm, then dsh itself
+bash app/scripts/deepseek-harness.sh start        # writes the route, boots the Web UI
+```
+
+Then open <http://127.0.0.1:3080>. `install` deliberately does **not** install
+Node — it will not put a language runtime on your box behind your back — so
+that first line is yours to run. On releases older than 26.04, use `fnm` or
+`nvm` into your home directory instead of the distro package.
+
+`start` discovers everything else: which backend is on port 8000, what model it
+is serving, and how big its context window is. Nothing is typed twice.
+
+It works against a server on another machine, which is the whole point of it
+being client-side:
+
+```bash
+QWEN_URL=http://<5090-ip>:8000 bash app/scripts/deepseek-harness.sh start
+```
+
+`service` installs a `--user` unit so it survives a reboot, and `share` puts it
+on your tailnet over HTTPS (the UI itself stays on loopback — it runs shell
+commands, and 0.0.0.0 would offer that to the whole LAN).
+
+**On the NInfer backend, raise `MAX_SEQS` to 2.** The harness runs subagents
+and NInfer fixes concurrency at startup, so the shipped `MAX_SEQS=1` serialises
+them. 2 is the ceiling at the full 252,928-token window on a 32 GB card — see
+[NINFER.md](NINFER.md) for why 4 refuses to start.
+
+Full detail, and the five settings that decide whether requests are accepted at
+all, in [DEEPSEEK-HARNESS.md](DEEPSEEK-HARNESS.md).
+
 ## Starting automatically at boot
 
 `serve.sh` in a terminal dies with the terminal. To have the server come back
@@ -371,4 +410,24 @@ for short answers.
 
 **`Unexpected reasoning effort high`** — the chat template accepts `low`,
 `medium` and `xhigh` only. `high` is a hard 400. The Claude Code bridge already
-substitutes `QWEN_EFFORT` for exactly this reason.
+substitutes `QWEN_EFFORT` for exactly this reason. On NInfer the message reads
+`reasoning effort 'high' is not supported by the loaded chat template`, and
+`none` is additionally accepted there as a genuine thinking-off switch.
+
+**`MISSING_CREDENTIAL: ... no API key for provider route "deepseek-official"`**
+— the harness is configured but the model was never *selected*. Its
+`agent-default-model` plugin ships pointing at DeepSeek's hosted API. Re-run
+`deepseek-harness.sh config`, which sets it to your local route when you have
+not chosen one yourself.
+
+**`ERR_PNPM_IGNORED_BUILDS` during `deepseek-harness.sh install`** — pnpm 11.23
+refuses to finish while a dependency's install script is undecided, *after*
+having installed everything correctly. Current versions of the script write
+that policy up front and judge success by whether the `dsh` binary exists. If
+you hit it on an older copy, the install is fine — check
+`~/.dsh-runtime/node_modules/.bin/dsh --version`.
+
+**`context_length_exceeded ... 300052 tokens` in the server log** — that is the
+harness's own context probe, not a failed request. NInfer publishes no context
+window, so `config` overruns it on purpose and reads the real ceiling out of
+the refusal. It is a `msgs=1 tools=0` request and appears once per `config`.

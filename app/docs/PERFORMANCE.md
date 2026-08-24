@@ -127,6 +127,36 @@ Note the cold request is *slower* than an uncached one: it computes the prefix
 and writes it. That is a one-time cost per server start, paid back within two
 requests.
 
+## The same harness on NInfer (2026-08-24)
+
+Everything above is the llama.cpp/DeepSeek path, where the weights live in
+system RAM. Pointed at the NInfer Qwen backend instead — same `dsh`, same 25
+tools, same preamble — the numbers stop being interesting, which is the point.
+
+The direct analogue of the 828.8 s cold step above, measured on this box:
+
+| | llama.cpp (DeepSeek V4-Flash) | NInfer (Qwen3.8-27B NVFP4) |
+|---|---|---|
+| cold first agent turn, 25 tools | **828.8 s** | **1.76 s** (7,757-token prompt) |
+| prefill on that turn | — | 6,019 tok/s, ttft 1.40 s |
+| warm turn, prefix reused | 18.0 s | **0.17 s** (7,834 tokens reused, ttft 41 ms) |
+
+Over 110 agent turns of a real session: prefill **2,225 tok/s mean, 8,044
+peak**; decode **152.9 tok/s mean, 222.5 peak**; ttft 41 ms median.
+
+Two consequences worth acting on:
+
+- **Do not use the `minimal` preset here.** It exists to delete a preamble that
+  costs llama.cpp fourteen minutes. NInfer prefills the same preamble in about
+  a second, so the preset buys nothing and costs the agent 23 of its tools.
+- **Prefix reuse still matters, and still works** — `append_frontier` on a
+  continuing turn, `restore_turn_checkpoint` after the goal tool compacts. The
+  ~15x cache lesson above holds; it is just measured in tens of milliseconds.
+
+The caveat from the vLLM path does not apply either: there is no prefill cliff
+here, so a long agent session that grows its context does not fall off one. A
+turn with a 25,332-token prompt prefilled in 2.7 s.
+
 ## Levers, in order of impact
 
 1. **MTP (on by default).** Multi-token prediction drafts 3 tokens per step

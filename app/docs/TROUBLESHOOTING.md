@@ -352,3 +352,67 @@ Both are thinking mode behaving normally:
   wrong field name and discarded the thinking stream.
 - **Minutes of silence after pasting something huge.** See PERFORMANCE.md:
   above ~128K context, a very long prompt prefills at roughly 370 tok/s.
+
+## DeepSeek Harness: it starts, but every request fails
+`MISSING_CREDENTIAL: llm-deepseek: no API key for provider route
+"deepseek-official"`.
+
+The harness is configured and the model was never *selected*. Its
+`agent-default-model` plugin ships pointing at DeepSeek's **hosted** API, so
+this is not a broken install — it is an unselected model, and it looks the same
+whether or not your local server is healthy.
+
+Re-run `bash app/scripts/deepseek-harness.sh config`. It points that key at
+your local route whenever you have not chosen one yourself; a selection you
+made in the Web UI's Models page is left alone.
+
+## DeepSeek Harness: `install` says "pnpm add failed"
+`ERR_PNPM_IGNORED_BUILDS`, listing five packages.
+
+pnpm 11.23 will not finish while a dependency's install script is undecided —
+and it exits non-zero *after* installing everything correctly, so the failure
+message is about a working install. Current versions of the script write that
+policy up front and judge success by whether the binary exists. On an older
+copy, check it for yourself:
+
+```bash
+~/.dsh-runtime/node_modules/.bin/dsh --version
+```
+
+If that prints a version, you are fine. None of those packages needs to build:
+they ship prebuilt binaries for `linux-x64`.
+
+## DeepSeek Harness: the harness needs Node and won't install it
+By design — `install` brings its own pnpm but will not put a language runtime
+on your machine behind your back. On Ubuntu 26.04 the distro package is new
+enough (`sudo apt-get install -y nodejs` → 22.22.1). On older releases use
+`fnm` or `nvm` into your home directory rather than a system-wide install.
+
+## `context_length_exceeded ... 300052 tokens` in the server log
+Not a failed request — that is the harness's own context probe.
+
+NInfer publishes no context window on `/v1/models`, so
+`deepseek-harness.sh config` deliberately overruns it and reads the real
+ceiling out of the refusal. Without that, the client would assume 262,144
+against a server started at 252,928 and silently overflow it.
+
+You can recognise it by shape: `msgs=1 tools=0`, non-streaming, exactly
+300,052 tokens, once per `config` run. `QWEN_CTX=<tokens>` pins the window
+by hand and skips the probe.
+
+## Agent subagents run one at a time on NInfer
+NInfer fixes concurrency at startup, and `MAX_SEQS=1` means everything
+serialises — which an agent client that fans out feels immediately.
+
+Raise it in `~/.qwen5090/server.env` and restart. **2 is the ceiling at the
+full 252,928-token window on a 32 GB card**: the Engine's runtime reservation
+grows with concurrency, and 4 refuses to start with
+
+```
+minimum Engine runtime reservation requires ... in addition to ... automatic
+headroom, but only ... bytes are available after weights
+```
+
+Wanting more concurrency means asking for a smaller `CTX`, not a bigger
+number. See NINFER.md. If you go back to the vLLM 262K + patched-MTP path,
+`MAX_SEQS` must return to 1, where it is load-bearing for a different reason.
