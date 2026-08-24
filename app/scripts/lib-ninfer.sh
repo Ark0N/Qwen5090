@@ -107,6 +107,48 @@ _ninfer_nvcc_ok() {
   awk -v v="$rel" 'BEGIN { split(v, a, "."); exit !(a[1] > 13 || (a[1] == 13 && a[2] >= 1)) }'
 }
 
+# nvcc and the CTK headers next to it have to agree on a version, or CCCL
+# refuses to compile anything that includes it:
+#
+#   cccl/cuda/std/__cccl/cuda_toolkit.h:41: error "CUDA compiler and CUDA
+#   toolkit headers are incompatible, please check your include paths"
+#
+# torch's CUDA wheels ship exactly that pair - measured here 2026-08-24, nvcc
+# 13.3.73 beside a cuda_runtime_api.h declaring CUDART_VERSION 13020 (13.2) -
+# so the wheel path hits this roughly 130 files into a 423-file build, which is
+# an expensive way to find out. It is the same mismatch CLAUDE.md already
+# records for FlashInfer's JIT on this machine, and it has the same escape
+# hatch, which CCCL provides precisely for a newer CTK than the compiler ships.
+#
+# Detected rather than assumed: a system toolkit assembled from mixed packages
+# can disagree too, and a wheel whose versions happen to line up should be
+# compiled with the check left on.
+_ninfer_ctk_header_version() {
+  local hdr="$1/include/cuda_runtime_api.h"
+  [[ -r "$hdr" ]] || return 1
+  local raw
+  raw=$(grep -m1 -oE '^#define[[:space:]]+CUDART_VERSION[[:space:]]+[0-9]+' "$hdr" \
+        | grep -oE '[0-9]+$' || true)
+  [[ -n "$raw" ]] || return 1
+  printf '%s.%s\n' "$(( raw / 1000 ))" "$(( (raw % 1000) / 10 ))"
+}
+
+# 0 when the two disagree (i.e. the check has to go), 1 when they match or
+# either version cannot be read - an unreadable version is not evidence of a
+# mismatch, and silently disabling a safety check on a guess is worse than
+# letting the build say what is wrong.
+_ninfer_needs_cccl_override() {
+  local root="$1"
+  local hdr_ver nvcc_ver
+  hdr_ver=$(_ninfer_ctk_header_version "$root") || return 1
+  nvcc_ver=$("$root/bin/nvcc" --version 2>/dev/null \
+             | grep -oE 'release [0-9]+\.[0-9]+' | head -1 | awk '{print $2}' || true)
+  [[ -n "$nvcc_ver" ]] || return 1
+  NINFER_CTK_HEADER_VERSION="$hdr_ver"
+  NINFER_CTK_NVCC_VERSION="$nvcc_ver"
+  [[ "$hdr_ver" != "$nvcc_ver" ]]
+}
+
 # Build a shadow prefix so a pip-wheel toolkit looks like a system one:
 # lib64 alongside lib, and the driver library the wheel does not ship linked
 # in from wherever this platform keeps it (/usr/lib/wsl/lib under WSL).
@@ -254,6 +296,15 @@ MSG
   _ninfer_say "compiling NInfer for sm_120a with $jobs job(s) - this takes a long while,"
   _ninfer_say "   and it is a one-off: the build is reused on every later start."
 
+  # Safe to set: NInfer never touches CMAKE_CUDA_FLAGS itself - it applies
+  # -lineinfo through target_compile_options - so nothing here is overwritten.
+  local cuda_flags=""
+  if _ninfer_needs_cccl_override "$cuda_home"; then
+    _ninfer_say "nvcc is $NINFER_CTK_NVCC_VERSION but the toolkit headers are $NINFER_CTK_HEADER_VERSION;"
+    _ninfer_say "   disabling CCCL's compiler/header version check for this build."
+    cuda_flags="-DCCCL_DISABLE_CTK_COMPATIBILITY_CHECK"
+  fi
+
   # CMAKE_CUDA_ARCHITECTURES is left alone deliberately. NInfer defaults it to
   # 120a and hard-errors on any other value, so passing it can only ever break
   # the build - and 120a is Blackwell, which is the only card this product
@@ -263,6 +314,7 @@ MSG
   PATH="$cuda_home/bin:$PATH" \
     cmake -S "$NINFER_SRC" -B "$NINFER_BUILD_DIR" -G Ninja \
       -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_CUDA_FLAGS="$cuda_flags" \
       -DNINFER_BUILD_APPS=ON \
       -DBUILD_TESTING=OFF \
       -DNINFER_BUILD_BENCHMARKS=OFF || {
