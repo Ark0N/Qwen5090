@@ -520,6 +520,31 @@ if route(os.environ["DEEPSEEK_ROUTE"], os.environ["DEEPSEEK_URL"],
          retry={"mode": "normal", "maxRetries": 1}):
     wrote.append(os.environ["DEEPSEEK_ROUTE"])
 
+# Configuring a route is not the same as selecting it, and the default is not
+# ours: the agent-default-model plugin ships pointing at `deepseek-official`,
+# DeepSeek's hosted API. So a first run against a perfectly good local server
+# still dies with
+#   MISSING_CREDENTIAL: llm-deepseek: no API key for provider route
+#   "deepseek-official"
+# which reads as a broken install and is really an unselected model. The Web
+# UI has a selector to fix that by hand; `dsh --profile headless` has none, so
+# it cannot be driven at all until this is set.
+#
+# Only when the user has not chosen: an absent key means the plugin default is
+# in force and nobody picked it, which is safe to replace. A key that is
+# already there was written by the Models page or by hand, and this merge does
+# not overrule the user - the same rule that keeps the rest of the document
+# intact. Local first, and the Qwen route ahead of the local DeepSeek one when
+# both answer.
+selection = doc.get("agent-default-model")
+if not isinstance(selection, dict) or not selection.get("provider"):
+    for key in (os.environ["QWEN_ROUTE"], os.environ["DEEPSEEK_ROUTE"]):
+        models = (providers.get(key) or {}).get("models") or []
+        if models and models[0].get("id"):
+            doc["agent-default-model"] = {"provider": key, "model": models[0]["id"]}
+            print(f"default model: {key}/{models[0]['id']}")
+            break
+
 if not providers:
     doc["llm-pi-ai"].pop("providers", None)
     if not doc["llm-pi-ai"]:
