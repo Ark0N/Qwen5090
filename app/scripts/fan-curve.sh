@@ -79,6 +79,7 @@ load_conf() {
   # wrongly-scaled name; honoured as a fallback so an existing config keeps
   # working, and 4 happens to be a sensible number of degrees too.
   FAN_HYSTERESIS_C="${FAN_HYSTERESIS_C:-${FAN_HYSTERESIS:-3}}"
+  FAN_DECAY_C="${FAN_DECAY_C:-1}"
 }
 
 # Curve state: one level index per curve, held between samples rather than
@@ -92,6 +93,23 @@ load_conf() {
 # 5090 does - flipped the fans between 87% and 94% every 2 seconds.
 GPU_LEVEL=-1
 CPU_LEVEL=-1
+
+# Effective (smoothed) temperatures. A loaded 5090 swings 12-14 C between
+# inference bursts - measured here at 58 -> 71 -> 60 -> 72 across four samples -
+# and that is a real reading, not flicker, so hysteresis neither does nor should
+# suppress it. But case fans cool a case with thermal mass; chasing a 2-second
+# transient just makes noise. So the curve sees a fast-attack / slow-decay
+# envelope: it rises instantly with the GPU and falls FAN_DECAY_C per sample.
+# The asymmetry errs toward more airflow, which is the right way to be wrong.
+GPU_EFF=0
+CPU_EFF=0
+
+smooth() {
+  local now="$1" eff="$2" dec
+  (( now >= eff )) && { echo "$now"; return; }
+  dec=$(( eff - FAN_DECAY_C )); (( dec < now )) && dec="$now"
+  echo "$dec"
+}
 
 # Step a level toward where `temp` says it belongs. Up is immediate; down needs
 # the temperature to fall FAN_HYSTERESIS_C below the threshold that put us here.
@@ -164,8 +182,9 @@ cmd_run() {
   local gpu cpu want_g want_c want last=0
   while :; do
     gpu=$(read_gpu_temp); cpu=$(read_cpu_temp)
-    GPU_LEVEL=$(step_level "$gpu" "$FAN_CURVE_GPU" "$GPU_LEVEL")
-    CPU_LEVEL=$(step_level "$cpu" "$FAN_CURVE_CPU" "$CPU_LEVEL")
+    GPU_EFF=$(smooth "$gpu" "$GPU_EFF"); CPU_EFF=$(smooth "$cpu" "$CPU_EFF")
+    GPU_LEVEL=$(step_level "$GPU_EFF" "$FAN_CURVE_GPU" "$GPU_LEVEL")
+    CPU_LEVEL=$(step_level "$CPU_EFF" "$FAN_CURVE_CPU" "$CPU_LEVEL")
     want_g=$(level_pwm "$FAN_CURVE_GPU" "$GPU_LEVEL")
     want_c=$(level_pwm "$FAN_CURVE_CPU" "$CPU_LEVEL")
     want=$(( want_g > want_c ? want_g : want_c ))
@@ -175,8 +194,8 @@ cmd_run() {
     # step_level already applied the hysteresis, so any change here is real.
     if (( want != last )); then
       for i in $FAN_CHANNELS; do echo "$want" > "$CHIP/pwm${i}" 2>/dev/null || true; done
-      printf '%s  gpu=%sC cpu=%sC -> pwm %s (%s%%)\n' \
-        "$(date '+%H:%M:%S')" "$gpu" "$cpu" "$want" "$(( want * 100 / 255 ))"
+      printf '%s  gpu=%sC(eff %s) cpu=%sC(eff %s) -> pwm %s (%s%%)\n' \
+        "$(date '+%H:%M:%S')" "$gpu" "$GPU_EFF" "$cpu" "$CPU_EFF" "$want" "$(( want * 100 / 255 ))"
       last=$want
     fi
     sleep "$FAN_INTERVAL"
@@ -277,6 +296,12 @@ FAN_INTERVAL=2
 # step back down. Guards against audible pumping when a temperature sits on a
 # boundary; raise it if you still hear the fans hunting.
 FAN_HYSTERESIS_C=3
+
+# Degrees C the *effective* temperature may fall per sample. The curve rises
+# instantly with the real reading but decays at this rate, so a GPU that dips
+# for two seconds between inference bursts does not drag the fans down with it.
+# Lower = smoother and louder for longer; raise it to track more closely.
+FAN_DECAY_C=1
 CONFEOF
     echo ">> wrote $CONF (floor recorded from BIOS: $floor)"
   fi
