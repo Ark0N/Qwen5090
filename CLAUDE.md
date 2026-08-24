@@ -262,6 +262,16 @@ reinstall. The prefill cliff above ~30K tokens is unchanged by any of this.
   (step 3/6) and serve.sh, so pre-fix installs self-heal on the next Run. Setup then smoke-tests
   `triton.runtime.driver.active.get_current_device()` — warn-only — to surface a broken toolchain
   at install time instead of at first chat.
+- **A WSL background process dies with the wsl.exe client that spawned it**
+  (measured 2026-08-25: `nohup` and even `setsid` do not save it, even while
+  other clients keep the distro alive, and install.ps1's distro runs no
+  systemd). A one-shot `wsl -- bash -c "... start"` that daemonizes something
+  therefore passes its own readiness check and is dead seconds later. Anything
+  that must outlive the call needs a persistent hidden wsl.exe from Windows
+  holding it in the foreground — the model server works this way, and
+  deepseek-harness.ps1 does it via the .sh's `run` verb. The Claude Code
+  bridge's nohup'd LiteLLM has the same latent exposure if started without a
+  session console.
 - `$args` is a reserved automatic variable in PowerShell — use `$psArgs` etc.
 - `Start-Process -ArgumentList` gets a single pre-quoted string (array form doesn't quote paths
   with spaces on PS 5.1).
@@ -414,9 +424,14 @@ The five packages involved all ship linux-x64 prebuilds and none needs to
 build (verified by loading node-pty's prebuild and spawning a pty), so the
 policy is written up front and success is judged by whether the binary exists,
 not by pnpm's exit status.
-`dsh web --host` accepts **only** 127.0.0.1 or 0.0.0.0, so the tailnet is
-reached with `tailscale serve` in front of a loopback UI - which is also the
-safer half of the trade, since the harness runs shell commands.
+`dsh web --host` accepts **only** 127.0.0.1 as of 0.1.1-rc.2 - 0.0.0.0 is now
+refused outright ("intentionally not supported yet for safety"), which made
+every GUI-driven start die at the 90s timeout until deepseek-harness.ps1
+stopped forcing it (2026-08-25). The loopback bind is enough on Windows: WSL
+2.7.12's localhost relay forwards loopback-bound ports to the host (measured -
+the old "-BindAll or invisible" rule from the bridge does not hold there). The
+tailnet is reached with `tailscale serve` in front of the loopback UI - which
+is also the safer half of the trade, since the harness runs shell commands.
 
 `scripts/terminal-bench.sh` + `scripts/tb_dsh_agent.py` run Terminal-Bench 2.1
 (through Harbor, one Docker container per task, compose v2 plugin required).

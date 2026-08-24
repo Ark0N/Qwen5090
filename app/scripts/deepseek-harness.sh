@@ -728,6 +728,32 @@ cmd_start() {
   die "the harness did not come up within 90s - check $LOG_FILE"
 }
 
+# Foreground twin of cmd_start, for callers that hold their own client open.
+# On WSL a background process dies with the wsl.exe client that spawned it -
+# measured 2026-08-25: a nohup'd, even setsid'd, process is killed on client
+# exit even while other clients keep the distro alive - so cmd_start's nohup
+# comes up, answers the readiness poll, and is dead seconds later. The Windows
+# wrapper (deepseek-harness.ps1) keeps a hidden wsl.exe alive running this
+# instead, the same pattern that keeps the model server up.
+cmd_run() {
+  ensure_dsh_installed
+  install_shim
+  cmd_config
+
+  if dsh_up; then
+    say "harness already running on $DSH_URL"
+    return 0
+  fi
+  mkdir -p "$LOG_DIR"
+  local trusted=()
+  while IFS= read -r arg; do trusted+=("$arg"); done < <(trusted_host_args)
+  echo $$ > "$PID_FILE"
+  say "harness starting on $DSH_URL (log: $LOG_FILE)"
+  DSH_HOME="$DSH_HOME" exec "$DSH_BIN" web \
+      --host "$DSH_HOST" --port "$DSH_PORT" --no-open \
+      "${trusted[@]}" >> "$LOG_FILE" 2>&1
+}
+
 # Synchronous, for the same reason the Claude Code bridge's stop is: returning
 # while the old process still holds the port makes the next start believe it is
 # healthy, and the first request then dies with "connection refused".
@@ -953,6 +979,7 @@ case "$cmd" in
   install-node) install_node ;;
   config)    cmd_config "$@" ;;
   start)     cmd_start "$@" ;;
+  run)       cmd_run "$@" ;;
   stop)      cmd_stop "$@" ;;
   restart)   cmd_stop; cmd_start "$@" ;;
   status)    cmd_status "$@" ;;

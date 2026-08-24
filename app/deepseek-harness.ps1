@@ -81,23 +81,53 @@ if ($InstallNode) { $verb = "install-node" }
 if ($Service)   { $verb = "service" }
 if ($Uninstall) { $verb = "uninstall" }
 
-# Bind the Web UI where a Windows browser can actually reach it. WSL's localhost
-# relay only forwards ports bound to all interfaces, so a 127.0.0.1 UI inside
-# the distro is invisible from Windows - the browser would just refuse to
-# connect. WSL sits behind its own NAT, so this is not a LAN exposure; it is the
-# same reasoning the Claude Code bridge's -BindAll switch uses.
-#
-# On native Linux the script defaults to loopback instead, deliberately: there
-# the harness IS on the LAN's machine, and it runs shell commands.
-$envPrefix = "QWEN_URL=http://localhost:$Port DSH_HOST=0.0.0.0 DSH_PORT=$UiPort"
+# The Web UI stays on the script's default 127.0.0.1 bind. Two reasons, both
+# measured on the real machine (2026-08-25): dsh 0.1.1-rc.2 refuses
+# --host 0.0.0.0 outright ("intentionally not supported yet for safety"), so
+# forcing it here made every start die at the 90s timeout; and WSL's localhost
+# relay DOES forward loopback-bound ports on current WSL (2.7.12) - a
+# 127.0.0.1-bound server inside the distro answered http://127.0.0.1 from
+# Windows. The bridge's -BindAll reasoning ("only 0.0.0.0 is forwarded") does
+# not hold for this WSL version, and with dsh it cannot be applied anyway.
+$envPrefix = "QWEN_URL=http://localhost:$Port DSH_PORT=$UiPort"
 if ($Ctx -gt 0) { $envPrefix += " QWEN_CTX=$Ctx" }
 
 # Everything after -- goes through as ONE bash -c string: wsl.exe re-joins a
 # multi-argument tail through the default shell and quoting does not survive.
 $bashCmd = "$envPrefix bash '$scriptWsl' $verb"
 
-& wsl -d $Distro -- bash -c "$bashCmd"
-$code = $LASTEXITCODE
+if ($verb -eq "start") {
+    # A background process inside WSL dies with the wsl.exe client that
+    # spawned it (measured 2026-08-25: nohup and even setsid do not save it,
+    # even while other clients keep the distro alive). A one-shot
+    # `deepseek-harness.sh start` therefore comes up, answers its own
+    # readiness poll, and is killed the moment this script's wsl.exe exits.
+    # Do what the model server does instead: keep a hidden wsl.exe alive with
+    # the harness in its foreground (`run`, the .sh's foreground twin of
+    # `start`), and poll readiness from this side. The hidden wsl.exe exits by
+    # itself when -Stop kills the harness inside.
+    $probe = "http://127.0.0.1:$UiPort"
+    $up = $false
+    try { $null = Invoke-WebRequest -Uri $probe -UseBasicParsing -TimeoutSec 3; $up = $true } catch { }
+    if ($up) {
+        Write-Host "Harness already running at $probe."
+    } else {
+        Start-Process wsl -ArgumentList "-d $Distro -- bash -c `"$envPrefix bash '$scriptWsl' run`"" -WindowStyle Hidden
+        Write-Host "Starting the harness (installing it first if needed - that can take a minute)..."
+        for ($i = 0; $i -lt 120; $i++) {
+            Start-Sleep -Seconds 1
+            try { $null = Invoke-WebRequest -Uri $probe -UseBasicParsing -TimeoutSec 3; $up = $true; break } catch { }
+        }
+    }
+    if (-not $up) {
+        Write-Host "ERROR: the harness did not come up within 120s - check ~/.qwen5090/logs/deepseek-harness.log inside WSL." -ForegroundColor Red
+        exit 1
+    }
+    $code = 0
+} else {
+    & wsl -d $Distro -- bash -c "$bashCmd"
+    $code = $LASTEXITCODE
+}
 
 # The URL is the whole point of a start, and the harness prints its own
 # loopback form - which is right inside WSL and wrong from here.
