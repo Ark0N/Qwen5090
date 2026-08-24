@@ -265,3 +265,52 @@ qwen5090_model_preflight() {
   printf '         on every token. It works; it will not be fast.\n' >&2
   return 0
 }
+
+# --------------------------------------------------------- default model ----
+# Which checkpoint this machine starts when nobody says otherwise.
+#
+# It exists because the answer stopped being a constant. vLLM's standard NVFP4
+# build is the right default for a fresh ZIP - it is the only backend that can
+# be installed by downloading weights alone - but once someone has paid for the
+# NInfer build and its artifact, starting anything else is not what they meant.
+# So the choice is written down at install time and read back on every start,
+# rather than having to be repeated as a flag.
+#
+# Deliberately a plain file with a repo id in it, not a config format: it is
+# read by bash, by PowerShell and by a human, and any of the three may be the
+# one to fix it.
+QWEN5090_DEFAULT_MODEL_FILE="${QWEN5090_DEFAULT_MODEL_FILE:-$HOME/.qwen5090/default-model}"
+QWEN5090_FALLBACK_MODEL="unsloth/Qwen3.8-27B-NVFP4"
+
+# Always succeeds - it is called from `${MODEL:-$(qwen5090_default_model)}`,
+# and under `set -e` a non-zero return there would abort the server instead of
+# falling back.
+qwen5090_default_model() {
+  local id=""
+  if [[ -r "$QWEN5090_DEFAULT_MODEL_FILE" ]]; then
+    id=$(head -1 "$QWEN5090_DEFAULT_MODEL_FILE" 2>/dev/null | tr -d '[:space:]' || true)
+  fi
+  # A recorded default that no longer resolves - the artifact was deleted, or
+  # the file was hand-edited into nonsense - must not strand the machine with
+  # a server that will not start. Ignore it and say so.
+  if [[ -n "$id" ]]; then
+    qwen5090_model_info "$id"
+    if [[ "$MODEL_BACKEND" == "ninfer" ]]; then
+      local artifact="${QWEN5090_NINFER_MODEL_DIR:-${QWEN5090_NINFER_HOME:-$HOME/.qwen5090/ninfer}/models}/$MODEL_NINFER_FILE"
+      if [[ ! -s "$artifact" ]]; then
+        printf '>> the recorded default (%s) has no artifact at %s - falling back to %s\n' \
+          "$id" "$artifact" "$QWEN5090_FALLBACK_MODEL" >&2
+        id=""
+      fi
+    fi
+  fi
+  printf '%s\n' "${id:-$QWEN5090_FALLBACK_MODEL}"
+  return 0
+}
+
+qwen5090_set_default_model() {
+  local id="${1:?qwen5090_set_default_model needs a model id}"
+  mkdir -p "$(dirname "$QWEN5090_DEFAULT_MODEL_FILE")" || return 1
+  printf '%s\n' "$id" > "$QWEN5090_DEFAULT_MODEL_FILE" || return 1
+  return 0
+}

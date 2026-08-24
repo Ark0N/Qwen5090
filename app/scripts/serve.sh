@@ -15,7 +15,16 @@ source "$SCRIPT_DIR/lib-model-catalog.sh"
 source "$SCRIPT_DIR/lib-gpu.sh"
 
 VENV="${QWEN5090_VENV:-$HOME/.qwen5090/venv}"
-MODEL="${MODEL:-unsloth/Qwen3.8-27B-NVFP4}"   # or sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4
+# Falls back to unsloth/Qwen3.8-27B-NVFP4, unless this machine recorded a
+# different default at install time - see qwen5090_default_model. That is what
+# makes "I installed the NInfer build" survive a reboot without having to be
+# repeated as a flag on every start.
+MODEL="${MODEL:-$(qwen5090_default_model)}"   # or sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4
+# Exported because both hand-offs below re-exec another script that reads MODEL
+# from the environment. When the caller set it there is nothing to do, but a
+# default resolved from the file above is a plain shell variable, and the
+# backend would silently serve its own default instead of the recorded one.
+export MODEL
 # 131,072 tokens: the largest window that still holds an fp8 KV cache on a 32 GB
 # card, so MTP stays on and decoding runs ~80 tok/s instead of ~49. The model
 # goes to 262144, but that window wants ~9.1 GiB of fp8 cache against the
@@ -50,6 +59,15 @@ echo ">> logging to $LOG_FILE"
 # by llama.cpp with most of the weights in system RAM. Decide before spending
 # ten minutes on a venv that cannot load them.
 qwen5090_model_info "$MODEL"
+# NInfer is a different engine on the same GPU, not a different class of
+# machine, so this hand-off needs none of the WSL reasoning the llama.cpp one
+# below does: the artifact is VRAM-resident and WSL's RAM slice is irrelevant
+# to it. It replaces this server rather than joining it - both want the whole
+# card - which is why it serves on the same port.
+if [[ "$MODEL_BACKEND" == "ninfer" ]]; then
+  exec bash "$SCRIPT_DIR/serve-ninfer.sh"
+fi
+
 if [[ "$MODEL_BACKEND" == "llamacpp" ]]; then
   if qwen5090_is_wsl; then
     # Refusing rather than serving, and the reason is memory, not politics:
