@@ -18,6 +18,7 @@
   .\install.ps1
   .\install.ps1 -SkipDownload   # set everything up but let vLLM fetch weights on first run
   .\install.ps1 -Uncensored     # the abliterated build (public download, no account)
+  .\install.ps1 -Ninfer         # the NInfer backend instead of vLLM: ~2x faster, compiles an engine
   .\install.ps1 -Unattended     # no prompts; what gui.ps1 runs under the hood
   .\install.ps1 -WslMemoryOnly  # only re-size the WSL VM from this PC's RAM, then exit
 #>
@@ -29,6 +30,13 @@ param(
     # passed via -Model (the GUI hands it over in QWEN5090_HF_TOKEN).
     [string]$Model = "",
     [switch]$Uncensored,
+    # Install the NInfer backend rather than downloading vLLM weights. NInfer
+    # is a from-scratch C++/CUDA engine for this exact card: roughly twice the
+    # decode rate on the same Qwen3.8-27B NVFP4 weights, and a long prompt
+    # prefills in seconds instead of minutes. It costs an ahead-of-time CUDA
+    # compile here, and it serves a closed set of five artifacts - so there is
+    # no abliterated build on this path.
+    [switch]$Ninfer,
     [string]$HfToken = $env:QWEN5090_HF_TOKEN,
     [switch]$SkipDownload,
     [switch]$Unattended,
@@ -41,7 +49,15 @@ $script:TdrRebootNeeded = $false
 $script:ModelStandard = "unsloth/Qwen3.8-27B-NVFP4"
 $script:ModelUncensored = "sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4"
 $script:ModelUncensoredGated = "orcarouter/Qwen3.8-27B-Uncensored-NVFP4"
-if (-not $Model) { $Model = if ($Uncensored) { $script:ModelUncensored } else { $script:ModelStandard } }
+$script:ModelNinfer = "neroued/Qwen3.8-27B-nvfp4-NInfer"
+if ($Ninfer -and $Uncensored) {
+    Write-Host "ERROR: -Ninfer and -Uncensored cannot be combined." -ForegroundColor Red
+    Write-Host "NInfer serves a closed set of five artifacts and none of them is abliterated." -ForegroundColor Red
+    exit 1
+}
+if (-not $Model) {
+    $Model = if ($Ninfer) { $script:ModelNinfer } elseif ($Uncensored) { $script:ModelUncensored } else { $script:ModelStandard }
+}
 # Both values end up inside a single-quoted bash string; keep them to the shapes
 # Hugging Face actually uses so nothing can break out of the quoting.
 if ($Model -notmatch '^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$') {
@@ -596,7 +612,11 @@ if (Set-WslMemoryLimit) {
     & wsl --shutdown *> $null
 }
 
-Step "Running Linux-side setup (vLLM install + model download)"
+if ($Ninfer) {
+    Step "Running Linux-side setup (build environment, then the NInfer engine)"
+} else {
+    Step "Running Linux-side setup (vLLM install + model download)"
+}
 Write-Host "Model: $Model"
 if ($Model -eq $script:ModelUncensored) {
     Write-Host "This build has its safety alignment removed (abliterated)."
@@ -605,17 +625,38 @@ if ($Model -eq $script:ModelUncensoredGated) {
     Write-Host "This build has its safety alignment removed and is gated on Hugging Face;"
     Write-Host "accept its terms once at https://huggingface.co/$Model if you have not."
 }
-Write-Host "This is the longest step: Python + vLLM install, then the model download (~22 GB)."
+if ($Ninfer) {
+    Write-Host "This is the longest step: the Python environment, then a CUDA compile, then a 21 GB download."
+} else {
+    Write-Host "This is the longest step: Python + vLLM install, then the model download (~22 GB)."
+}
 Write-Host "Detailed progress streams below the whole time."
 $repoWin = $PSScriptRoot -replace '\\', '/'
 $repoWsl = ((& wsl -d $Distro -- wslpath -a "$repoWin") -replace "`0", "").Trim()
 if (-not $repoWsl) { Fail "Could not translate the repo path into WSL. Is $Distro initialized? Try 'wsl -d $Distro' once, then re-run." }
-$envPrefix = "MODEL='$Model' "
+
+# The NInfer path still runs setup-wsl.sh, and not only for the venv: NInfer
+# compiles ahead of time against a CUDA toolkit at 13.1 or newer, Ubuntu ships
+# nothing that can target Blackwell, and torch's CUDA wheels vendor a complete
+# one inside that venv. What it does not need is the 22 GB of Hugging Face
+# weights - the .ninfer artifact replaces them - so the download is skipped and
+# only the environment is built.
+$setupModel = if ($Ninfer) { $script:ModelStandard } else { $Model }
+$envPrefix = "MODEL='$setupModel' "
 if ($HfToken) { $envPrefix += "HF_TOKEN='$HfToken' " }
-if ($SkipDownload) { $envPrefix += "SKIP_DOWNLOAD=1 " }
+if ($SkipDownload -or $Ninfer) { $envPrefix += "SKIP_DOWNLOAD=1 " }
 if ($Unattended) { $envPrefix += "NONINTERACTIVE=1 " }
 & wsl -d $Distro -- bash -c "${envPrefix}bash '$repoWsl/scripts/setup-wsl.sh'"
 if ($LASTEXITCODE -ne 0) { Fail "Linux-side setup failed - see the output above, then re-run .\install.ps1 (it resumes safely)." }
+
+if ($Ninfer) {
+    Step "Building the NInfer engine and fetching its artifact"
+    Write-Host "The engine is compiled for this card specifically, which takes a while and happens once."
+    Write-Host "setup-ninfer.sh then records this model as the machine default, so a plain"
+    Write-Host "'Start Qwen 5090.cmd' or .\app\run.ps1 uses NInfer from here on."
+    & wsl -d $Distro -- bash -c "MODEL='$Model' bash '$repoWsl/scripts/setup-ninfer.sh'"
+    if ($LASTEXITCODE -ne 0) { Fail "The NInfer setup failed - see the output above. The vLLM path is untouched: .\install.ps1 installs it." }
+}
 
 if (-not $NoShortcut) {
     Step "Creating desktop shortcut"
@@ -634,7 +675,12 @@ if ($script:TdrRebootNeeded) {
 }
 Write-Host "Open the app     :  double-click 'Start Qwen 5090.cmd' (or the 'Qwen 5090' desktop shortcut)"
 Write-Host "Command line     :  .\app\run.ps1 to serve, .\app\chat.ps1 to chat"
-if ($Model -ne $script:ModelStandard) { Write-Host "Serve this model :  .\app\run.ps1 -Model $Model" }
+if ($Ninfer) {
+    Write-Host "Backend          :  NInfer (recorded as this machine's default - run.ps1 needs no flag)"
+    Write-Host "Back to vLLM     :  wsl -d $Distro -- bash -c \"bash '~/…/scripts/setup-ninfer.sh' --default-vllm\"  then .\app\install.ps1"
+} elseif ($Model -ne $script:ModelStandard) {
+    Write-Host "Serve this model :  .\app\run.ps1 -Model $Model"
+}
 Write-Host "API endpoint     :  http://localhost:8000/v1   (OpenAI-compatible, api_key can be anything)"
 Stop-Log
 exit 0

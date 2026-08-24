@@ -8,6 +8,7 @@
   .\run.ps1 -Ctx 65536          # smaller window, if you are gaming at the same time
   .\run.ps1 -Port 8080 -NoMtp
   .\run.ps1 -Uncensored         # serve the abliterated build instead
+  .\run.ps1 -Ninfer             # serve through NInfer: ~2x the speed, if you installed it
   .\run.ps1 -Model "puwaer/DeepSeek-V4-Flash-0731-reap-150b-gguf:Q2_K"   # DeepSeek, via llama.cpp
   .\run.ps1 -Share              # also reachable from LAN/Tailscale (one admin prompt)
 #>
@@ -24,6 +25,12 @@ param(
     # Download it first with:  .\install.ps1 -Uncensored
     # serve.sh keys its flags off the model id, so nothing else changes here.
     [switch]$Uncensored,
+    # Serve the same Qwen3.8-27B NVFP4 weights through NInfer instead of vLLM:
+    # roughly twice the decode rate, and a long prompt prefills in seconds
+    # rather than minutes. Needs  .\install.ps1 -Ninfer  first - it compiles an
+    # engine and downloads a 21 GB artifact. There is no abliterated build for
+    # this backend, so -Ninfer and -Uncensored are mutually exclusive.
+    [switch]$Ninfer,
     # Only forwarded when you actually pass it - see the note further down.
     [double]$GpuUtil = 0.90,
     [switch]$NoMtp,
@@ -35,10 +42,25 @@ param(
 )
 $ErrorActionPreference = "Stop"
 
+if ($Uncensored -and $Ninfer) {
+    Write-Host "ERROR: -Ninfer and -Uncensored cannot be combined." -ForegroundColor Red
+    Write-Host "NInfer serves a closed set of five artifacts and none of them is abliterated." -ForegroundColor Red
+    exit 1
+}
 if ($Uncensored -and $Model -eq "unsloth/Qwen3.8-27B-NVFP4") {
     # The ungated abliterated NVFP4 re-quant; -Model takes any other repo id.
     $Model = "sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4"
 }
+if ($Ninfer -and $Model -eq "unsloth/Qwen3.8-27B-NVFP4") {
+    $Model = "neroued/Qwen3.8-27B-nvfp4-NInfer"
+}
+
+# Whether the caller actually chose a model, as opposed to inheriting this
+# parameter's default. It decides whether MODEL is forwarded at all: when it is
+# not, serve.sh resolves the model itself from the default this machine
+# recorded at install time, which is how a bare  .\run.ps1  keeps using NInfer
+# after you install it instead of quietly reverting to vLLM.
+$modelChosen = $PSBoundParameters.ContainsKey('Model') -or $Uncensored -or $Ninfer
 
 # Not every checkpoint is a vLLM one. The DeepSeek V4-Flash builds are 284B
 # parameters and do not fit in VRAM at any quantization, so llama.cpp serves
@@ -92,5 +114,12 @@ $prefixCacheEnv = ""
 if ($PSBoundParameters.ContainsKey('PrefixCache')) {
     $prefixCacheEnv = "PREFIX_CACHE=$(if ($PrefixCache) { 1 } else { 0 }) "
 }
-Write-Host "Starting $Model on http://localhost:$Port/v1  (first load takes a minute; Ctrl+C stops)" -ForegroundColor Cyan
-& wsl -d $Distro -- bash -c "CTX=$Ctx PORT=$Port MODEL='$Model' ${gpuUtilEnv}${prefixCacheEnv}MTP=$mtp bash '$repoWsl/scripts/serve.sh'"
+# Same only-when-bound rule as -GpuUtil and -PrefixCache above, and for the
+# same reason: forwarding this parameter's default would silently override a
+# deliberate choice made further down.
+$modelEnv = ""
+if ($modelChosen) { $modelEnv = "MODEL='$Model' " }
+
+$what = if ($modelChosen) { $Model } else { "this machine's default model" }
+Write-Host "Starting $what on http://localhost:$Port/v1  (first load takes a minute; Ctrl+C stops)" -ForegroundColor Cyan
+& wsl -d $Distro -- bash -c "CTX=$Ctx PORT=$Port ${modelEnv}${gpuUtilEnv}${prefixCacheEnv}MTP=$mtp bash '$repoWsl/scripts/serve.sh'"

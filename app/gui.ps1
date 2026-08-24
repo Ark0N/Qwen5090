@@ -576,6 +576,10 @@ $xaml = @'
                             ToolTip="sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4 - huihui-ai's abliterated Qwen3.8-27B re-quantized to NVFP4, about 19 GB, public download. Refusals removed."/>
               <ComboBoxItem Content="Uncensored (sign-in)" Tag="orcarouter/Qwen3.8-27B-Uncensored-NVFP4"
                             ToolTip="orcarouter/Qwen3.8-27B-Uncensored-NVFP4 - a different abliterated build, about 23 GB. Gated on Hugging Face: accept its terms there and paste a read token."/>
+              <ComboBoxItem Content="Qwen3.8-27B via NInfer (fastest)" Tag="neroued/Qwen3.8-27B-nvfp4-NInfer"
+                            ToolTip="The same Qwen3.8-27B NVFP4 weights as Standard, served by NInfer instead of vLLM - a C++/CUDA engine built for this exact card. About twice the speed, and a very long prompt is read in seconds rather than minutes. Setup compiles the engine, which takes a while and happens once."/>
+              <ComboBoxItem Content="Qwen3.6-35B-A3B via NInfer" Tag="neroued/Qwen3.6-35B-A3B-NInfer"
+                            ToolTip="A mixture-of-experts model: 35B total but only 3B active per token, so it answers far faster than any of the others - around 590 tokens/second. Text only, and an older Qwen release than 3.8."/>
               <ComboBoxItem Content="DeepSeek V4-Flash (pruned, 63 GB)" Tag="puwaer/DeepSeek-V4-Flash-0731-reap-150b-gguf:Q2_K"
                             ToolTip="DeepSeek V4-Flash 0731 with its experts pruned from 284B to about 150B, then quantized to 2-bit. 63 GB on disk, served by llama.cpp from system RAM instead of vLLM from VRAM - so expect single-digit tokens per second on a 32 GB machine, not 80. Needs about 69 GB of RAM+VRAM to avoid paging off the SSD."/>
               <ComboBoxItem Content="DeepSeek V4-Flash (full, 105 GB)" Tag="unsloth/DeepSeek-V4-Flash-0731-GGUF:UD-IQ3_XXS"
@@ -781,6 +785,7 @@ $script:ServerUp = $false
 $script:ModelId = "unsloth/Qwen3.8-27B-NVFP4"
 $script:ModelStandard = "unsloth/Qwen3.8-27B-NVFP4"
 $script:ModelGated = "orcarouter/Qwen3.8-27B-Uncensored-NVFP4"   # the only entry needing a token
+$script:ModelNinfer = "neroued/Qwen3.8-27B-nvfp4-NInfer"
 $script:Messages = New-Object System.Collections.ArrayList
 $script:ChatQueue = [System.Collections.Concurrent.ConcurrentQueue[object]]::new()
 $script:ChatBusy = $false
@@ -802,6 +807,15 @@ $script:ChatPara = $null   # created per message by New-ChatParagraph
 function Get-SelectedModel {
     if ($CmbModel -and $CmbModel.SelectedItem) { return [string]$CmbModel.SelectedItem.Tag }
     return $script:ModelStandard
+}
+
+# An NInfer entry is served by a compiled engine rather than by vLLM, and its
+# weights are one .ninfer container instead of a Hugging Face snapshot - so
+# both the installer and the "is it downloaded" probe have to branch on it.
+# The owner is the tell: NInfer publishes all five artifacts itself.
+function Test-NinferModel([string]$id) {
+    if (-not $id) { return $false }
+    return ($id -like "neroued/*NInfer")
 }
 
 # A GGUF entry names its quant after a colon and is served by llama.cpp, not
@@ -832,6 +846,9 @@ function Update-ModelChoice {
     } elseif (Test-GgufModel $sel) {
         # Say the cost here rather than three hours into a download.
         $TxtModelHint.Text = "Served from system RAM by llama.cpp - tens of GB to download, and far slower than the Qwen builds."
+    } elseif (Test-NinferModel $sel) {
+        # The compile is the surprising part - say so before Install is clicked.
+        $TxtModelHint.Text = "About twice the speed of Standard. Setup compiles an engine for your card first, which takes a while and happens once."
     } else {
         $TxtModelHint.Text = ""
     }
@@ -937,9 +954,18 @@ function Update-Status {
             Set-Dot $DotModel "#FF76B900"
         } else {
             $label = Get-SelectedModelLabel
-            $TxtModelS.ToolTip = Get-SelectedModel
-            $cachePath = "`$HOME/.cache/huggingface/hub/models--$((Get-SelectedModel) -replace '/','--')"
-            & wsl -d $Distro -- bash -c "test -d $cachePath" 2>$null
+            $sel = Get-SelectedModel
+            $TxtModelS.ToolTip = $sel
+            # An NInfer artifact never lands in the Hugging Face cache - it is a
+            # single container under ~/.qwen5090/ninfer/models - so probing the
+            # cache path would report "not downloaded" for a model that is
+            # sitting right there.
+            if (Test-NinferModel $sel) {
+                $probe = "test -s `$HOME/.qwen5090/ninfer/models/*.ninfer"
+            } else {
+                $probe = "test -d `$HOME/.cache/huggingface/hub/models--$($sel -replace '/','--')"
+            }
+            & wsl -d $Distro -- bash -c $probe 2>$null
             if ($LASTEXITCODE -eq 0) { $TxtModelS.Text = "$label - downloaded"; Set-Dot $DotModel "#FF76B900" }
             else { $TxtModelS.Text = "$label - not downloaded"; Set-Dot $DotModel "#FF4A5261" }
         }
@@ -1009,6 +1035,11 @@ function Start-Install {
     Add-Tail $errLog $TxtSetupLog
     $model = Get-SelectedModel
     $psArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$script:RepoRoot\install.ps1`" -Unattended -Distro $Distro -Model $model"
+    # -Ninfer changes what install.ps1 does rather than just which weights it
+    # fetches: it builds the environment without the 22 GB of Hugging Face
+    # weights, compiles the engine, and records the model as the machine
+    # default so later starts pick it up without the dropdown.
+    if (Test-NinferModel $model) { $psArgs += " -Ninfer" }
     if ($ChkSkipDownload.IsChecked) { $psArgs += " -SkipDownload" }
     # Hand the token over in the environment rather than on the command line -
     # install.ps1 picks it up as the default for -HfToken.
@@ -1710,9 +1741,20 @@ $Window.Dispatcher.Add_UnhandledException({
 })
 
 $Window.Add_Loaded({
-    if ($Model) {
+    # -Model wins; otherwise open on whatever this machine last installed. The
+    # dropdown used to reset to Standard on every launch, which meant someone
+    # who had installed NInfer got vLLM back the next time they double-clicked
+    # the launcher - the one place the choice most needed to stick.
+    $preselect = $Model
+    if (-not $preselect) {
+        try {
+            $recorded = (& wsl -d $Distro -- bash -c "cat `$HOME/.qwen5090/default-model 2>/dev/null" 2>$null)
+            if ($LASTEXITCODE -eq 0 -and $recorded) { $preselect = ([string]$recorded).Trim() }
+        } catch { Write-GuiLog "could not read the recorded default model: $($_.Exception.Message)" }
+    }
+    if ($preselect) {
         foreach ($item in $CmbModel.Items) {
-            if ([string]$item.Tag -eq $Model) { $CmbModel.SelectedItem = $item; break }
+            if ([string]$item.Tag -eq $preselect) { $CmbModel.SelectedItem = $item; break }
         }
     }
     if ($HfTokenFile -and (Test-Path -LiteralPath $HfTokenFile)) {
