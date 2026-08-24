@@ -1660,8 +1660,20 @@ function Test-DshNode {
     # matters here because Ubuntu 24.04 - what install.ps1 provisions - ships
     # Node 18, so this is the expected state on a fresh box rather than an edge
     # case. Returns $true when node is new enough.
+    #
+    # Two traps here, both measured on the real machine (2026-08-25):
+    # install-node puts node in ~/.local/bin, which a non-login `bash -c` does
+    # not have on PATH - the same trap Test-ClaudeInstalled documents - so a
+    # bare `command -v node` reported a just-installed Node as missing and the
+    # GUI asked to install it again, forever. And the version payload must
+    # contain no double quotes and no semicolons: the Windows->WSL re-join
+    # strips inner double quotes even inside bash single quotes, so a
+    # split(".") arrived at node as split(.) - a SyntaxError, exit 1,
+    # indistinguishable from "too old". Full path first, `||` fallback to
+    # PATH, and a quote-free payload (no spaces, so stripping cannot split
+    # it). Never a PATH= assignment prefix - see Test-ClaudeInstalled.
     try {
-        & wsl -d $Distro -- bash -c "command -v node >/dev/null && node -e 'process.exit(process.versions.node.split(`".`").map(Number)[0]>=22?0:1)'" 2>$null
+        & wsl -d $Distro -- bash -c "`"`$HOME/.local/bin/node`" -e 'process.exit(parseInt(process.version.slice(1))>=22?0:1)' 2>/dev/null || node -e 'process.exit(parseInt(process.version.slice(1))>=22?0:1)'" 2>$null
         return ($LASTEXITCODE -eq 0)
     } catch { return $false }
 }
