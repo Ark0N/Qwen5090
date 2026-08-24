@@ -75,17 +75,44 @@ load_conf() {
   # "temp:pwm" points, ascending. Below the first point the floor applies.
   FAN_CURVE_GPU="${FAN_CURVE_GPU:-60:208 65:224 70:240 75:255}"
   FAN_CURVE_CPU="${FAN_CURVE_CPU:-65:208 72:224 78:240 85:255}"
-  FAN_HYSTERESIS="${FAN_HYSTERESIS:-4}"
+  # Degrees C, not PWM units - see step_level. FAN_HYSTERESIS is the old,
+  # wrongly-scaled name; honoured as a fallback so an existing config keeps
+  # working, and 4 happens to be a sensible number of degrees too.
+  FAN_HYSTERESIS_C="${FAN_HYSTERESIS_C:-${FAN_HYSTERESIS:-3}}"
 }
 
-# Highest pwm whose temp threshold we have reached; floor if none.
-curve_lookup() {
-  local temp="$1" curve="$2" pt t p out="$FAN_FLOOR"
-  for pt in $curve; do
-    t="${pt%%:*}"; p="${pt##*:}"
-    (( temp >= t )) && out="$p"
-  done
-  echo "$out"
+# Curve state: one level index per curve, held between samples rather than
+# recomputed from scratch. -1 means "below the first point", i.e. the floor.
+#
+# The level has to be *held* for hysteresis to be expressible at all, and it
+# has to be expressed in DEGREES, on the way down. The first version of this
+# compared PWM values with a threshold of 4 while the curve steps 16 at a time,
+# so every downward step cleared it trivially and the guard never fired: a GPU
+# sitting on a boundary - flickering 69/70 C, which is precisely what a loaded
+# 5090 does - flipped the fans between 87% and 94% every 2 seconds.
+GPU_LEVEL=-1
+CPU_LEVEL=-1
+
+# Step a level toward where `temp` says it belongs. Up is immediate; down needs
+# the temperature to fall FAN_HYSTERESIS_C below the threshold that put us here.
+step_level() {
+  local temp="$1" curve="$2" level="$3" pt
+  local -a T=()
+  for pt in $curve; do T+=("${pt%%:*}"); done
+  local n=${#T[@]}
+  while (( level + 1 < n )) && (( temp >= T[level+1] )); do level=$(( level + 1 )); done
+  # The level >= 0 guard is load-bearing: bash reads T[-1] as the LAST element,
+  # so without it a floor-level curve would compare against the top threshold.
+  while (( level >= 0 )) && (( temp < T[level] - FAN_HYSTERESIS_C )); do level=$(( level - 1 )); done
+  echo "$level"
+}
+
+level_pwm() {
+  local curve="$1" level="$2" pt
+  (( level < 0 )) && { echo "$FAN_FLOOR"; return; }
+  local -a P=()
+  for pt in $curve; do P+=("${pt##*:}"); done
+  echo "${P[level]}"
 }
 
 read_gpu_temp() {
@@ -137,15 +164,16 @@ cmd_run() {
   local gpu cpu want_g want_c want last=0
   while :; do
     gpu=$(read_gpu_temp); cpu=$(read_cpu_temp)
-    want_g=$(curve_lookup "$gpu" "$FAN_CURVE_GPU")
-    want_c=$(curve_lookup "$cpu" "$FAN_CURVE_CPU")
+    GPU_LEVEL=$(step_level "$gpu" "$FAN_CURVE_GPU" "$GPU_LEVEL")
+    CPU_LEVEL=$(step_level "$cpu" "$FAN_CURVE_CPU" "$CPU_LEVEL")
+    want_g=$(level_pwm "$FAN_CURVE_GPU" "$GPU_LEVEL")
+    want_c=$(level_pwm "$FAN_CURVE_CPU" "$CPU_LEVEL")
     want=$(( want_g > want_c ? want_g : want_c ))
     (( want < FAN_FLOOR )) && want=$FAN_FLOOR      # property 1, enforced here
     (( want > 255 )) && want=255
 
-    # Only move on a meaningful change, so a temperature hovering on a curve
-    # boundary does not audibly pump the fans up and down every 2 seconds.
-    if (( want > last || last - want >= FAN_HYSTERESIS )); then
+    # step_level already applied the hysteresis, so any change here is real.
+    if (( want != last )); then
       for i in $FAN_CHANNELS; do echo "$want" > "$CHIP/pwm${i}" 2>/dev/null || true; done
       printf '%s  gpu=%sC cpu=%sC -> pwm %s (%s%%)\n' \
         "$(date '+%H:%M:%S')" "$gpu" "$cpu" "$want" "$(( want * 100 / 255 ))"
@@ -240,7 +268,11 @@ FAN_CURVE_GPU="60:$floor 65:224 70:240 75:255"
 FAN_CURVE_CPU="65:$floor 72:224 78:240 85:255"
 
 FAN_INTERVAL=2
-FAN_HYSTERESIS=4
+
+# Degrees C the temperature must fall BELOW a curve threshold before the fans
+# step back down. Guards against audible pumping when a temperature sits on a
+# boundary; raise it if you still hear the fans hunting.
+FAN_HYSTERESIS_C=3
 CONFEOF
     echo ">> wrote $CONF (floor recorded from BIOS: $floor)"
   fi
