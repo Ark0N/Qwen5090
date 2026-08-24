@@ -14,7 +14,10 @@
 #   bash deepseek-harness.sh minimal     # compose the `minimal` agent preset
 #                                        # for the headless profile (2 tools,
 #                                        # not 25) - what the published
-#                                        # Terminal-Bench figure was measured on
+#                                        # Terminal-Bench figure was measured on.
+#                                        # Worth 4x on the llama.cpp backend and
+#                                        # nothing on NInfer, which prefills the
+#                                        # full preamble in about a second.
 #   bash deepseek-harness.sh share       # publish it on the tailnet over HTTPS
 #   bash deepseek-harness.sh unshare     # take it off the tailnet again
 #   bash deepseek-harness.sh uninstall   # remove the unit, the shim and the runtime

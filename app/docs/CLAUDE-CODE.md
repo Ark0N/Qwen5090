@@ -10,6 +10,14 @@ well-scoped edits, refactors, file spelunking and scripted chores. It is
 weaker at long multi-step planning, and slower — see
 [PERFORMANCE.md](PERFORMANCE.md).
 
+> **There is a second agent client.** The [DeepSeek
+> Harness](DEEPSEEK-HARNESS.md) (`dsh`) runs against the same server and needs
+> no bridge at all — its adapter speaks the OpenAI API natively, so the whole
+> integration is a provider route rather than a translating process. It brings
+> a Web UI, subagents and its own tool set. Claude Code is the better-known
+> workflow and the one this page covers; the harness is worth knowing about if
+> you would rather work in a browser, or if the bridge is giving you trouble.
+
 ## Why a bridge is needed
 
 Claude Code speaks the **Anthropic** API (`/v1/messages`). vLLM serves the

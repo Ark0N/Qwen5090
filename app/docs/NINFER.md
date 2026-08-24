@@ -201,6 +201,37 @@ small-budget background alias, strips `tool_choice` when WebSearch leaves no
 callable tool behind, and routes auto mode's classifier to a non-thinking
 alias. Try it if you like, but the bridge is the supported route.
 
+## Using it with the DeepSeek Harness
+
+The other agent client, and the one that needs least from you here: `dsh`
+speaks the OpenAI API natively, so there is no bridge and nothing to translate.
+
+```bash
+bash app/scripts/deepseek-harness.sh start
+```
+
+Unlike the Claude Code bridge above, **you do not have to tell it the window**.
+`config` notices it is talking to NInfer — `owned_by` on `/v1/models` says so —
+and probes the real ceiling by deliberately overrunning it, reading the number
+out of the refusal. `QWEN_CTX` is there if you want to pin it anyway.
+
+Two other things it adapts on this backend:
+
+- **An `off` thinking tier.** NInfer validates `reasoning_effort` ahead of the
+  chat template and accepts `none`, which returns no reasoning at all. The
+  vLLM route is not offered it, because it is unverified there. Useful whenever
+  a reply has a small `max_tokens` — reasoning is billed against that budget.
+- **The `minimal` preset is the wrong move here.** It exists to strip dsh's
+  25-tool preamble, which costs the llama.cpp backend around fourteen minutes
+  on a cold turn. NInfer prefills the same preamble in about a second, so the
+  preset would delete 23 tools to save nothing. Leave the full set on.
+
+The one thing that *is* worth setting is `MAX_SEQS`: the harness runs
+subagents, and at 1 they serialise. See the table above — 2 is the ceiling at
+the full window.
+
+Full detail in [DEEPSEEK-HARNESS.md](DEEPSEEK-HARNESS.md).
+
 ## Requirements, and the one that bites
 
 NInfer needs a **CUDA toolkit at 13.1 or newer** at build time. This is not the

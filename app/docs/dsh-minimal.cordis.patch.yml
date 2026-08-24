@@ -4,6 +4,18 @@
 # prompt fixed to one sentence, and every model-facing tool dropped
 # except persistent bash and str_replace_editor.
 # Scoped to this profile on purpose: the Web UI keeps its full set.
+#
+# WHICH BACKEND YOU ARE ON DECIDES WHETHER THIS IS WORTH APPLYING.
+#   llama.cpp (DeepSeek V4-Flash, weights in system RAM) - yes. The 25-tool
+#     preamble is prefilled at tens of tokens per second and dominates a cold
+#     turn: 828.8 s against 195.8 s with this patch, a 4x saving. It is also
+#     the configuration DeepSeek's published Terminal-Bench figure was
+#     measured with, so a comparable run needs it.
+#   NInfer (Qwen NVFP4, weights in VRAM) - no. The same preamble prefills at
+#     ~6,000 tok/s, so a cold turn is 1.76 s and this patch would delete 23
+#     tools to save about a second. Leave the full set on.
+#   vLLM - untested either way. Its prefill sits between the two.
+# See app/docs/PERFORMANCE.md for the measurements.
 - id: system-prompt
   config:
     persona: You are a helpful software engineer assistant.
