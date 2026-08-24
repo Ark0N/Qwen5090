@@ -68,6 +68,25 @@ Either way, the model is recorded as this machine's default, so **every later
 start uses it with no flag** — a plain `Start Qwen 5090.cmd`, a bare
 `.\app\run.ps1`, `bash app/scripts/serve.sh`, or the systemd service.
 
+**One exception, and it is silent: an explicit `MODEL=` wins.** The recorded
+default is only what `serve.sh` falls back to, so a `MODEL=` line left
+uncommented in `~/.qwen5090/server.env` keeps the systemd service on whatever
+it names — the service comes up healthy, on the right port, serving the old
+backend, and nothing anywhere says why. `install-service.sh` writes that line
+commented out for exactly this reason, but a machine whose owner pinned a
+checkpoint by hand earlier will still have it set. Check it before concluding
+the recorded default did not take:
+
+```bash
+grep -n '^MODEL=' ~/.qwen5090/server.env    # no output is what you want
+```
+
+Same rule for `CTX`, `MAX_SEQS` and `GPU_UTIL` — they are forwarded to
+whichever backend runs, and NInfer reads some of them differently (see
+Settings below). A `GPU_POWER_LIMIT` set there applies here too, and a cap
+low enough to bite will hold decode below the figures above; the telemetry
+file's `power.limit` column is the way to tell.
+
 Check what is installed:
 
 ```bash
