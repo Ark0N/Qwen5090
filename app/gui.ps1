@@ -1362,6 +1362,7 @@ function Start-BridgeAction([string]$action, [string]$switches) {
     $script:BridgeEnvLog = if ($action -eq "env") { $outLog } else { $null }
     $script:BridgeProc = Start-Process powershell -ArgumentList $psArgs -PassThru -WindowStyle Hidden `
         -RedirectStandardOutput $outLog -RedirectStandardError $errLog
+    $null = $script:BridgeProc.Handle   # cache now or .ExitCode reads $null after exit (PS 5.1)
     $BtnCcStart.IsEnabled = $false
     $BtnCcStop.IsEnabled = $false
     $BtnCcEnv.IsEnabled = $false
@@ -1488,6 +1489,7 @@ function Complete-BridgeAction {
     $action = $script:BridgeAction
     $code = -1
     try { $code = $script:BridgeProc.ExitCode } catch { }
+    if ($null -eq $code) { $code = -1 }   # no handle cached before exit (PS 5.1)
     $script:BridgeProc = $null
     $script:BridgeAction = ""
     $BtnCcEnv.IsEnabled = $true
@@ -1632,6 +1634,7 @@ function Start-DshAction([string]$action, [string]$switches) {
     $script:DshAction = $action
     $script:DshProc = Start-Process powershell -ArgumentList $psArgs -PassThru -WindowStyle Hidden `
         -RedirectStandardOutput $outLog -RedirectStandardError $errLog
+    $null = $script:DshProc.Handle   # cache now or .ExitCode reads $null after exit (PS 5.1)
     $BtnDshStart.IsEnabled = $false
     $BtnDshStop.IsEnabled = $false
     $BtnDshOpen.IsEnabled = $false
@@ -1760,6 +1763,7 @@ function Complete-DshAction {
     $action = $script:DshAction
     $code = -1
     try { $code = $script:DshProc.ExitCode } catch { }
+    if ($null -eq $code) { $code = -1 }   # no handle cached before exit (PS 5.1)
     $script:DshProc = $null
     $script:DshAction = ""
     $BtnDshOpen.IsEnabled = $true
