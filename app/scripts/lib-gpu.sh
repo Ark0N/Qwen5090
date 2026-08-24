@@ -73,7 +73,11 @@ qwen5090_start_telemetry() {
   command -v nvidia-smi >/dev/null 2>&1 || return 0
 
   local interval="${GPU_TELEMETRY_INTERVAL:-2}"
-  local file="$log_dir/gpu-telemetry-$(date +%Y%m%d-%H%M%S).log"
+  # Declared and assigned separately: `local x=$(cmd)` swallows cmd's exit
+  # status, which is the same landmine as a bare assignment under `set -e`.
+  local stamp file
+  stamp=$(date +%Y%m%d-%H%M%S)
+  file="$log_dir/gpu-telemetry-$stamp.log"
   local watch_pid=$$
   (
     # A fallen-off GPU makes nvidia-smi block rather than fail, so every call
