@@ -200,6 +200,33 @@ Two caveats before you turn this on:
 If you want concurrency instead of context, stay at `CTX=131072`: fp8 + MTP,
 ~80 tok/s, and `MAX_SEQS=16`.
 
+## Or skip vLLM: the NInfer backend
+
+The prefill ceiling described below is a property of the vLLM path, not of the
+card. [NInfer](https://github.com/Neroued/ninfer) is a C++/CUDA engine compiled
+for `sm_120a` that serves a repack of the same Qwen3.8-27B NVFP4 weights, and
+on its published RTX 5090 numbers it clears a 260,096-token prompt at
+2,203 tok/s where vLLM here manages 371 tok/s at 90K and gives up past ~139K.
+Decode roughly doubles too, and MTP needs no patch at any context.
+
+A native Linux box is the easy case for it: you already have a real CUDA
+toolkit, which is the one requirement likely to cause trouble elsewhere.
+
+```bash
+bash app/scripts/setup-ninfer.sh     # compiles the engine, fetches a 21 GB artifact
+bash app/scripts/serve.sh            # from here on this serves NInfer
+```
+
+The model is recorded in `~/.qwen5090/default-model`, so `serve.sh` and the
+systemd unit pick it up with no flag. Back to vLLM:
+
+```bash
+bash app/scripts/setup-ninfer.sh --default-vllm
+```
+
+There is no abliterated artifact for this backend — that build stays on vLLM.
+Full detail in [NINFER.md](NINFER.md).
+
 ## Prefill is the real limit, not the window
 
 Retrieval accuracy holds across the whole 262K window, but prefill collapses

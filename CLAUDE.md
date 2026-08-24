@@ -417,6 +417,125 @@ pinned 15-task subset first (`terminal-bench.sh subset`), and if the tool-call
 fault is still present at that prompt size, fix that before spending an
 afternoon on the full 89.
 
+## The third backend: NInfer (2026-08-24)
+
+[NInfer](https://github.com/Neroued/ninfer) is a from-scratch C++/CUDA engine
+that supports exactly one GPU (`sm_120a`) and five Qwen artifacts. One of them,
+`neroued/Qwen3.8-27B-nvfp4-NInfer`, is a repack of `unsloth/Qwen3.8-27B-NVFP4` -
+**the same weights vLLM already serves here**, so this is the same model at
+roughly twice the speed, not a different one.
+
+Integrated the way llama.cpp was: the catalog decides, `serve.sh` dispatches.
+`lib-ninfer.sh` (build + artifact), `serve-ninfer.sh` (the server),
+`setup-ninfer.sh` (install / `status` / `--default-vllm`). Full user-facing
+account in `app/docs/NINFER.md`.
+
+**The number that justifies it is prefill, not decode.** Decode goes ~80 ->
+151-195 tok/s, which is nice. Prefill at 260,096 tokens is 2,203 tok/s against a
+vLLM path that manages 371 tok/s at 90K and was aborted at ~139K after seven
+minutes. **The prefill cliff documented above is a vLLM/TurboQuant/GDN property
+and does not exist here** - so the 262K window stops being theoretical. There is
+also no MTP interlock: NInfer runs MTP3 over its int8 cache at every concurrency
+from 1 to 8, so `patch-mtp.sh` has no counterpart on this path.
+
+- **The closed artifact set is the real constraint.** No abliterated build
+  exists and none can be added, so vLLM stays the default and the only backend
+  for the uncensored checkpoints. `-Ninfer` and `-Uncensored` are refused
+  together in both `run.ps1` and `install.ps1`.
+- **CUDA 13.1+ is a *build* requirement, not a runtime one.** NInfer compiles
+  ahead of time, so unlike FlashInfer there is no degraded fallback to reach
+  for. Discovery order: system toolkit, `/usr/local/cuda-13.x`, then torch's
+  vendored `nvidia/cu13` in the vLLM venv. The wheel needs reshaping first - it
+  puts libraries in `lib/` where CMake's FindCUDAToolkit probes `lib64/`, and
+  ships no driver library - so `_ninfer_wheel_shim` mirrors both into
+  `~/.qwen5090/ninfer/cuda`. This is the least-tested of the three paths; if a
+  build fails oddly, install the real toolkit.
+- **`install.ps1 -Ninfer` still runs setup-wsl.sh**, with `SKIP_DOWNLOAD=1`.
+  Not for the venv as such - for the CUDA toolkit inside it. That keeps the
+  NInfer install to one 21 GB download rather than 43 GB.
+- **Knob translation is clamping, not passthrough**, because NInfer's limits are
+  refusals rather than warnings: concurrency 1..8 (the vLLM default of 16 is
+  illegal), draft window 1..5, `int8`/`bf16` only (vLLM spellings map to int8),
+  and a per-artifact context ceiling - **252,928** for the Qwen3.8 NVFP4
+  container, which is the largest of the five. `GPU_UTIL` has no counterpart and
+  says so rather than being dropped silently.
+- **Build parallelism is memory-budgeted, not `nproc`.** One nvcc per job inside
+  a 20 GB WSL VM is how a 40-minute build meets the OOM killer; `_ninfer_build_jobs`
+  budgets ~2 GB a job. Override with `NINFER_BUILD_JOBS`.
+- Artifacts are verified against the published **byte count and SHA-256**, once,
+  with a `.verified` stamp - hashing 20 GiB on every start is not free, and a
+  resumed curl that reconnected to a truncated response otherwise surfaces as an
+  unreadable container an hour later.
+- `lib-gpu.sh` now holds the power cap and the telemetry sampler, shared by both
+  serving paths. A crash on this backend leaves the same record - deliberately,
+  given how much of this file exists because five theories were falsified for
+  want of it. `qwen5090_start_telemetry` watches `$$` and must be called from
+  the script that `exec`s, never from a subshell.
+
+### "When I start again it will use this": the default-model file
+
+The maintainer's actual request. `~/.qwen5090/default-model` holds a repo id;
+`qwen5090_default_model` reads it and `serve.sh` uses it when the caller named
+no model. It **must never return non-zero** - it is called from
+`${MODEL:-$(...)}` under `set -e` - and it falls back to vLLM by itself when a
+recorded NInfer artifact has gone missing, so a deleted file cannot strand the
+machine with a server that will not start.
+
+Three places had to stop overriding it, and each was a real silent revert:
+
+- `run.ps1` forwarded `MODEL` unconditionally. Now only when the caller bound
+  `-Model`/`-Uncensored`/`-Ninfer` - the same only-when-bound idiom `-GpuUtil`
+  and `-PrefixCache` already used.
+- **`gui.ps1` reset the dropdown to Standard on every launch**, which is the one
+  that mattered: double-clicking the launcher is the primary UX, so an installed
+  NInfer silently became vLLM again. `Add_Loaded` now preselects the recorded
+  model. Its "is it downloaded" probe also had to branch - a `.ninfer` artifact
+  never lands in the Hugging Face cache.
+- `install-service.sh`'s `server.env` template hardcoded `MODEL=`; commented out
+  now, so a service installed before NInfer follows the change. Existing env
+  files are never rewritten.
+
+`MODEL` is exported in serve.sh - the hand-off re-execs a script that reads it
+from the environment, and a default resolved from the file was lost across the
+exec until it was.
+
+### It speaks Anthropic natively, and the bridge still earns its place
+
+`POST /v1/messages` is implemented by the server, so Claude Code could in
+principle skip LiteLLM. Not done, and not because of effort: the bridge rewrites
+the `reasoning_effort` this template 400s on, disables thinking for the
+small-budget `fast` alias, strips `tool_choice` when WebSearch leaves no callable
+tool, and routes auto mode's classifier to a non-thinking alias. All four would
+be lost. Note NInfer's Anthropic endpoint checks `output_config.effort` against
+the loaded template the same way, so **`high` is rejected there too** - the
+identical 400 documented above.
+
+What did change: NInfer's `/v1/models` carries only id/object/created/owned_by,
+**no `max_model_len`**, so the bridge's discovery fell back to 131072 and would
+have used less than half a 252,928-token window. `QWEN_CTX` now overrides it.
+
+### What is verified, and what is not
+
+Written and validated on the **GPU-less Linux dev box**, so the core constraint
+at the top of this file applies in full. Verified by execution against stubs:
+every clamp and the KV mapping, the nvcc >=13.1 gate, the wheel shim layout,
+preference resolution including the missing-artifact fallback, the full
+`serve.sh` -> `serve-ninfer.sh` hand-off, `setup-ninfer.sh`'s four modes, and
+`run.ps1`'s branching under portable pwsh 7.6.5 with a stub `wsl`. All ten
+`.ps1` parse, PSScriptAnalyzer is clean at Error severity, the XAML still parses.
+
+**Nothing has touched a 5090.** Untested and needing the real machine, in
+priority order: (1) the CMake configure and compile, especially against the
+vendored-wheel toolkit - that is the likeliest thing to be wrong; (2) whether
+`--kv-capacity auto` leaves the Windows desktop enough VRAM on WSL, where vLLM
+needed `GPU_UTIL` dropped to 0.85 for exactly that reason and NInfer has no such
+dial; (3) the 21 GB download and its checksum; (4) the GUI dropdown and
+preselect, which need WPF. Do not quote any NInfer throughput figure in this
+file as measured *here* - they are NInfer's published numbers, and the MTP
+acceptance on the Qwen3.8 artifact (46%) is notably worse than on its Qwen3.6
+ones (69%), so its real-world margin over vLLM may be smaller than the table
+suggests.
+
 ## Architecture (three layers, one direction)
 
 1. **Launcher/GUI** — `Start Qwen 5090.cmd` → `app/gui.ps1`: a single-file WPF app (XAML string +
@@ -428,7 +547,9 @@ afternoon on the full 89.
    run hidden with stdout/stderr redirected to log files.
 3. **WSL side (where everything real happens)** — vLLM is Linux-only, so `install.ps1` provisions
    Ubuntu-24.04 and `app/scripts/*.sh` run inside it: `setup-wsl.sh` (uv + Python 3.13 venv at
-   `~/.qwen5090/venv` + model download), `serve.sh` (`vllm serve` with 5090-tuned flags),
+   `~/.qwen5090/venv` + model download), `serve.sh` (`vllm serve` with 5090-tuned flags, and the
+   dispatcher: it execs `serve-ninfer.sh` or `serve-gguf.sh` when the catalog says the checkpoint
+   belongs to another backend), `setup-ninfer.sh`/`serve-ninfer.sh` (the NInfer backend),
    `chat.py`/`benchmark.sh` (clients against the OpenAI-compatible endpoint), and
    `claude-code.sh` (the Claude Code bridge — see its contract below).
 
@@ -546,6 +667,11 @@ The WPF dispatcher thread is never blocked. All patterns funnel through one 300 
   claims `fastapi<1.0` — so an unpinned install resolves to a pair that fails at *launch* with a
   misleading `No module named 'proxy_server'`. Pinning fastapi below 0.116 instead silently
   downgrades LiteLLM itself to 1.79.
+- **serve-ninfer.sh env knobs**: the same names where they mean the same thing, but *clamped*
+  rather than forwarded - `MAX_SEQS` 1..8 (default 2), `SPEC_TOKENS` 1..5, `KV_CACHE_DTYPE`
+  int8/bf16 (vLLM spellings map to int8), `CTX` capped per artifact. Plus `KV_CAPACITY` (auto),
+  `PREFILL_CHUNK` (1024), `VISION` (0), `API_KEY`. `GPU_UTIL` is inert and says so. See the NInfer
+  section above.
 - **Sharing (LAN/Tailscale)**: `share.ps1` = netsh portproxy into WSL + firewall rule scoped to
   Private/Domain profiles only. WSL's IP changes every reboot, so `-Share`/the GUI checkbox
   re-applies it on each server start.
