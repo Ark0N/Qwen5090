@@ -382,8 +382,54 @@ ninfer_ensure_artifact() {
     (( have > 0 )) && _ninfer_say "   resuming from $(( have / 1000000 )) MB"
     local auth=()
     [[ -n "${HF_TOKEN:-}" ]] && auth=(-H "Authorization: Bearer $HF_TOKEN")
-    curl -L --fail --retry 5 --retry-delay 5 -C - "${auth[@]}" \
-      -o "$dest" "$url" || { _ninfer_err "download failed: $MODEL_NINFER_FILE"; return 1; }
+
+    # The resume loop lives here rather than in curl's own --retry, and both
+    # halves of that are deliberate. curl retries only what it considers
+    # transient - timeouts, HTTP 408/429/5xx - so a mid-transfer TLS or recv
+    # error (exit 56, seen here 2.4 GB into a 21 GB transfer as
+    # "SSL_read: ... bad record mac") aborts the whole thing instead. And even
+    # with --retry-all-errors it would not help much: `-C -` resolves its
+    # offset once, when curl starts, so an in-process retry does not pick the
+    # resume point back up. Re-invoking curl does, because the offset is read
+    # off the file on disk each time.
+    #
+    # Bounded by attempts that made no progress, not by attempts: a transfer
+    # inching forward across a flaky link should keep going, one that cannot
+    # move a byte should not spin forever.
+    local attempt=0 stalled=0 rc=0 before=0
+    local max_stalled="${NINFER_DOWNLOAD_STALL_LIMIT:-5}"
+    while (( have != MODEL_NINFER_BYTES )); do
+      attempt=$(( attempt + 1 ))
+      before="$have"
+      rc=0
+      curl -L --fail --retry 5 --retry-delay 5 --retry-all-errors -C - "${auth[@]}" \
+        -o "$dest" "$url" || rc=$?
+      have=0
+      [[ -f "$dest" ]] && have=$(stat -c %s "$dest" 2>/dev/null || echo 0)
+      (( have == MODEL_NINFER_BYTES )) && break
+
+      # A server that ignored the Range header and restarted from zero, or a
+      # file that grew past the published size, is not something to retry into.
+      if (( have > MODEL_NINFER_BYTES )); then
+        _ninfer_err "$MODEL_NINFER_FILE grew past the published size ($have > $MODEL_NINFER_BYTES)."
+        _ninfer_err "Delete it and run this again: rm '$dest'"
+        return 1
+      fi
+
+      if (( have > before )); then
+        stalled=0
+      else
+        stalled=$(( stalled + 1 ))
+      fi
+      if (( stalled >= max_stalled )); then
+        _ninfer_err "download failed: $MODEL_NINFER_FILE (curl rc=$rc, no progress in $stalled attempts)"
+        _ninfer_err "   got $(( have / 1000000 )) MB of $(( MODEL_NINFER_BYTES / 1000000 )) MB."
+        _ninfer_err "   The partial file is kept - running this again resumes from there."
+        return 1
+      fi
+      _ninfer_say "   transfer interrupted (curl rc=$rc) at $(( have / 1000000 )) MB - resuming (attempt $(( attempt + 1 )))"
+      sleep 5
+    done
   fi
 
   local size
