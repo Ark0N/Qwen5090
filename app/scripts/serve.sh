@@ -11,6 +11,8 @@ source "$SCRIPT_DIR/lib-build-tools.sh"
 source "$SCRIPT_DIR/lib-platform.sh"
 # shellcheck source=lib-model-catalog.sh
 source "$SCRIPT_DIR/lib-model-catalog.sh"
+# shellcheck source=lib-gpu.sh
+source "$SCRIPT_DIR/lib-gpu.sh"
 
 VENV="${QWEN5090_VENV:-$HOME/.qwen5090/venv}"
 MODEL="${MODEL:-unsloth/Qwen3.8-27B-NVFP4}"   # or sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4
@@ -412,82 +414,12 @@ if [[ "$PREFIX_CACHE" == "1" ]]; then
   ARGS+=(--enable-prefix-caching)
 fi
 
-# GPU power-limit cap. Unset by default, and it must stay that way: silently
-# reconfiguring someone's hardware because they double-clicked a launcher is
-# not this script's business. Set GPU_POWER_LIMIT=450 to have serve.sh apply
-# `nvidia-smi -pl` before every start - the standing test for whether the
-# Xid 79 / 0x116 "GPU has fallen off the bus" crash is a power-delivery
-# transient (see CLAUDE.md). Applying it here rather than once by hand is the
-# point: persistence mode is Disabled on the test box, so the cap is lost on
-# every driver unload, i.e. on every reboot - exactly when the next soak run
-# would otherwise quietly revert to 600 W and waste the test.
-#
-# Needs root, and never blocks the start: a warning is the entire failure mode,
-# because a server that refuses to come up teaches nothing about a crash. The
-# limit that actually took effect is in the telemetry file either way - every
-# sample carries power.limit - so a warning that gets ignored cannot corrupt
-# the record.
-GPU_POWER_LIMIT="${GPU_POWER_LIMIT:-}"
-if [[ -n "$GPU_POWER_LIMIT" ]] && command -v nvidia-smi >/dev/null 2>&1; then
-  pl_rc=0
-  if [[ "$(id -u)" == "0" ]]; then
-    nvidia-smi -pl "$GPU_POWER_LIMIT" >/dev/null 2>&1 || pl_rc=$?
-  elif sudo -n true 2>/dev/null; then
-    sudo -n nvidia-smi -pl "$GPU_POWER_LIMIT" >/dev/null 2>&1 || pl_rc=$?
-  else
-    pl_rc=126
-  fi
-  if [[ $pl_rc -eq 0 ]]; then
-    echo ">> GPU power limit set to ${GPU_POWER_LIMIT} W (GPU_POWER_LIMIT)"
-  elif [[ $pl_rc -eq 126 ]]; then
-    echo ">> WARNING: GPU_POWER_LIMIT=${GPU_POWER_LIMIT} needs root and sudo asked for a password." >&2
-    echo ">>          Run 'sudo nvidia-smi -pl ${GPU_POWER_LIMIT}' yourself; starting at the current limit." >&2
-  else
-    echo ">> WARNING: could not set the GPU power limit (nvidia-smi rc=$pl_rc); starting at the current limit." >&2
-  fi
-fi
-
-# GPU telemetry. On 2026-08-21 an Xid 79 ("GPU has fallen off the bus") took
-# the Linux 5090 down mid-decode and left nothing behind but the driver's own
-# obituary - no power, temperature, clock or PCIe history for the seconds
-# before it went. Six 0x116 bugchecks on the Windows box have already burned
-# five theories for want of exactly that data, so sample it and keep it.
-#
-# Deliberately named .log rather than .csv: collect-logs.ps1 bundles
-# logs/*.log into the bug-report ZIP, and this is the one file such a report
-# most needs. It is hardware counters only - no prompts, no completions, so it
-# is safe to collect in a way that ~/.qwen5090/debug/payloads-*.jsonl is not.
-GPU_TELEMETRY="${GPU_TELEMETRY:-1}"
-GPU_TELEMETRY_INTERVAL="${GPU_TELEMETRY_INTERVAL:-2}"
-if [[ "$GPU_TELEMETRY" == "1" ]] && command -v nvidia-smi >/dev/null 2>&1; then
-  TELEMETRY_FILE="$LOG_DIR/gpu-telemetry-$(date +%Y%m%d-%H%M%S).log"
-  # $$ is the PID this shell is about to hand to vLLM via exec below, so the
-  # sampler can watch it and exit when the server does. Backgrounding survives
-  # the exec; a trap would not, because exec never returns here.
-  TELEMETRY_WATCH_PID=$$
-  (
-    # A fallen-off GPU makes nvidia-smi block rather than fail, so every call
-    # is bounded - and the failure line is itself the most valuable record in
-    # the file, because it timestamps the moment the card stopped answering.
-    fields=timestamp,temperature.gpu,power.draw,power.limit,clocks.sm,clocks.mem
-    fields=$fields,utilization.gpu,utilization.memory,memory.used
-    fields=$fields,pcie.link.gen.current,pcie.link.width.current
-    fields=$fields,clocks_event_reasons.hw_slowdown,clocks_event_reasons.sw_power_cap
-    echo "# qwen5090 GPU telemetry, every ${GPU_TELEMETRY_INTERVAL}s, while PID $TELEMETRY_WATCH_PID lives"
-    echo "# $fields"
-    while kill -0 "$TELEMETRY_WATCH_PID" 2>/dev/null; do
-      rc=0
-      timeout 5 nvidia-smi --query-gpu="$fields" \
-        --format=csv,noheader,nounits 2>&1 || rc=$?
-      if [[ $rc -ne 0 ]]; then
-        echo "$(date '+%Y/%m/%d %H:%M:%S.000'), NVIDIA-SMI FAILED OR TIMED OUT (rc=$rc)"
-      fi
-      sleep "$GPU_TELEMETRY_INTERVAL"
-    done
-    echo "# server PID $TELEMETRY_WATCH_PID gone at $(date '+%Y/%m/%d %H:%M:%S'); telemetry stopped"
-  ) >> "$TELEMETRY_FILE" 2>&1 &
-  echo ">> GPU telemetry -> $TELEMETRY_FILE (every ${GPU_TELEMETRY_INTERVAL}s; GPU_TELEMETRY=0 disables)"
-fi
+# Both of these live in lib-gpu.sh: every backend on this box needs them, and
+# telemetry that only one of three serving paths records is worse than none.
+# qwen5090_start_telemetry watches $$, which the exec below turns into the
+# server's own PID - so it must be called from here, not from a subshell.
+qwen5090_apply_power_limit
+qwen5090_start_telemetry "$LOG_DIR"
 
 echo ">> model=$MODEL ctx=$CTX port=$PORT gpu_util=$GPU_UTIL mtp=$MTP kv=${KV_CACHE_DTYPE:-from-config} attn=${ATTN_BACKEND:-auto} prefix_cache=$PREFIX_CACHE"
 echo ">> OpenAI-compatible endpoint: http://localhost:$PORT/v1"
