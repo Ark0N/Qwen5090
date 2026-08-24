@@ -137,7 +137,7 @@ they mean the same thing, and translates them:
 | `MTP` | `1` | `--spec mtp --draft-tokens 3 --lm-head-draft` |
 | `SPEC_TOKENS` | `3` | draft window, 1–5 |
 | `KV_CACHE_DTYPE` | `int8` | `int8` or `bf16`. vLLM spellings (`fp8`, `turboquant_4bit_nc`) map to `int8` |
-| `MAX_SEQS` | `2` | concurrent requests, 1–8 |
+| `MAX_SEQS` | `2` | concurrent requests. The flag takes 1–8, but VRAM decides — see below |
 | `KV_CAPACITY` | `auto` | `auto` takes everything left after the weights |
 | `PREFIX_CACHE` | `1` | prefix reuse; worth keeping on for agent clients |
 | `VISION` | `0` | images and video. Off by default because it costs allocations even when unused |
@@ -147,6 +147,39 @@ they mean the same thing, and translates them:
 `GPU_POWER_LIMIT` and `GPU_TELEMETRY` behave exactly as they do on the vLLM
 path — the telemetry sampler is shared, so a crash on this backend leaves the
 same record.
+
+### `MAX_SEQS` accepts 1–8, but the card decides
+
+The Engine's runtime reservation grows with concurrency, so the usable maximum
+depends on how big a window you asked for. At `CTX=252928` on a 32 GB card,
+measured 2026-08-24 by trying each value:
+
+| `MAX_SEQS` | runtime reservation | KV pool | result |
+|---|---|---|---|
+| 1 | 9.01 GiB | 252,928 tokens (3952/3952 pages) | starts, 1.73 GiB slack |
+| 2 | 9.75 GiB | 263,616 tokens (4119/7904 pages) | starts, 1.00 GiB slack |
+| 4 | 10.14 GiB + 1 GiB headroom | — | **refuses to start**, ~424 MiB short |
+
+The refusal is explicit and happens a second into startup, before the weights
+matter:
+
+```
+minimum Engine runtime reservation requires 10892272384 bytes in addition to
+1073741824 bytes of automatic headroom, but only 11541931008 bytes are
+available after weights
+```
+
+3 is untested and lands within ~10 MiB of the limit on that trend, so treat
+**2 as the ceiling at the full window**. Wanting more means asking for a
+smaller `CTX`, not just a bigger number.
+
+Note the KV pool is shared rather than carved per slot — at `MAX_SEQS=2` it
+holds 263,616 tokens, so a single session can still use the whole 252,928-token
+window. Raising this does not cost you context; it costs you headroom.
+
+It matters most for agent clients that fan out: the [DeepSeek
+Harness](DEEPSEEK-HARNESS.md) runs subagents, and at `MAX_SEQS=1` every one of
+them serialises behind the others.
 
 ## Using it with Claude Code
 

@@ -338,19 +338,77 @@ answer quality and cannot call tools.
 
 `scripts/deepseek-harness.sh` points DeepSeek's own agent runtime (`dsh`) at
 this server. No bridge: its pi-ai adapter speaks OpenAI natively, so the whole
-integration is a provider route in `$DSH_HOME/settings.yaml`. Four fields are
+integration is a provider route in `$DSH_HOME/settings.yaml`. Five fields are
 load-bearing - `compat.supportsDeveloperRole:false`,
 `compat.maxTokensField:max_tokens` (pi-ai addresses an unrecognised base URL as
 though it were OpenAI itself), `reasoningEfforts` (which keeps `high` - the
-level clients default to and the template 400s on - off the menu), and
+level clients default to and the template 400s on - off the menu),
 `apiKeyEnv` (a route naming no credential is refused even for a keyless
-server). The merge into that file is surgical: the harness's own Settings page
-writes there too.
+server), and **`agent-default-model`**, which is a *top-level* key rather than
+part of the route. Configuring a route does not select it: that plugin ships
+pointing at `deepseek-official`, DeepSeek's hosted API, so a first run against
+a healthy local server dies with `MISSING_CREDENTIAL: ... no API key for
+provider route "deepseek-official"` - which reads as a broken install and is
+an unselected model. The Web UI has a selector; `dsh --profile headless` has
+no model flag at all, so it cannot be driven until this is set. `config` sets
+it only when the key is absent, because a value already there was the user's
+choice. The merge into that file stays surgical: the harness's own Settings
+page writes there too.
 
-Two install traps, both measured: **npm cannot install `@deepseek-ai/dsh`**
+**`--dump-config` will not help you debug any of this.** It renders the
+composition layer (the `cordis.patch.yml` world) and came out byte-identical
+with and without the user layer, with `llm-pi-ai` showing no config at all.
+`settings.yaml` is a runtime document the plugins read themselves. A route
+missing from that dump has not necessarily failed to be written.
+
+### The harness on the NInfer backend (2026-08-24)
+
+The Qwen route follows whichever backend holds port 8000 - `config` reads
+`owned_by` off `/v1/models` rather than being told. Two things differ on
+NInfer, both measured against the running server:
+
+- **The window must be probed.** NInfer publishes no `max_model_len`, so pi-ai
+  would fall back to its own 262,144 against a server started at 252,928 and
+  overflow it silently. But NInfer names the real ceiling when it refuses an
+  oversized prompt (`exceeding Engine max_context 252928`), at tokenization
+  before any prefill - 0.18-0.21 s for a 1.5 MB body. So `config` overruns it
+  on purpose and reads the number off the refusal. `QWEN_CTX` pins it when
+  that cannot work. The probe must send the **discovered model id**: NInfer
+  validates the id first and a placeholder just 404s.
+- **`none` is a real off switch.** NInfer validates `reasoning_effort` ahead of
+  the template and accepts `none`, which returns no `reasoning_content` at
+  all; `minimal`, `high` and `max` are refused by the template. Worth exposing
+  given reasoning tokens bill against `max_tokens`. Only for NInfer - `none`
+  is unverified on vLLM.
+
+Do **not** reach for the `minimal` preset here. It exists because dsh's 25-tool
+preamble costs llama.cpp 828 seconds; NInfer prefilled a 7,757-token turn of it
+at 6,019 tok/s (ttft 1.4 s, decode 208.8 tok/s, MTP 93.7%) and reused 7,834
+tokens of prefix on the next turn in 41 ms.
+
+**`MAX_SEQS` is the one server-side setting the harness cares about**, because
+dsh runs subagents and NInfer fixes concurrency at startup. The flag takes
+1..8 but VRAM decides, and the reservation scales with concurrency - measured
+at `CTX=252928` on the 32 GB card: 1 -> runtime 9.01 GiB / KV pool 252,928
+tokens; 2 -> 9.75 GiB / 263,616 tokens, 1.00 GiB slack; **4 refuses to start**,
+~424 MiB short (`minimum Engine runtime reservation requires ...`). So 2 is the
+ceiling at the full window, and the pool stays shared - one session can still
+use all 252,928. `~/.qwen5090/server.env` carried `MAX_SEQS=1` inherited from
+the vLLM 262K+patched-MTP path, where it *is* load-bearing; it is 2 now, and
+must go back to 1 if that vLLM path is ever restored.
+
+Three install traps, all measured: **npm cannot install `@deepseek-ai/dsh`**
 (twelve minutes at 97% CPU, 3.3 GB resident, zero files written) - use pnpm,
-which `dsh plugin` needs on PATH anyway; and every published version is a
-prerelease, so a bare `pnpm add` picks 0.1.0-rc.8 over the newer 0.1.1-rc.2.
+which `dsh plugin` needs on PATH anyway; every published version is a
+prerelease, so a bare `pnpm add` picks 0.1.0-rc.8 over the newer 0.1.1-rc.2;
+and **pnpm 11.23 turns its build-script prompt into a failure** - it writes an
+`allowBuilds` map of `set this to true or false` placeholders, prints
+`ERR_PNPM_IGNORED_BUILDS` and exits non-zero *after* linking all 447 packages
+and producing a working binary, so a `|| die` there discards a good install.
+The five packages involved all ship linux-x64 prebuilds and none needs to
+build (verified by loading node-pty's prebuild and spawning a pty), so the
+policy is written up front and success is judged by whether the binary exists,
+not by pnpm's exit status.
 `dsh web --host` accepts **only** 127.0.0.1 or 0.0.0.0, so the tailnet is
 reached with `tailscale serve` in front of a loopback UI - which is also the
 safer half of the trade, since the harness runs shell commands.

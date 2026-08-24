@@ -16,12 +16,17 @@ harness has no such gap: its `pi-ai` adapter speaks OpenAI natively, so a
 provider route in its own settings document is the whole integration.
 
 ```
-dsh :3080 ──OpenAI /v1──> vLLM :8000        (Qwen NVFP4, on the GPU)
-          └─OpenAI /v1──> llama.cpp :8001   (DeepSeek V4-Flash GGUF)
+dsh :3080 ──OpenAI /v1──> vLLM *or* NInfer :8000   (Qwen NVFP4, on the GPU)
+          └─OpenAI /v1──> llama.cpp :8001          (DeepSeek V4-Flash GGUF)
 ```
 
 Nothing sits in between, and the harness never touches the serving path — it
 is a client, so it works just as well from another machine.
+
+Port 8000 is whichever Qwen backend you have running: vLLM and NInfer replace
+each other rather than run side by side, since both want the whole GPU.
+`config` reads `owned_by` off `/v1/models` and adapts the route to the one that
+answered — you do not tell it which.
 
 ## Quick start
 
@@ -143,9 +148,13 @@ llm-pi-ai:
         - id: sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4
           contextWindow: 131072
           reasoningEfforts: { low: low, medium: medium, xhigh: xhigh }
+
+agent-default-model:
+  provider: qwen5090
+  model: sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4
 ```
 
-Four things there are load-bearing:
+Five things there are load-bearing:
 
 - **`compat.supportsDeveloperRole: false`** — pi-ai decides a request's shape
   from the base URL, and an address it does not recognise is addressed as
@@ -161,10 +170,52 @@ Four things there are load-bearing:
   keyless local server, so `config` writes a placeholder into `~/.dsh/.env`
   (mode 0600, and deliberately not in the logs directory — `collect-logs.ps1`
   zips that up for bug reports).
+- **`agent-default-model`** — configuring a route does not select it. The
+  plugin ships pointing at `deepseek-official`, DeepSeek's *hosted* API, so a
+  first run against a perfectly good local server fails with
+  `MISSING_CREDENTIAL: … no API key for provider route "deepseek-official"`.
+  That reads as a broken install and is really an unselected model. `config`
+  therefore points it at a local route — but **only when you have not chosen
+  one yourself**; a selection already in the file is left alone, like the rest
+  of the document.
 
 The base URL is configuration and the model id is discovery: a server that is
 switched off keeps its configured models and just moves address, rather than
 pinning the route to wherever it used to live.
+
+### On NInfer, two of those change
+
+`config` adapts when `owned_by` says `ninfer`. Both differences are measured
+against a running server (2026-08-24, `qwen3.8-27b`):
+
+- **The context window has to be probed.** Only vLLM publishes `max_model_len`
+  on `/v1/models`; NInfer's model object carries `id`, `object`, `created` and
+  `owned_by` and nothing else. Left alone, pi-ai falls back to its own 262,144
+  — against a server actually started at 252,928, and the truncation that
+  follows is silent. So `config` asks the server to refuse an oversized prompt
+  and reads the real ceiling out of the refusal (`exceeding Engine max_context
+  252928`). It costs one 1.5 MB request that is rejected at tokenization before
+  any prefill: 0.18–0.21 s measured. `QWEN_CTX=<tokens>` pins it if the probe
+  cannot run — behind a proxy that rewrites error bodies, say.
+- **There is an `off` tier.** NInfer validates `reasoning_effort` itself, ahead
+  of the template, and takes `none` — which genuinely disables thinking, with
+  no `reasoning_content` in the reply. That is worth having: reasoning tokens
+  are billed against `max_tokens`, so a small-cap chore with thinking on comes
+  back as an empty string behind an HTTP 200. `minimal`, `high` and `max` are
+  all still refused by the loaded template. The vLLM route keeps
+  `low/medium/xhigh` — `none` is unverified there, and offering a tier that
+  400s is exactly what this map exists to prevent.
+
+One thing that does **not** need changing: dsh declares 25 tools by default,
+and the `minimal` preset exists because that preamble costs llama.cpp 828
+seconds. NInfer prefilled a 7,757-token turn of it at 6,019 tok/s, then reused
+7,834 tokens of prefix on the next turn in 41 ms. Leave the full tool set on.
+
+Concurrency is worth a thought, though. NInfer fixes it at startup and dsh runs
+subagents, so `MAX_SEQS=1` serialises them. The flag accepts 1..8 but VRAM
+decides: at the full 252,928 window on a 32 GB card the Engine's runtime
+reservation leaves room for **2**, and 4 refuses to start outright
+(`minimum Engine runtime reservation requires …`). See NINFER.md.
 
 ## pnpm, not npm
 
@@ -179,12 +230,25 @@ Two related traps:
 - Every published version is a prerelease, and a bare `pnpm add @deepseek-ai/dsh`
   resolved **0.1.0-rc.8** while the `latest` tag pointed at 0.1.1-rc.2. The
   script names the tag.
-- pnpm 11 declines to run dependencies' install scripts and reads its
-  allowlist from `pnpm-workspace.yaml` — it *ignores* `pnpm.onlyBuiltDependencies`
-  in `package.json`, with a warning. It does not matter here: `node-pty`,
-  `koffi` and the rest ship prebuilt binaries for `linux-x64`.
+- pnpm 11 declines to run dependencies' install scripts and reads its policy
+  from `pnpm-workspace.yaml` — it *ignores* `pnpm.onlyBuiltDependencies` in
+  `package.json`, with a warning. Not running them is harmless here:
+  `node-pty`, `koffi` and the rest ship prebuilt binaries for `linux-x64`
+  (verified by loading node-pty's own prebuild and spawning a pty with it).
+  What is **not** harmless is that pnpm 11.23 makes it fatal: it writes an
+  `allowBuilds` map full of `set this to true or false` placeholders, prints
+  `ERR_PNPM_IGNORED_BUILDS` and exits non-zero — *after* linking all 447
+  packages and producing a working binary. `install` therefore writes that
+  policy up front, and judges success by whether the `dsh` binary is there
+  rather than by pnpm's exit status.
 
 ## Requirements
 
 Node `^22.19.0 || >=24.0.0`, `python3` with PyYAML (for the settings merge),
 and `curl`.
+
+`install` brings its own pnpm but **not** Node — it will not install a language
+runtime behind your back, so it stops with instructions if none is new enough.
+On Ubuntu 26.04 the distro package clears the floor on its own
+(`sudo apt-get install -y nodejs` → 22.22.1); on older releases use `fnm` or
+`nvm` into your home directory rather than a system-wide install.
