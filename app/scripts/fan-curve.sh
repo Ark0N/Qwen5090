@@ -216,7 +216,11 @@ cmd_status() {
   fi
   echo "gpu:     $(read_gpu_temp) C"
   echo "cpu:     $(read_cpu_temp) C (Tctl)"
-  echo "module:  $(lsmod | grep -q '^nct6775' && echo loaded || echo 'NOT loaded')"
+  # Read /proc/modules directly rather than `lsmod | grep -q`: grep -q exits on
+  # the first match, lsmod then dies of SIGPIPE, and `set -o pipefail` turns
+  # that into a failed pipeline - so the || branch fires and the status flips to
+  # "NOT loaded" depending purely on whether lsmod finished writing first.
+  echo "module:  $(grep -q '^nct6775 ' /proc/modules && echo loaded || echo 'NOT loaded')"
   # Both of these print a word AND return non-zero when the unit is absent,
   # so a `|| echo` fallback appends a second line rather than replacing it.
   echo "unit:    $(systemctl is-active qwen5090-fans 2>/dev/null | head -1) / $(systemctl is-enabled qwen5090-fans 2>/dev/null | head -1)"
