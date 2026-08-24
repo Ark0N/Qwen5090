@@ -53,12 +53,18 @@ write_env() {
 # Every name here is just a serve.sh environment variable; see that script's
 # comments for the full list and what each one costs.
 
-# Which checkpoint to serve. The abliterated build is the uncensored one.
-MODEL=unsloth/Qwen3.8-27B-NVFP4
+# Which checkpoint to serve. Left unset on purpose: serve.sh then uses whatever
+# this machine recorded as its default (~/.qwen5090/default-model), so
+# installing the NInfer backend later changes what boots without editing this
+# file. Set it here to pin one checkpoint regardless of that.
+#MODEL=unsloth/Qwen3.8-27B-NVFP4
 #MODEL=sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4
+#MODEL=neroued/Qwen3.8-27B-nvfp4-NInfer
 
-# Context window. 131072 is the default for a reason: it keeps an fp8 KV cache,
-# which keeps MTP, which is ~80 tok/s against ~49 - and it keeps concurrency.
+# Context window. 131072 is the default for a reason on the vLLM path: it keeps
+# an fp8 KV cache, which keeps MTP, which is ~80 tok/s against ~49 - and it
+# keeps concurrency. Through NInfer the tradeoff is gone and a longer window
+# costs little, so 252928 (its ceiling for that artifact) is reasonable there.
 CTX=131072
 PORT=8000
 

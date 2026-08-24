@@ -19,7 +19,14 @@
 set -euo pipefail
 
 # ---------------------------------------------------------------- knobs -----
-QWEN_URL="${QWEN_URL:-http://localhost:8000}"     # where vLLM is listening
+QWEN_URL="${QWEN_URL:-http://localhost:8000}"     # where the server is listening
+# The context window to tell Claude Code about. Normally discovered from
+# /v1/models, which is right for vLLM - but only vLLM publishes max_model_len
+# there. NInfer's model object carries id/object/created/owned_by and nothing
+# else, so the discovery below falls back to 131072 and Claude Code would stop
+# short of a window that is actually 252,928. Set this to the CTX the server
+# was started with when serving through NInfer at a longer context.
+QWEN_CTX="${QWEN_CTX:-}"
 BRIDGE_PORT="${BRIDGE_PORT:-4000}"                # where the bridge listens
 BRIDGE_HOST="${BRIDGE_HOST:-127.0.0.1}"           # loopback: this is not an auth boundary
 BRIDGE_KEY="${BRIDGE_KEY:-sk-qwen5090-local}"     # local-only shared secret
@@ -101,6 +108,9 @@ d=json.load(sys.stdin)["data"][0]
 print(d.get("max_model_len") or 131072)' 2>/dev/null || true)
 
   [[ -n "${MODEL_ID:-}" ]] || die "could not read a model id from $QWEN_URL/v1/models"
+  # An explicit QWEN_CTX wins over discovery: on a backend that does not
+  # advertise its window, discovery cannot do better than the fallback.
+  [[ -n "$QWEN_CTX" ]] && MODEL_CTX="$QWEN_CTX"
   MODEL_CTX="${MODEL_CTX:-131072}"
 }
 
@@ -619,7 +629,8 @@ cmd_install() {
 #   NAME -p "..."        one-shot
 #   NAME status|doctor|stop|restart
 #
-# Override the server with QWEN_URL, the thinking depth with QWEN_EFFORT
+# Override the server with QWEN_URL, its context window with QWEN_CTX,
+# the thinking depth with QWEN_EFFORT
 # (low|medium|xhigh).
 set -euo pipefail
 : "${QWEN_URL:=@@URL@@}"
