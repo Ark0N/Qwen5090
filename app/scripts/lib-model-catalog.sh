@@ -4,11 +4,20 @@
 # refuse a model it cannot serve rather than failing three minutes in),
 # setup-wsl.sh (to download the right thing) and serve-gguf.sh.
 #
-# Two backends, because they do not overlap:
+# Three backends, because they do not overlap:
 #
 #   vllm      the NVFP4 Qwen checkpoints. Weights live entirely in VRAM, the
 #             whole product was built around it, and it is what "fast" means
-#             here - 80 tok/s at 131072.
+#             here - 80 tok/s at 131072. It is also the only backend that can
+#             serve an arbitrary Hugging Face repo, which is why it stays the
+#             default and the only one the abliterated builds can use.
+#   ninfer    the same Qwen3.8-27B NVFP4 weights, repacked into NInfer's own
+#             container and served by a from-scratch C++/CUDA engine built for
+#             sm_120a and nothing else. Roughly twice vLLM's decode rate and
+#             about six times its prefill rate at a long prompt, which is what
+#             makes the 262K window usable rather than theoretical. The price
+#             is a closed set of five artifacts (no abliterated build), a
+#             separate ~20 GiB download, and a CUDA compile at install time.
 #   llamacpp  the DeepSeek V4-Flash GGUF builds. 284B total / 13B active, so
 #             the weights do NOT fit in 32 GB of VRAM at any quantization and
 #             most of them live in system RAM (and, below the resident floor,
@@ -23,15 +32,82 @@
 qwen5090_model_info() {
   local model="${1:?qwen5090_model_info needs a model id}"
 
-  MODEL_BACKEND="vllm"      # vllm | llamacpp
+  MODEL_BACKEND="vllm"      # vllm | ninfer | llamacpp
   MODEL_LABEL="$model"      # what a human should see
   MODEL_SIZE_GB=0           # weights on disk
   MODEL_RESIDENT_GB=0       # RAM+VRAM below which it pages off the SSD
   MODEL_GGUF_REPO=""        # repo id, GGUF builds only
   MODEL_GGUF_QUANT=""       # quant tag within that repo
+  MODEL_NINFER_FILE=""      # artifact filename, NInfer builds only
+  MODEL_NINFER_BYTES=0      # exact published size, so a truncated download is caught
+  MODEL_NINFER_SHA256=""    # published digest, verified once after download
+  MODEL_NINFER_MAXCTX=0     # largest window this artifact fits on a 32 GB card
   MODEL_NOTES=""
 
   case "$model" in
+    # ------------------------------------------------------------ NInfer ----
+    # A closed set of five artifact identities - NInfer refuses anything else,
+    # so this table is the whole product surface and an exact match is right.
+    # The sizes and digests are the ones published in NInfer's README; both are
+    # checked after download, because a silently truncated 20 GiB file
+    # otherwise surfaces as an unreadable container an hour later.
+    #
+    # MODEL_NINFER_MAXCTX is the largest window that still fits on this card
+    # after the weights, not the model's native 262,144. Only the Qwen3.8
+    # NVFP4 artifact is actually short of the native maximum: at 20.02 GiB it
+    # is the largest of the five, and NInfer's own evaluation runs cap it at
+    # 252,928 for exactly this reason.
+    neroued/Qwen3.8-27B-nvfp4-NInfer)
+      MODEL_BACKEND="ninfer"
+      MODEL_LABEL="Qwen3.8-27B NVFP4 (NInfer)"
+      MODEL_SIZE_GB=21
+      MODEL_NINFER_FILE="qwen3_8_27b_nvfp4.ninfer"
+      MODEL_NINFER_BYTES=21492695040
+      MODEL_NINFER_SHA256="bb3360522a06e136e0367f5703414d26272b7285c8a6ab6194135c17dbd81b32"
+      MODEL_NINFER_MAXCTX=252928
+      MODEL_NOTES="the same unsloth NVFP4 weights vLLM serves, repacked for NInfer: ~2x the decode rate and a 262K window whose prefill does not collapse. Needs the NInfer build."
+      ;;
+    neroued/Qwen3.8-27B-NInfer)
+      MODEL_BACKEND="ninfer"
+      MODEL_LABEL="Qwen3.8-27B groupwise-int (NInfer)"
+      MODEL_SIZE_GB=18
+      MODEL_NINFER_FILE="qwen3_8_27b.ninfer"
+      MODEL_NINFER_BYTES=18210531328
+      MODEL_NINFER_SHA256="eec39564993d6e9c7d5e383382a760f093465c9d163ec9a1bd6b80199514bf3e"
+      MODEL_NINFER_MAXCTX=262144
+      MODEL_NOTES="smaller than the NVFP4 artifact and scores the same on reasoning, but NInfer publishes no throughput campaign for it."
+      ;;
+    neroued/Qwen3.6-27B-nvfp4-NInfer)
+      MODEL_BACKEND="ninfer"
+      MODEL_LABEL="Qwen3.6-27B NVFP4 (NInfer)"
+      MODEL_SIZE_GB=18
+      MODEL_NINFER_FILE="qwen3_6_27b_nvfp4.ninfer"
+      MODEL_NINFER_BYTES=18324064000
+      MODEL_NINFER_SHA256="bce5f00d066c0f20f1317bf1fdcb458264cf95837c3b1f3fbec163694627893a"
+      MODEL_NINFER_MAXCTX=262144
+      MODEL_NOTES="the previous Qwen generation. Faster than the 3.8 artifact and its MTP acceptance is far better (69% against 46%), but the weights are a release older."
+      ;;
+    neroued/Qwen3.6-27B-NInfer)
+      MODEL_BACKEND="ninfer"
+      MODEL_LABEL="Qwen3.6-27B groupwise-int (NInfer)"
+      MODEL_SIZE_GB=17
+      MODEL_NINFER_FILE="qwen3_6_27b.ninfer"
+      MODEL_NINFER_BYTES=17495365888
+      MODEL_NINFER_SHA256="7b51600ffd10632b9660f56085efdd9b751d79733ad32036a652234b64bebe7b"
+      MODEL_NINFER_MAXCTX=262144
+      MODEL_NOTES="the smallest artifact, and the slowest of the 27B profiles at prefill."
+      ;;
+    neroued/Qwen3.6-35B-A3B-NInfer)
+      MODEL_BACKEND="ninfer"
+      MODEL_LABEL="Qwen3.6-35B-A3B (NInfer)"
+      MODEL_SIZE_GB=22
+      MODEL_NINFER_FILE="qwen3_6_35b_a3b.ninfer"
+      MODEL_NINFER_BYTES=22783246080
+      MODEL_NINFER_SHA256="1fb9ea0b5b8561e49d9604115ec89e5d9f2b6f6434e32c37c57fffd480a325d2"
+      MODEL_NINFER_MAXCTX=262144
+      MODEL_NOTES="35B total / 3B active, so it decodes far faster than any dense build here - 593 tok/s at one request. It is the only target with DFlash speculative decoding, and it is text-only."
+      ;;
+
     # ------------------------------------------------ DeepSeek V4-Flash ----
     # The 0731 retrain, which is the checkpoint every published agent number
     # refers to - the earlier Flash preview scored 61.8 on Terminal-Bench 2.1
@@ -149,6 +225,20 @@ qwen5090_model_preflight() {
   [[ -n "$MODEL_NOTES" ]] && printf '   %s\n' "$MODEL_NOTES"
   printf '   weights %s GB | this machine can offer %s GB (%s VRAM + %s RAM)\n' \
     "${MODEL_SIZE_GB:-?}" "$MEM_TOTAL_GB" "$MEM_VRAM_GB" "$MEM_RAM_GB"
+
+  # NInfer keeps every byte of the artifact in VRAM, so the question is not
+  # "does it page off the SSD" but "does it fit at all". There is no offload
+  # path to fall back on: too little free VRAM is a refusal, not a slowdown.
+  # Checked against free VRAM rather than the card's 32 GB, because on WSL the
+  # Windows desktop is already spending some of it.
+  if [[ "$MODEL_BACKEND" == "ninfer" ]]; then
+    if (( MEM_VRAM_GB > 0 && MEM_VRAM_GB < MODEL_SIZE_GB + 2 )); then
+      printf 'WARNING: only %s GB of VRAM is free and the artifact alone is %s GB.\n' \
+        "$MEM_VRAM_GB" "$MODEL_SIZE_GB" >&2
+      printf '         Close whatever else is on the GPU, or the KV cache will have nothing left.\n' >&2
+    fi
+    return 0
+  fi
 
   if [[ "$MODEL_BACKEND" != "llamacpp" || "$MODEL_RESIDENT_GB" -eq 0 ]]; then
     return 0
