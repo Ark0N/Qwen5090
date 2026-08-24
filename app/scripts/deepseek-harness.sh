@@ -23,6 +23,11 @@
 # server on another machine:
 #
 #   QWEN_URL=http://<5090-ip>:8000 bash deepseek-harness.sh start
+#
+# The Qwen route follows whichever backend is answering on that port - vLLM or
+# NInfer - and it reads the backend off /v1/models rather than being told. Only
+# vLLM publishes its context window there, so on NInfer the window is probed;
+# QWEN_CTX pins it if that probe cannot run.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -67,6 +72,19 @@ DEEPSEEK_KEY="${DEEPSEEK_KEY:-sk-qwen5090-local}"
 # pack a prompt far past whatever -c the server was actually started with, and
 # the truncation that follows is silent. Match it to serve-gguf.sh's default.
 DEEPSEEK_CTX="${DEEPSEEK_CTX:-131072}"
+
+# Same problem, different backend. NInfer's /v1/models carries id, object,
+# created and owned_by and nothing else - no max_model_len - so discovery
+# cannot read the window off it the way it can with vLLM. Left unsolved the
+# route would inherit pi-ai's own 262,144 fallback while the server was
+# actually started at 252,928 (the Qwen3.8 NVFP4 artifact's ceiling), and the
+# harness would pack prompts past the end of it.
+#
+# So the window is probed instead - see probe_max_context() - and this
+# overrides that probe when it is set. Needed when the server is reached
+# through something that rewrites error bodies, or to declare a window
+# deliberately smaller than the server's.
+QWEN_CTX="${QWEN_CTX:-}"
 
 LOG_DIR="${QWEN5090_LOG_DIR:-$HOME/.qwen5090/logs}"
 LOG_FILE="$LOG_DIR/deepseek-harness.log"
@@ -135,9 +153,14 @@ resolve_deepseek_url() {
 
 # ------------------------------------------------------------- discovery ----
 # Ask each server what it is serving rather than making the user type a model id
-# that has to match exactly. Prints "<id>\t<ctx>" and returns 1 when nothing
-# answers, so a caller can tell "server is down" from "server said something
-# unexpected".
+# that has to match exactly. Prints "<id>\t<ctx>\t<owner>" and returns 1 when
+# nothing answers, so a caller can tell "server is down" from "server said
+# something unexpected".
+#
+# `owner` is owned_by, and it is how the three backends are told apart without
+# a second round trip: vLLM says "vllm", NInfer says "ninfer", llama.cpp says
+# "llamacpp". The effort tiers and the window discovery both depend on which
+# one answered.
 discover_route() {
   local url="$1" json
   json=$(curl -sf -m 8 "$url/v1/models" 2>/dev/null || true)
@@ -151,11 +174,55 @@ except Exception:
 mid = d.get("id")
 if not mid:
     sys.exit(1)
-# vLLM reports the window; llama.cpp does not, and its /v1/models carries a
+# vLLM reports the window; NInfer and llama.cpp do not, and llama.cpp carries a
 # filesystem path as the id. Fall back rather than guessing wrong by a factor
-# of eight - the route profile can always be corrected by hand afterwards.
+# of eight - probe_max_context() has a second try, and the route profile can
+# always be corrected by hand afterwards.
 ctx = d.get("max_model_len") or d.get("context_length") or 0
-print(f"{mid}\t{ctx}")' 2>/dev/null || return 1
+owner = d.get("owned_by") or ""
+print(f"{mid}\t{ctx}\t{owner}")' 2>/dev/null || return 1
+}
+
+# Ask a server that publishes no window what its window is, by overrunning it.
+#
+# NInfer refuses an oversized prompt with the number in the message:
+#   prepared prompt has 300052 tokens, exceeding Engine max_context 252928
+# and it refuses at tokenization, before any prefill - measured at 0.18-0.21 s
+# over three trials on the 5090, for a 1.5 MB body on loopback. That is cheap
+# enough to spend once at config time and far better than the alternative,
+# which is pi-ai's 262,144 fallback silently overflowing a 252,928 server.
+#
+# Deliberately not clever about the filler size: it only has to exceed the
+# largest window any of these artifacts can hold (262,144), and "word " is one
+# token, so 300k words clears every one of them with margin.
+# The real model id has to be passed in, not a placeholder: NInfer validates
+# the id before it measures the prompt, so a made-up one answers 404
+# model_not_found and the probe learns nothing.
+probe_max_context() {
+  local url="$1" model="$2" ctx
+  ctx=$(URL="$url" MODEL_ID="$model" python3 - <<'PY' 2>/dev/null || true
+import json, os, re, urllib.error, urllib.request
+body = json.dumps({
+    "model": os.environ["MODEL_ID"], "max_tokens": 1,
+    "messages": [{"role": "user", "content": "word " * 300000}],
+}).encode()
+req = urllib.request.Request(os.environ["URL"].rstrip("/") + "/v1/chat/completions",
+                             data=body, headers={"Content-Type": "application/json"})
+try:
+    urllib.request.urlopen(req, timeout=60).read()
+except urllib.error.HTTPError as exc:
+    try:
+        msg = json.loads(exc.read())["error"]["message"]
+    except Exception:
+        raise SystemExit(1)
+    m = re.search(r"max_context\s+(\d+)", msg)
+    if m:
+        print(m.group(1))
+except Exception:
+    raise SystemExit(1)
+PY
+)
+  [[ "$ctx" =~ ^[0-9]+$ ]] && printf '%s' "$ctx"
 }
 
 # ---------------------------------------------------------------- install ---
@@ -262,11 +329,15 @@ write_env_file() {
 # routes into llm-pi-ai.providers and leaves the rest of the file alone; a
 # wholesale render would delete whatever the user configured in the Web UI.
 merge_settings() {
-  local qwen_id="$1" qwen_ctx="$2" ds_id="$3" ds_ctx="$4"
+  local qwen_id="$1" qwen_ctx="$2" qwen_owner="$3" ds_id="$4" ds_ctx="$5"
   mkdir -p "$DSH_HOME"
+  # QWEN_WINDOW, not QWEN_CTX: the knob of that name is the caller's override
+  # and this is the value that survived resolution, which may have come from
+  # the probe instead.
   QWEN_ROUTE="$QWEN_ROUTE" DEEPSEEK_ROUTE="$DEEPSEEK_ROUTE" \
   QWEN_URL="$QWEN_URL" DEEPSEEK_URL="$DEEPSEEK_URL" \
-  QWEN_ID="$qwen_id" QWEN_CTX="$qwen_ctx" DS_ID="$ds_id" DS_CTX="$ds_ctx" \
+  QWEN_ID="$qwen_id" QWEN_WINDOW="$qwen_ctx" QWEN_OWNER="$qwen_owner" \
+  DS_ID="$ds_id" DS_CTX="$ds_ctx" \
   DEEPSEEK_CTX="$DEEPSEEK_CTX" SETTINGS="$SETTINGS" python3 - <<'PY'
 import os, sys
 try:
@@ -346,14 +417,29 @@ BASE_COMPAT = {
 }
 
 wrote = []
-# The chat template accepts low, medium and xhigh ONLY - it answers 400 to
-# "high", which is the level most clients send by default. Declaring the map
-# explicitly is what keeps a selector from offering one that cannot be served:
-# the key is what the selector shows, the value is what goes on the wire.
+# The chat template answers 400 to "high", which is the level most clients send
+# by default. Declaring the map explicitly is what keeps a selector from
+# offering a tier that cannot be served: the key is what the selector shows,
+# the value is what goes on the wire.
+QWEN_EFFORTS = {"low": "low", "medium": "medium", "xhigh": "xhigh"}
+# NInfer validates the effort itself before the template sees it, and its own
+# vocabulary is wider than vLLM's. Measured against the running server
+# (2026-08-24, qwen3.8-27b on NInfer): "none" is accepted and genuinely
+# disables thinking - the reply carries no reasoning_content at all - while
+# "minimal", "high" and "max" are all refused by the loaded template with
+#   reasoning effort '<x>' is not supported by the loaded chat template
+# So NInfer gets a real off switch that the vLLM path has never had, and it is
+# worth exposing: reasoning tokens are billed against max_tokens on this model,
+# so a small-cap chore with thinking on returns an empty string behind a 200.
+#
+# Only for NInfer. "none" is unverified on vLLM, and offering a tier that 400s
+# is exactly what this map exists to prevent.
+if os.environ.get("QWEN_OWNER") == "ninfer":
+    QWEN_EFFORTS = {"off": "none", **QWEN_EFFORTS}
+
 if route(os.environ["QWEN_ROUTE"], os.environ["QWEN_URL"],
-         os.environ["QWEN_ID"], os.environ["QWEN_CTX"], "Qwen 5090",
-         {"low": "low", "medium": "medium", "xhigh": "xhigh"},
-         dict(BASE_COMPAT)):
+         os.environ["QWEN_ID"], os.environ["QWEN_WINDOW"], "Qwen 5090",
+         QWEN_EFFORTS, dict(BASE_COMPAT)):
     wrote.append(os.environ["QWEN_ROUTE"])
 
 # DeepSeek V4's own tiers, read off the chat template rather than guessed: it
@@ -416,15 +502,36 @@ PY
 }
 
 cmd_config() {
-  local qwen_id="" qwen_ctx="" ds_id="" ds_ctx="" line
+  local qwen_id="" qwen_ctx="" qwen_owner="" ds_id="" ds_ctx="" ds_owner="" line
   if line=$(discover_route "$QWEN_URL"); then
-    qwen_id=${line%%	*}; qwen_ctx=${line##*	}
-    say "$QWEN_URL serves $qwen_id (${qwen_ctx:-unknown} ctx)"
+    IFS=$'\t' read -r qwen_id qwen_ctx qwen_owner <<<"$line"
+    # Only vLLM publishes the window. On NInfer, ask the server to refuse an
+    # oversized prompt and read the ceiling out of the refusal - a declared
+    # window that is too large is the one failure mode that is silent.
+    if [[ -n "$QWEN_CTX" ]]; then
+      qwen_ctx="$QWEN_CTX"
+      say "$QWEN_URL serves $qwen_id (${qwen_owner:-unknown}), window pinned to $qwen_ctx by QWEN_CTX"
+    else
+      if [[ -z "$qwen_ctx" || "$qwen_ctx" == "0" ]]; then
+        local probed
+        probed=$(probe_max_context "$QWEN_URL" "$qwen_id")
+        if [[ -n "$probed" ]]; then
+          qwen_ctx="$probed"
+          say "$QWEN_URL serves $qwen_id (${qwen_owner:-unknown}), window $qwen_ctx (probed - it publishes none)"
+        else
+          warn "$qwen_id publishes no context window and would not reveal one.
+         pi-ai will assume 262,144, which overflows a server started below that.
+         Pin it:  QWEN_CTX=<tokens> bash deepseek-harness.sh config"
+        fi
+      else
+        say "$QWEN_URL serves $qwen_id (${qwen_owner:-unknown}), window $qwen_ctx"
+      fi
+    fi
   else
     say "$QWEN_URL is not answering - leaving that route as it is"
   fi
   if line=$(discover_route "$DEEPSEEK_URL"); then
-    ds_id=${line%%	*}; ds_ctx=${line##*	}
+    IFS=$'\t' read -r ds_id ds_ctx ds_owner <<<"$line"
     say "$DEEPSEEK_URL serves $ds_id (${ds_ctx:-unknown} ctx)"
   else
     say "$DEEPSEEK_URL is not answering - leaving that route as it is"
@@ -436,7 +543,7 @@ cmd_config() {
              QWEN_URL=http://<host>:8000 bash deepseek-harness.sh config"
   fi
   write_env_file
-  merge_settings "$qwen_id" "$qwen_ctx" "$ds_id" "$ds_ctx"
+  merge_settings "$qwen_id" "$qwen_ctx" "$qwen_owner" "$ds_id" "$ds_ctx"
   say "settings: $SETTINGS"
 }
 
@@ -519,14 +626,20 @@ cmd_status() {
   else
     say "harness  : not running"
   fi
-  local line
+  # No window probe here: status is meant to be cheap, and the probe posts
+  # 1.5 MB. `config` is where the window gets resolved.
+  local line id ctx owner
   if line=$(discover_route "$QWEN_URL"); then
-    say "qwen     : ${line%%	*} @ $QWEN_URL"
+    IFS=$'\t' read -r id ctx owner <<<"$line"
+    # A backend that publishes no window reports 0 here, which is not a window.
+    [[ "$ctx" == "0" ]] && ctx=""
+    say "qwen     : $id @ $QWEN_URL [${owner:-unknown}]${ctx:+ ctx=$ctx}"
   else
     say "qwen     : not answering at $QWEN_URL"
   fi
   if line=$(discover_route "$DEEPSEEK_URL"); then
-    say "deepseek : ${line%%	*} @ $DEEPSEEK_URL"
+    IFS=$'\t' read -r id ctx owner <<<"$line"
+    say "deepseek : $id @ $DEEPSEEK_URL"
   else
     say "deepseek : not answering at $DEEPSEEK_URL"
   fi
