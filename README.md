@@ -107,6 +107,12 @@ Two things worth being straight about:
   refusal behaviour has been removed — a plain public download, no account. See
   [Uncensored build](#uncensored-build); you answer for what you generate with
   it.
+- **A faster engine, if you want it.** The same Qwen3.8-27B can be served by
+  [NInfer](https://github.com/Neroued/ninfer) instead — a C++/CUDA engine built
+  for the 5090 specifically. **About twice the speed**, and a very long
+  document is read in seconds instead of minutes. It compiles itself during
+  setup, which takes a while and happens once. See
+  [Go faster with NInfer](#go-faster-with-ninfer).
 - **The model**: Qwen3.8-27B — Alibaba's Apache-2.0, 27B multimodal model
   (released 2026-08-14) with 262K context and a reasoning dial, in NVIDIA's
   NVFP4 4-bit format built for your 5090's Blackwell tensor cores. Expect
@@ -158,6 +164,36 @@ writes a systemd user unit (no root needed).
 No launcher, no GUI, no WSL. Verified on Ubuntu 26.04 with an RTX 5090.
 Full walkthrough — including the **262K-context + MTP** configuration that runs
 at ~139 tok/s — in **[app/docs/LINUX.md](app/docs/LINUX.md)**.
+
+## Go faster with NInfer
+
+The Model dropdown has an entry called **Qwen3.8-27B via NInfer (fastest)**.
+It is the same model as Standard — the same weights, the same answers — served
+by a different engine.
+
+|  | Standard (vLLM) | NInfer |
+|---|---|---|
+| Speed | ~80 words-ish/second | **~150–195** |
+| Pasting a very long document | minutes, and it gives up past ~139K | **seconds** |
+| Uncensored build available | yes | no |
+| Setup | download and go | compiles an engine first (once) |
+
+Tick it, click **Install**, and that is all — it is remembered, so every later
+start uses it without touching anything. To go back, pick Standard again.
+
+From a command line:
+
+```powershell
+.\app\install.ps1 -Ninfer     # Windows
+```
+
+```bash
+bash app/scripts/setup-ninfer.sh   # Linux
+```
+
+Full detail — the other four models it can serve, the settings, and what to do
+when the build cannot find a CUDA toolkit — is in
+[NINFER.md](app/docs/NINFER.md).
 
 ## How it works
 
@@ -303,6 +339,7 @@ Elevated PowerShell for install; scripts live in `app\`:
 
 ```powershell
 .\app\install.ps1    # everything the GUI does; add -SkipDownload / -Unattended
+.\app\install.ps1 -Ninfer         # the NInfer backend instead: ~2x faster, compiles an engine
 .\app\install.ps1 -WslMemoryOnly   # only re-size the WSL VM from this PC's RAM
 .\app\run.ps1        # serve on http://localhost:8000/v1
 .\app\chat.ps1       # terminal chat (second terminal)
@@ -317,6 +354,7 @@ bash app/scripts/serve.sh           # serve on http://localhost:8000/v1
 bash app/scripts/chat.py            # terminal chat
 bash app/scripts/claude-code.sh run # Claude Code against this server
 bash app/scripts/patch-mtp.sh apply # opt-in: MTP at the full 262K window
+bash app/scripts/setup-ninfer.sh    # opt-in: the NInfer backend, ~2x faster
 bash app/scripts/install-service.sh install   # start automatically at boot
 ```
 
@@ -466,13 +504,15 @@ app/                       everything under the hood:
   scripts/                   the Linux side — runs under WSL *and* on native Linux:
     setup-linux.sh             one-time setup on a Linux box (wraps setup-wsl.sh)
     setup-wsl.sh               venv + vLLM + model download (what install.ps1 runs)
-    serve.sh                   vLLM with 5090-tuned flags
+    serve.sh                   vLLM with 5090-tuned flags; dispatches to the others
+    setup-ninfer.sh            opt-in: build the NInfer engine + fetch its artifact
+    serve-ninfer.sh            NInfer, the fast backend (same port, same API)
     claude-code.sh             the Claude Code bridge (LiteLLM)
     patch-mtp.sh               opt-in vLLM PR #40914 backport: MTP at 262K ctx
     install-service.sh         systemd user unit so the server survives reboot
     chat.py, benchmark.sh      clients against the OpenAI endpoint
     lib-*.sh                   shared helpers (build tools, WSL/Linux detection)
-  docs/                      troubleshooting, performance, Claude Code, Linux
+  docs/                      troubleshooting, performance, Claude Code, Linux, NInfer
     images/                    control-panel screenshots used by this README
 ```
 
@@ -494,8 +534,9 @@ needs.
 - [Qwen team](https://huggingface.co/Qwen) — Qwen3.8-27B (Apache 2.0)
 - [Unsloth](https://unsloth.ai) — dynamic NVFP4 quantization
 - [vLLM](https://github.com/vllm-project/vllm) — inference engine
+- [NInfer](https://github.com/Neroued/ninfer) by [Neroued](https://github.com/Neroued) — the optional fast backend, and its `.ninfer` artifacts (Apache 2.0)
 - [huihui-ai](https://huggingface.co/huihui-ai) and [sakamakismile](https://huggingface.co/sakamakismile) — the abliterated build
 - [MiaAI-Lab](https://github.com/MiaAI-Lab/Qwen3.8-27B-NVFP4-RTX-5090) — the MTP-at-262K patch this repo backports
 
 Tooling in this repo is [MIT-licensed](LICENSE). Not affiliated with Alibaba,
-Unsloth, NVIDIA, or the vLLM project.
+Unsloth, NVIDIA, the vLLM project, or NInfer.
