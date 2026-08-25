@@ -387,6 +387,14 @@ it thinks for a few seconds before each reply (`QWEN_EFFORT=medium` trades some
 of that back). Full guide, settings and troubleshooting:
 **[app/docs/DEEPSEEK-HARNESS.md](app/docs/DEEPSEEK-HARNESS.md)**.
 
+**It has also tuned this very stack.** Pointed at a copy of this repo, the
+harness built `app/optimization/` — an autonomous loop that benchmarks and
+tunes its own settings *and* the live server's flags on the one GPU they
+share, with health probes, quiet-window swaps and automatic rollback. Its
+first findings (a reasoning-effort sweet spot, a serving flag promoted on a
+16/16 run, and two impossible configs rejected safely) are written up in
+**[app/docs/SELF-OPTIMIZATION.md](app/docs/SELF-OPTIMIZATION.md)**.
+
 ## For power users
 
 <details>
@@ -579,6 +587,8 @@ app/                       everything under the hood:
     lib-*.sh                   shared helpers (build tools, model catalog,
                                NInfer, GPU telemetry, WSL/Linux detection)
   templates/                 chat templates (DeepSeek V4 + Hermes tool calls)
+  optimization/              the harness's autonomous tuning loop (see
+                             docs/SELF-OPTIMIZATION.md); state stays local
   docs/                      troubleshooting, performance, Claude Code,
                              DeepSeek Harness, Linux, NInfer
     images/                    control-panel screenshots used by this README
@@ -592,6 +602,7 @@ app/                       everything under the hood:
 | **[PERFORMANCE.md](app/docs/PERFORMANCE.md)** | Measured throughput, context/speed trade-offs, tuning |
 | **[CLAUDE-CODE.md](app/docs/CLAUDE-CODE.md)** | The bridge, its settings, and what works versus what does not |
 | **[DEEPSEEK-HARNESS.md](app/docs/DEEPSEEK-HARNESS.md)** | The dsh agent runtime: install, routes, Web UI, headless mode |
+| **[SELF-OPTIMIZATION.md](app/docs/SELF-OPTIMIZATION.md)** | The autonomous tuning loop: results, caveats, roadmap |
 | **[NINFER.md](app/docs/NINFER.md)** | The NInfer backend: what it is faster at, knobs, build issues |
 | **[LINUX.md](app/docs/LINUX.md)** | Native Linux install, systemd, the 262K + MTP path |
 

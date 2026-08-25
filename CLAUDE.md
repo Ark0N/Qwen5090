@@ -650,6 +650,25 @@ cliff, against vLLM's 371 tok/s at ~90K and an abort at ~139K.
 Not yet measured here: a genuinely long prompt (the 260K prefill claim), and
 anything at concurrency > 1.
 
+## The self-optimization loop (2026-08-25)
+
+`app/optimization/` was written **by the dsh harness itself** (Qwen3.8-27B on
+this stack), working in a repo copy at `/root/testapp` in WSL: an autonomous
+loop that tunes (persona × reasoning effort) for the agent and the NInfer
+serving flags for the live :8000 server, scored by its own 16-task
+terminal-bench-style suite. The code was imported into the repo verbatim;
+`app/docs/SELF-OPTIMIZATION.md` is the operator's account — results as of
+round 10, the caveats (wall time on the shared GPU is 2.3×-noisy; the suite is
+self-expanded), and the improvement roadmap. Live state stays in the working
+copy (`state.json`, `results/`, `logs/` — gitignored concepts, not shipped);
+snapshots are exported to `E:\Qwen5090\optimization-snapshots\`. Standing
+findings: structured|medium won the harness sweep 15/16; `--preserve-thinking`
+was promoted on a 16/16; `--max-concurrency 4` and `--prefill-chunk 4096`
+refuse to start on this card and are recorded as failed candidates. The loop
+coordinates with the harness through `mode.json` and must keep doing so —
+anything that runs benchmarks here shares the one GPU with the user's live
+sessions.
+
 ## Architecture (three layers, one direction)
 
 1. **Launcher/GUI** — `Start Qwen 5090.cmd` → `app/gui.ps1`: a single-file WPF app (XAML string +

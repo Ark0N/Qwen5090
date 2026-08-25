@@ -31,3 +31,15 @@ jobs/
 
 # pre-git backup copies from the ZIP-handover era on the Windows box
 _prehead-backups/
+
+# the self-optimization loop's runtime state - only its code ships
+app/optimization/state.json
+app/optimization/results/
+app/optimization/logs/
+app/optimization/work/
+app/optimization/heartbeat.json
+app/optimization/mode.json
+app/optimization/server.flags*
+app/optimization/.loop.*
+app/optimization/.watchdog.*
+app/optimization/STOP
