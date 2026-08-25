@@ -60,6 +60,11 @@ MAX_SEQS="${MAX_SEQS:-2}"
 # Prefix reuse is on by default in NInfer, which is the right default for an
 # agent client resending the same system prompt every turn.
 PREFIX_CACHE="${PREFIX_CACHE:-1}"
+# --preserve-thinking retains closed-turn assistant reasoning in later prompts
+# (NInfer's own wording). On by default because the self-optimization loop
+# promoted it on a 16/16 and the production server has run with it since; set
+# PRESERVE_THINKING=0 to strip reasoning between turns instead.
+PRESERVE_THINKING="${PRESERVE_THINKING:-1}"
 VISION="${VISION:-0}"
 API_KEY="${API_KEY:-}"
 DOWNLOAD="${DOWNLOAD:-1}"
@@ -155,6 +160,16 @@ fi
 # concurrency from 1 to 8.
 
 [[ "$PREFIX_CACHE" == "1" ]] || ARGS+=(--no-prefix-reuse)
+# The flag is newer than the first NInfer builds this script installed, so
+# probe the binary's help rather than passing it blind - an unknown flag is a
+# refusal at startup, not a warning.
+if [[ "$PRESERVE_THINKING" == "1" ]]; then
+  if "$NINFER_SERVE" --help 2>&1 | grep -q -- '--preserve-thinking'; then
+    ARGS+=(--preserve-thinking)
+  else
+    say "note: this NInfer build predates --preserve-thinking - rerun scripts/setup-ninfer.sh to rebuild if you want it."
+  fi
+fi
 # Vision is likewise startup-frozen, and off by default because it costs its
 # weights and a frozen scratch allocation whether or not an image ever arrives.
 [[ "$VISION" == "1" ]] && ARGS+=(--vision)
@@ -163,7 +178,14 @@ fi
 qwen5090_apply_power_limit
 qwen5090_start_telemetry "$LOG_DIR"
 
-say "model=$MODEL_LABEL ctx=$CTX port=$PORT kv=$KV_DTYPE mtp=$MTP concurrency=$MAX_SEQS prefix_reuse=$PREFIX_CACHE vision=$VISION"
+say "model=$MODEL_LABEL ctx=$CTX port=$PORT kv=$KV_DTYPE mtp=$MTP concurrency=$MAX_SEQS prefix_reuse=$PREFIX_CACHE preserve_thinking=$PRESERVE_THINKING vision=$VISION"
 say "OpenAI-compatible endpoint:   http://localhost:$PORT/v1"
 say "Anthropic-compatible endpoint: http://localhost:$PORT/v1/messages"
+# The server binds 0.0.0.0, so on native Linux the LAN and the tailnet reach
+# it with no portproxy step (that is a WSL-on-Windows need, share.ps1's job).
+# Print the tailnet URL when there is one, so "is it shared?" needs no digging.
+if command -v tailscale >/dev/null 2>&1; then
+  TS_IP="$(tailscale ip -4 2>/dev/null | head -n1 || true)"
+  [[ -n "$TS_IP" ]] && say "Tailscale:                     http://$TS_IP:$PORT/v1"
+fi
 exec "$NINFER_SERVE" "${ARGS[@]}"

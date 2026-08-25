@@ -166,6 +166,14 @@ bash app/scripts/serve.sh                    # http://localhost:8000/v1
 bash app/scripts/claude-code.sh install && qwen-claude   # Claude Code on your GPU
 ```
 
+Or, with the [NInfer backend](app/docs/NINFER.md) installed, one command serves
+the maintainer's production configuration — full 252,928-token window, MTP-3,
+shared on the LAN/tailnet, identical to what the Windows box runs:
+
+```bash
+bash app/scripts/serve-full.sh               # see app/docs/LINUX.md
+```
+
 Prefer a browser to a terminal? The DeepSeek Harness runs here too, and on
 Linux it is the simpler of the two — no bridge process, and it discovers the
 model and context window by itself:
@@ -574,6 +582,7 @@ app/                       everything under the hood:
     serve.sh                   vLLM with 5090-tuned flags; dispatches to the others
     setup-ninfer.sh            opt-in: build the NInfer engine + fetch its artifact
     serve-ninfer.sh            NInfer, the fast backend (same port, same API)
+    serve-full.sh              one command: the production NInfer config, full window
     serve-gguf.sh              llama.cpp, for the DeepSeek GGUF builds
     claude-code.sh             the Claude Code bridge (LiteLLM)
     deepseek-harness.sh        the DeepSeek Harness (dsh): install, route, Web UI

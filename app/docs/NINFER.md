@@ -139,7 +139,9 @@ they mean the same thing, and translates them:
 | `KV_CACHE_DTYPE` | `int8` | `int8` or `bf16`. vLLM spellings (`fp8`, `turboquant_4bit_nc`) map to `int8` |
 | `MAX_SEQS` | `2` | concurrent requests. The flag takes 1–8, but VRAM decides — see below |
 | `KV_CAPACITY` | `auto` | `auto` takes everything left after the weights |
+| `PREFILL_CHUNK` | `1024` | how many prompt tokens each prefill step processes |
 | `PREFIX_CACHE` | `1` | prefix reuse; worth keeping on for agent clients |
+| `PRESERVE_THINKING` | `1` | retains closed-turn assistant reasoning in later prompts. Skipped with a note on engine builds that predate the flag |
 | `VISION` | `0` | images and video. Off by default because it costs allocations even when unused |
 | `API_KEY` | unset | required as a bearer token / `x-api-key` when set |
 | `GPU_UTIL` | — | **ignored.** NInfer sizes its KV pool from what is left rather than claiming a fraction up front |

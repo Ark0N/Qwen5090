@@ -82,6 +82,16 @@ PORT=8000
 #MAX_SEQS=1
 #GPU_UTIL=0.93
 
+# --- The production configuration (NInfer, full window) ------------------------
+# What the maintainer's Windows box serves, and what serve-full.sh pins for a
+# manual start: the NInfer backend at the full window (CTX clamps to the
+# artifact's 252,928 ceiling), MTP-3, int8 KV, concurrency 2, prefix reuse and
+# --preserve-thinking. Needs scripts/setup-ninfer.sh run once first. Uncomment
+# these three to make the service serve the same thing:
+#MODEL=neroued/Qwen3.8-27B-nvfp4-NInfer
+#CTX=262144
+#PRESERVE_THINKING=1
+
 # --- GPU power cap (diagnostic) ----------------------------------------------
 # Unset by default; nothing here touches your hardware unless you ask. This
 # card has dropped off the bus mid-decode (Xid 79 on Linux, 0x116 on Windows)

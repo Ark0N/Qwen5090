@@ -266,6 +266,34 @@ bash app/scripts/setup-ninfer.sh --default-vllm
 There is no abliterated artifact for this backend — that build stays on vLLM.
 Full detail in [NINFER.md](NINFER.md).
 
+## The production server in one command
+
+For the dual-boot case — the same PC serves under Windows, and booting Ubuntu
+should bring up the *identical* server so every client on the tailnet keeps
+working against the same URL:
+
+```bash
+git pull
+bash app/scripts/serve-full.sh
+```
+
+That is the production configuration, pinned: `neroued/Qwen3.8-27B-nvfp4-NInfer`
+on `0.0.0.0:8000` at the full window (`CTX=262144`, which the artifact clamps
+to its 252,928 ceiling), MTP-3 with the lm-head draft, int8 KV cache,
+concurrency 2, prefix reuse, and `--preserve-thinking`. It needs the NInfer
+backend installed once (`bash app/scripts/setup-ninfer.sh`, above).
+
+Sharing needs no extra step: binding `0.0.0.0` puts it on the LAN, and when
+Tailscale is up the script prints the tailnet URL
+(`http://<tailnet-ip>:8000/v1`) at startup. `share.ps1` exists only because
+WSL on Windows needs a portproxy; native Linux does not.
+
+To get the same configuration at boot instead of from a terminal, uncomment
+the "production configuration" block in `~/.qwen5090/server.env` and use
+`install-service.sh` (next section). Every value in `serve-full.sh` is still
+an ordinary environment override — `CTX=131072 bash app/scripts/serve-full.sh`
+serves the same stack at the default window.
+
 ## Prefill is the real limit, not the window
 
 Retrieval accuracy holds across the whole 262K window, but prefill collapses
