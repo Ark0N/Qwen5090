@@ -90,10 +90,26 @@ Two things worth being straight about:
   NVFP4 quantisation, which is what makes 27B fit in 32 GB of VRAM at all — it
   costs some accuracy. Treat the table as the ceiling, not a promise.
 
-For a measurement on **this** quant rather than the model card, we ran
-Terminal-Bench ourselves across four different coding agents, and found the agent
-you pick matters as much as the model: see
-**[Which coding agent is best on your 5090?](app/docs/HARNESS-BENCHMARKS.md)**
+### Measured on this quant: which coding agent?
+
+The model is only half of a coding agent. The other half is the **harness** that
+drives it, and the harness you pick matters as much as the model. So we ran
+Terminal-Bench ourselves, on **this** 4-bit quant, across four different agents
+pointed at the same server with the same effort:
+
+| Coding agent | Score (Terminal-Bench subset) |
+|---|:---:|
+| **[DeepSeek Harness](app/docs/DEEPSEEK-HARNESS.md)** | **7 / 12** |
+| **pi** | **7 / 12** |
+| **[Claude Code](app/docs/CLAUDE-CODE.md)** | **7 / 12** |
+| terminus | 6 / 12 |
+
+Three of the four tie for the lead after tuning (out of the box the field ran
+7 / 6 / 4 / 3). The takeaway: **pi and the DeepSeek Harness give the best result
+for the least fuss**, and almost every difference between agents was fixable
+plumbing, not the model. The real ceiling is the model's, at 8 / 12 on this
+subset. Full per-task numbers, what each agent is good at, and the honest
+caveats: **[Which coding agent is best on your 5090?](app/docs/HARNESS-BENCHMARKS.md)**
 
 ## What you need
 
