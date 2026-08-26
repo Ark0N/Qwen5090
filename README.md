@@ -35,6 +35,7 @@ already know, answered by the GPU in your own machine.
 
 **[Get started](#get-started-3-steps)** &nbsp;·&nbsp;
 **[Benchmarks](#how-good-is-it)** &nbsp;·&nbsp;
+**[Best coding agent](#which-coding-agent-works-best)** &nbsp;·&nbsp;
 **[Requirements](#what-you-need)** &nbsp;·&nbsp;
 **[Linux](#already-running-linux)** &nbsp;·&nbsp;
 **[Coding agents](#use-it-as-a-coding-agent)** &nbsp;·&nbsp;
@@ -90,12 +91,12 @@ Two things worth being straight about:
   NVFP4 quantisation, which is what makes 27B fit in 32 GB of VRAM at all — it
   costs some accuracy. Treat the table as the ceiling, not a promise.
 
-### Measured on this quant: which coding agent?
+## Which coding agent works best?
 
 The model is only half of a coding agent. The other half is the **harness** that
 drives it, and the harness you pick matters as much as the model. So we ran
-Terminal-Bench ourselves, on **this** 4-bit quant, across four different agents
-pointed at the same server with the same effort:
+[Terminal-Bench](https://www.tbench.ai/) ourselves, on **this** 4-bit quant,
+across four different agents pointed at the same server with the same effort:
 
 | Coding agent | Score (Terminal-Bench subset) |
 |---|:---:|
