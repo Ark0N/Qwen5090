@@ -1,0 +1,56 @@
+{
+    "id": "54a799b9-c195-4181-9185-2c044436d61c",
+    "results": [
+        {
+            "id": "ef1727dc-d3be-44a7-b7a6-6d51becbba23",
+            "trial_name": "fix-git.1-of-1.opt-cc-1",
+            "task_id": "fix-git",
+            "instruction": "I just made some changes to my personal site and checked out master, but now I can't find those changes. Please help me find them and merge them into master.",
+            "is_resolved": false,
+            "failure_mode": "unset",
+            "parser_results": {
+                "test_layout_file": "passed",
+                "test_about_file": "failed"
+            },
+            "recording_path": "opt-cc-1/fix-git/fix-git.1-of-1.opt-cc-1/sessions/agent.cast",
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+            "trial_started_at": "2026-08-26T03:49:07.368672+00:00",
+            "trial_ended_at": "2026-08-26T03:58:33.709348+00:00",
+            "agent_started_at": "2026-08-26T03:49:12.228389+00:00",
+            "agent_ended_at": "2026-08-26T03:58:10.809521+00:00",
+            "test_started_at": "2026-08-26T03:58:14.246664+00:00",
+            "test_ended_at": "2026-08-26T03:58:21.566635+00:00"
+        },
+        {
+            "id": "6d6a4f8e-98cb-418b-b2c2-b5fac4b042a7",
+            "trial_name": "sqlite-db-truncate.1-of-1.opt-cc-1",
+            "task_id": "sqlite-db-truncate",
+            "instruction": "I have a sqlite database in /app/trunc.db that was corrupted. Recover as many of the rows as possible, and create a JSON file in /app/recover.json. The output should have the format [{\"word\": \"testwordXY\", \"value\": M}, {\"word\": \"testwordZZ\",\"value\": N}, ...]",
+            "is_resolved": true,
+            "failure_mode": "unset",
+            "parser_results": {
+                "test_json_data": "passed"
+            },
+            "recording_path": "opt-cc-1/sqlite-db-truncate/sqlite-db-truncate.1-of-1.opt-cc-1/sessions/agent.cast",
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+            "trial_started_at": "2026-08-26T03:49:07.372683+00:00",
+            "trial_ended_at": "2026-08-26T04:02:44.158034+00:00",
+            "agent_started_at": "2026-08-26T03:49:12.228031+00:00",
+            "agent_ended_at": "2026-08-26T04:02:22.521835+00:00",
+            "test_started_at": "2026-08-26T04:02:25.979625+00:00",
+            "test_ended_at": "2026-08-26T04:02:32.761328+00:00"
+        }
+    ],
+    "pass_at_k": {},
+    "n_resolved": 1,
+    "n_unresolved": 1,
+    "resolved_ids": [
+        "sqlite-db-truncate"
+    ],
+    "unresolved_ids": [
+        "fix-git"
+    ],
+    "accuracy": 0.5
+}

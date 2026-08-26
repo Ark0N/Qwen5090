@@ -1,0 +1,31 @@
+{
+    "run_id": "opt-cc-1",
+    "uuid": "5394c4b0-e6fd-4fa2-9de4-7f6c114ae964",
+    "dataset_path": null,
+    "dataset_name": "terminal-bench-core",
+    "dataset_version": "0.1.1",
+    "output_path": "<repo>/tbench/runs",
+    "agent_name": "claude-code-qwen5090",
+    "no_rebuild": false,
+    "cleanup": false,
+    "log_level": 20,
+    "task_ids": [
+        "fix-git",
+        "sqlite-db-truncate"
+    ],
+    "exclude_task_ids": null,
+    "n_tasks": null,
+    "n_concurrent_trials": 2,
+    "n_attempts": 1,
+    "dataset_size": 2,
+    "accuracy": 0.5,
+    "model_name": null,
+    "start_time": "2026-08-26T03:49:07.357386+00:00",
+    "end_time": "2026-08-26T04:02:44.162930+00:00",
+    "commit_hash": "5a3600cd5a096f46a9f4259396771d4f9d5754d4",
+    "username": "Ark0N",
+    "s3_bucket": null,
+    "agent_kwargs": null,
+    "pass_at_k": {},
+    "resumed_at": null
+}

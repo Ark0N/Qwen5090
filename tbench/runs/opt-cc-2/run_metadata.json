@@ -1,0 +1,30 @@
+{
+    "run_id": "opt-cc-2",
+    "uuid": "c76032d5-6ec8-4aa5-a468-c50ac5617e29",
+    "dataset_path": null,
+    "dataset_name": "terminal-bench-core",
+    "dataset_version": "0.1.1",
+    "output_path": "<repo>/tbench/runs",
+    "agent_name": "claude-code-qwen5090",
+    "no_rebuild": false,
+    "cleanup": false,
+    "log_level": 20,
+    "task_ids": [
+        "fix-git"
+    ],
+    "exclude_task_ids": null,
+    "n_tasks": null,
+    "n_concurrent_trials": 1,
+    "n_attempts": 1,
+    "dataset_size": 1,
+    "accuracy": 1.0,
+    "model_name": null,
+    "start_time": "2026-08-26T04:09:58.473682+00:00",
+    "end_time": "2026-08-26T04:14:10.501183+00:00",
+    "commit_hash": "5a3600cd5a096f46a9f4259396771d4f9d5754d4",
+    "username": "Ark0N",
+    "s3_bucket": null,
+    "agent_kwargs": null,
+    "pass_at_k": {},
+    "resumed_at": null
+}

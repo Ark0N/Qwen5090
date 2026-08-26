@@ -1,0 +1,21 @@
+{
+    "id": "d9943c1c-df34-4e91-a47f-54b03736e4b6",
+    "trial_name": "hello-world.1-of-1.cmp-dsh",
+    "task_id": "hello-world",
+    "instruction": "Create a file called hello.txt in the current directory. Write \"Hello, world!\" to it. Make sure it ends in a newline. Don't make any other files or folders.",
+    "is_resolved": true,
+    "failure_mode": "unset",
+    "parser_results": {
+        "test_hello_file_exists": "passed",
+        "test_hello_file_content": "passed"
+    },
+    "recording_path": "cmp-dsh/hello-world/hello-world.1-of-1.cmp-dsh/sessions/agent.cast",
+    "total_input_tokens": 0,
+    "total_output_tokens": 0,
+    "trial_started_at": "2026-08-26T01:32:33.388526+00:00",
+    "trial_ended_at": "2026-08-26T01:34:14.241615+00:00",
+    "agent_started_at": "2026-08-26T01:32:39.245496+00:00",
+    "agent_ended_at": "2026-08-26T01:33:51.207035+00:00",
+    "test_started_at": "2026-08-26T01:33:54.635680+00:00",
+    "test_ended_at": "2026-08-26T01:34:01.047286+00:00"
+}

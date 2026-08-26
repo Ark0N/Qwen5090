@@ -1,0 +1,77 @@
+{
+    "id": "711c83b5-af1d-4ec1-b573-e5938969a0bc",
+    "results": [
+        {
+            "id": "df12937b-17b9-43e6-923b-917339d55499",
+            "trial_name": "hello-world.1-of-1.opt-terminus-1",
+            "task_id": "hello-world",
+            "instruction": "Create a file called hello.txt in the current directory. Write \"Hello, world!\" to it. Make sure it ends in a newline. Don't make any other files or folders.",
+            "is_resolved": true,
+            "failure_mode": "unset",
+            "parser_results": {
+                "test_hello_file_exists": "passed",
+                "test_hello_file_content": "passed"
+            },
+            "recording_path": "opt-terminus-1/hello-world/hello-world.1-of-1.opt-terminus-1/sessions/agent.cast",
+            "total_input_tokens": 863,
+            "total_output_tokens": 128,
+            "trial_started_at": "2026-08-26T03:20:20.414795+00:00",
+            "trial_ended_at": "2026-08-26T03:20:53.852690+00:00",
+            "agent_started_at": "2026-08-26T03:20:24.674913+00:00",
+            "agent_ended_at": "2026-08-26T03:20:29.874931+00:00",
+            "test_started_at": "2026-08-26T03:20:33.310078+00:00",
+            "test_ended_at": "2026-08-26T03:20:42.909573+00:00"
+        },
+        {
+            "id": "9d20ad59-fc71-4408-b151-f5864a594874",
+            "trial_name": "sqlite-db-truncate.1-of-1.opt-terminus-1",
+            "task_id": "sqlite-db-truncate",
+            "instruction": "I have a sqlite database in /app/trunc.db that was corrupted. Recover as many of the rows as possible, and create a JSON file in /app/recover.json. The output should have the format [{\"word\": \"testwordXY\", \"value\": M}, {\"word\": \"testwordZZ\",\"value\": N}, ...]",
+            "is_resolved": true,
+            "failure_mode": "unset",
+            "parser_results": {
+                "test_json_data": "passed"
+            },
+            "recording_path": "opt-terminus-1/sqlite-db-truncate/sqlite-db-truncate.1-of-1.opt-terminus-1/sessions/agent.cast",
+            "total_input_tokens": 15353,
+            "total_output_tokens": 2349,
+            "trial_started_at": "2026-08-26T03:20:53.861331+00:00",
+            "trial_ended_at": "2026-08-26T03:23:16.495019+00:00",
+            "agent_started_at": "2026-08-26T03:20:58.030358+00:00",
+            "agent_ended_at": "2026-08-26T03:22:50.151084+00:00",
+            "test_started_at": "2026-08-26T03:22:53.595181+00:00",
+            "test_ended_at": "2026-08-26T03:23:05.371113+00:00"
+        },
+        {
+            "id": "fda60717-5091-4a96-bad4-a54bf80fbce6",
+            "trial_name": "csv-to-parquet.1-of-1.opt-terminus-1",
+            "task_id": "csv-to-parquet",
+            "instruction": "Convert the file '/app/data.csv' into a Parquet file named '/app/data.parquet'. The CSV file contains sample data with headers.",
+            "is_resolved": true,
+            "failure_mode": "unset",
+            "parser_results": {
+                "test_parquet_exists": "passed",
+                "test_data_matches": "passed"
+            },
+            "recording_path": "opt-terminus-1/csv-to-parquet/csv-to-parquet.1-of-1.opt-terminus-1/sessions/agent.cast",
+            "total_input_tokens": 7552,
+            "total_output_tokens": 832,
+            "trial_started_at": "2026-08-26T03:20:20.413090+00:00",
+            "trial_ended_at": "2026-08-26T03:25:22.562463+00:00",
+            "agent_started_at": "2026-08-26T03:20:24.725210+00:00",
+            "agent_ended_at": "2026-08-26T03:24:55.267673+00:00",
+            "test_started_at": "2026-08-26T03:24:58.707988+00:00",
+            "test_ended_at": "2026-08-26T03:25:08.218720+00:00"
+        }
+    ],
+    "pass_at_k": {},
+    "n_resolved": 3,
+    "n_unresolved": 0,
+    "resolved_ids": [
+        "hello-world",
+        "sqlite-db-truncate",
+        "csv-to-parquet"
+    ],
+    "unresolved_ids": [],
+    "accuracy": 1.0
+}

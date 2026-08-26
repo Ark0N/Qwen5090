@@ -1,0 +1,34 @@
+{
+    "id": "11e172a0-acbe-4dad-aff1-70d3660e0124",
+    "results": [
+        {
+            "id": "61dc114b-96df-4dca-afe1-fdeb31fb51ff",
+            "trial_name": "hello-world.1-of-1.terminus-smoke-3",
+            "task_id": "hello-world",
+            "instruction": "Create a file called hello.txt in the current directory. Write \"Hello, world!\" to it. Make sure it ends in a newline. Don't make any other files or folders.",
+            "is_resolved": true,
+            "failure_mode": "unset",
+            "parser_results": {
+                "test_hello_file_exists": "passed",
+                "test_hello_file_content": "passed"
+            },
+            "recording_path": "terminus-smoke-3/hello-world/hello-world.1-of-1.terminus-smoke-3/sessions/agent.cast",
+            "total_input_tokens": 1700,
+            "total_output_tokens": 231,
+            "trial_started_at": "2026-08-25T23:55:06.527074+00:00",
+            "trial_ended_at": "2026-08-25T23:55:49.889702+00:00",
+            "agent_started_at": "2026-08-25T23:55:11.768050+00:00",
+            "agent_ended_at": "2026-08-25T23:55:18.390914+00:00",
+            "test_started_at": "2026-08-25T23:55:22.137102+00:00",
+            "test_ended_at": "2026-08-25T23:55:38.412416+00:00"
+        }
+    ],
+    "pass_at_k": {},
+    "n_resolved": 1,
+    "n_unresolved": 0,
+    "resolved_ids": [
+        "hello-world"
+    ],
+    "unresolved_ids": [],
+    "accuracy": 1.0
+}

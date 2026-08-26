@@ -1,0 +1,30 @@
+{
+    "run_id": "opt-dsh-1",
+    "uuid": "f28e5c68-99de-4d2e-9c33-96d481717818",
+    "dataset_path": null,
+    "dataset_name": "terminal-bench-core",
+    "dataset_version": "0.1.1",
+    "output_path": "<repo>/tbench/runs",
+    "agent_name": "dsh-qwen5090",
+    "no_rebuild": false,
+    "cleanup": false,
+    "log_level": 20,
+    "task_ids": [
+        "fibonacci-server"
+    ],
+    "exclude_task_ids": null,
+    "n_tasks": null,
+    "n_concurrent_trials": 1,
+    "n_attempts": 1,
+    "dataset_size": 1,
+    "accuracy": 0.0,
+    "model_name": null,
+    "start_time": "2026-08-26T05:10:24.478146+00:00",
+    "end_time": "2026-08-26T05:12:14.647368+00:00",
+    "commit_hash": "5a3600cd5a096f46a9f4259396771d4f9d5754d4",
+    "username": "Ark0N",
+    "s3_bucket": null,
+    "agent_kwargs": null,
+    "pass_at_k": {},
+    "resumed_at": null
+}

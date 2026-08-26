@@ -1,0 +1,134 @@
+#!/bin/bash
+# Install the pi coding agent in the task container and point it at the
+# qwen5090 NInfer serve.
+# This script is SOURCED into the task's tmux session, so its cd calls leak:
+# the starting directory is saved and restored at the end, or the agent runs
+# from the install tree instead of the task's working directory.
+__PI_SETUP_PWD="$PWD"
+export DEBIAN_FRONTEND=noninteractive
+
+# Every network step here is retried. A single lossy TLS read from nodejs.org
+# cost a whole task in the baseline run (`OpenSSL SSL_read: ... bad record mac`
+# mid-download, then the same on nvm's source-build fallback), which surfaces
+# as agent_installation_failed - an install flake scored as a task failure.
+__pi_retry() {
+  local max="$1"; shift
+  local n=1
+  until "$@"; do
+    if [ "$n" -ge "$max" ]; then
+      echo "pi-setup: giving up after $max attempts: $*" >&2
+      return 1
+    fi
+    echo "pi-setup: attempt $n/$max failed, retrying in $((n * 5))s: $*" >&2
+    sleep "$((n * 5))"
+    n=$((n + 1))
+  done
+}
+
+__pi_retry 3 apt-get update
+__pi_retry 3 apt-get install -y curl ca-certificates
+
+# Node via nvm (same pattern as the Claude Code / Qwen Code agents).
+# `-b` keeps a failed download a fast failure: without it nvm falls back to
+# building node from source, which is minutes of CPU for a transport error a
+# retry fixes in seconds. pi's engines field requires node >=22.19.0, so there
+# is no distro-package fallback to drop to - the retry IS the fallback.
+__pi_install_nvm() {
+  curl -fsSL --retry 3 --retry-connrefused -o /tmp/nvm-install.sh \
+    https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.2/install.sh &&
+    bash /tmp/nvm-install.sh
+}
+__pi_retry 3 __pi_install_nvm
+export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+source "$NVM_DIR/nvm.sh"
+
+__pi_install_node() {
+  # A half-written tarball in nvm's cache is never resumed, only re-checksummed
+  # and rejected, so clear it before each attempt.
+  rm -rf "$NVM_DIR/.cache/bin" "$NVM_DIR/.cache/src" 2>/dev/null
+  nvm install -b --no-progress 22 && nvm use 22 >/dev/null && command -v node >/dev/null
+}
+__pi_retry 4 __pi_install_node
+
+# --ignore-scripts: pi ships no build step of its own and its optional native
+# deps are not needed by the read/write/edit/bash tools; skipping postinstall
+# keeps the install to a download in containers with no toolchain.
+__pi_retry 3 npm install -g --ignore-scripts \
+  --fetch-retries 5 --fetch-retry-maxtimeout 120000 \
+  "@earendil-works/pi-coding-agent@{{ version }}"
+
+# Resolve the real entrypoint before the shim shadows it on PATH. Empty here
+# means node or the npm install is missing; fail now with a legible message
+# rather than writing a shim whose exec line is a bare `exec ""`.
+PI_REAL="$(command -v pi)"
+NODE_BIN="$(dirname "$(command -v node)")"
+if [ -z "$PI_REAL" ] || [ -z "$NODE_BIN" ]; then
+  echo "pi-setup: node/pi not on PATH after install (pi='$PI_REAL' node_bin='$NODE_BIN')" >&2
+  return 1 2>/dev/null || exit 1
+fi
+
+# Model route: the 5090 box's NInfer serve as a pi custom provider.
+# Field names are the ones models.md defines - `baseUrl` (not baseURL) and
+# `apiKey` with "$VAR" interpolation (there is no apiKeyEnv); a wrong-shaped
+# provider block loads but yields `Unknown provider "qwen5090"`.
+# thinkingLevelMap is the current name for the effort mapping, and the holes
+# are load-bearing: the loaded chat template answers only none/low/medium/
+# xhigh and returns a hard 400 for minimal, high and max.
+export PI_CODING_AGENT_DIR="${PI_CODING_AGENT_DIR:-/opt/pi-agent}"
+mkdir -p "$PI_CODING_AGENT_DIR"
+cat > "$PI_CODING_AGENT_DIR/models.json" <<'JSON'
+{
+  "providers": {
+    "qwen5090": {
+      "name": "Qwen 5090",
+      "baseUrl": "http://<5090-ip>:8000/v1",
+      "api": "openai-completions",
+      "apiKey": "$QWEN5090_API_KEY",
+      "compat": {
+        "supportsDeveloperRole": false,
+        "supportsReasoningEffort": true,
+        "maxTokensField": "max_tokens"
+      },
+      "models": [
+        {
+          "id": "qwen3.8-27b",
+          "name": "Qwen 5090",
+          "reasoning": true,
+          "input": ["text"],
+          "contextWindow": 252928,
+          "maxTokens": 32768,
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+          "thinkingLevelMap": {
+            "off": "none",
+            "minimal": null,
+            "low": "low",
+            "medium": "medium",
+            "high": null,
+            "xhigh": "xhigh",
+            "max": null
+          }
+        }
+      ]
+    }
+  }
+}
+JSON
+
+# Launcher shim on PATH; bakes in the nvm node location and the config dir,
+# so the agent command does not depend on nvm.sh having been sourced.
+cat > /usr/local/bin/pi <<SHIM
+#!/usr/bin/env bash
+export PI_CODING_AGENT_DIR="\${PI_CODING_AGENT_DIR:-$PI_CODING_AGENT_DIR}"
+export PATH="$NODE_BIN:\$PATH"
+exec "$PI_REAL" "\$@"
+SHIM
+chmod +x /usr/local/bin/pi
+hash -r
+
+# Back to the task's working directory before the agent command runs.
+cd "$__PI_SETUP_PWD"
+
+# Readiness probe: parses models.json and resolves the provider, so a broken
+# provider block fails HERE (surfaced as INSTALL_FAIL_STATUS) and not as a
+# mid-task `Unknown provider`.
+pi --list-models qwen5090 | grep -q 'qwen3.8-27b'

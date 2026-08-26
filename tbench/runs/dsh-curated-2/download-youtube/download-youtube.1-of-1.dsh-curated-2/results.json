@@ -1,0 +1,20 @@
+{
+    "id": "5d996d3b-bb23-4365-9809-c358ab52223e",
+    "trial_name": "download-youtube.1-of-1.dsh-curated-2",
+    "task_id": "download-youtube",
+    "instruction": "Download the first video ever uploaded to YouTube as an mp4. Then, trim the video to the final 10 seconds and save it as `result.mp4`.",
+    "is_resolved": false,
+    "failure_mode": "unset",
+    "parser_results": {
+        "../tests/test_outputs.py": "failed"
+    },
+    "recording_path": "dsh-curated-2/download-youtube/download-youtube.1-of-1.dsh-curated-2/sessions/agent.cast",
+    "total_input_tokens": 0,
+    "total_output_tokens": 0,
+    "trial_started_at": "2026-08-26T00:05:32.811903+00:00",
+    "trial_ended_at": "2026-08-26T00:10:25.381655+00:00",
+    "agent_started_at": "2026-08-26T00:05:37.181216+00:00",
+    "agent_ended_at": "2026-08-26T00:09:56.626900+00:00",
+    "test_started_at": "2026-08-26T00:10:00.138806+00:00",
+    "test_ended_at": "2026-08-26T00:10:09.129348+00:00"
+}

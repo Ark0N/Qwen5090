@@ -1,0 +1,70 @@
+# Anthropic -> OpenAI bridge for the Claude Code harness benchmark.
+#
+# Claude Code speaks Anthropic /v1/messages; the qwen5090 serve (NInfer on the
+# RTX 5090) speaks OpenAI /v1/chat/completions. LiteLLM's proxy exposes both
+# /v1/messages and /v1/messages/count_tokens and translates between them.
+#
+# The wildcard entry is load-bearing: Claude Code addresses several model ids
+# of its own (haiku for background chores, sonnet for auto-mode classification)
+# regardless of ANTHROPIC_MODEL, and an unmatched name is a hard 400.
+model_list:
+  - model_name: qwen3.8-27b
+    litellm_params:
+      model: openai/qwen3.8-27b
+      api_base: http://<5090-ip>:8000/v1
+      api_key: sk-qwen5090-local
+      # NInfer 400s on params it does not implement rather than ignoring them,
+      # and `drop_params` alone will not touch these: LiteLLM believes an
+      # `openai/` route supports them. Claude Code sends metadata.user_id on
+      # every request, which LiteLLM maps to `user`.
+      additional_drop_params: ["user", "metadata", "store", "parallel_tool_calls"]
+      # This chat template accepts low/medium/xhigh and 400s on `high`, which is
+      # exactly what LiteLLM derives from the Anthropic `thinking` budget Claude
+      # Code sends. A default here is NOT enough on the /v1/messages path — the
+      # adapter injects its own value after deployment params are merged — so
+      # cc_hooks.py strips `thinking` first and this is what is left to reach the
+      # server. xhigh matches the dsh adapter, so the harnesses are compared at
+      # the same effort.
+      reasoning_effort: xhigh
+    model_info:
+      max_input_tokens: 252928
+      max_output_tokens: 32768
+      supports_function_calling: true
+
+  - model_name: "*"
+    litellm_params:
+      model: openai/qwen3.8-27b
+      api_base: http://<5090-ip>:8000/v1
+      api_key: sk-qwen5090-local
+      # NInfer 400s on params it does not implement rather than ignoring them,
+      # and `drop_params` alone will not touch these: LiteLLM believes an
+      # `openai/` route supports them. Claude Code sends metadata.user_id on
+      # every request, which LiteLLM maps to `user`.
+      additional_drop_params: ["user", "metadata", "store", "parallel_tool_calls"]
+      # This chat template accepts low/medium/xhigh and 400s on `high`, which is
+      # exactly what LiteLLM derives from the Anthropic `thinking` budget Claude
+      # Code sends. A default here is NOT enough on the /v1/messages path — the
+      # adapter injects its own value after deployment params are merged — so
+      # cc_hooks.py strips `thinking` first and this is what is left to reach the
+      # server. xhigh matches the dsh adapter, so the harnesses are compared at
+      # the same effort.
+      reasoning_effort: xhigh
+    model_info:
+      max_input_tokens: 252928
+      max_output_tokens: 32768
+      supports_function_calling: true
+
+litellm_settings:
+  # The serve rejects params it does not implement outright, and Claude Code
+  # sends several (thinking budgets, top_k, metadata). Drop rather than 400.
+  drop_params: true
+  # Normalises the Anthropic request before the adapter sees it: strips the
+  # `thinking` budget (which would become reasoning_effort=high, a 400 here)
+  # and a tool_choice left dangling with no callable tool.
+  callbacks: cc_hooks.proxy_handler_instance
+  request_timeout: 1800
+  num_retries: 3
+  telemetry: false
+
+general_settings:
+  master_key: sk-qwen5090-local

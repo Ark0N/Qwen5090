@@ -1,0 +1,183 @@
+#!/bin/bash
+# Install the DeepSeek Harness in the task container and point it at the
+# qwen5090 serve. Mirrors the layout deepseek-harness.sh produced locally.
+# This script is SOURCED into the task's tmux session, so its cd calls leak:
+# the starting directory is saved and restored at the end, or the agent runs
+# from the install tree instead of the task's working directory.
+__DSH_SETUP_PWD="$PWD"
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y curl ca-certificates python3 make g++
+
+# Node via nvm (same pattern as the Claude Code / Qwen Code agents)
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.2/install.sh | bash
+source "$HOME/.nvm/nvm.sh"
+nvm install 22
+npm install -g pnpm@11.22.0
+
+export DSH_HOME=/opt/dsh-home
+mkdir -p /opt/dsh-runtime "$DSH_HOME/profiles/headless"
+
+# Runtime: the dsh launcher and its plugin tree. The build-script allowlist
+# goes in BOTH supported locations (pnpm 10/11 moved it between them), and
+# an explicit rebuild backstops both: pnpm silently skipping these builds
+# breaks node-pty and the subprocess backend at the first tool call.
+cd /opt/dsh-runtime
+cat > package.json <<'JSON'
+{
+  "name": "dsh-runtime",
+  "private": true,
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@deepseek-ai/dsh-subprocess-local",
+      "node-pty",
+      "koffi",
+      "protobufjs",
+      "@google/genai"
+    ]
+  }
+}
+JSON
+cat > pnpm-workspace.yaml <<'YAML'
+packages:
+  - .
+
+onlyBuiltDependencies:
+  - "@deepseek-ai/dsh-subprocess-local"
+  - node-pty
+  - koffi
+  - protobufjs
+  - "@google/genai"
+YAML
+pnpm add "@deepseek-ai/dsh@{{ version }}"
+pnpm rebuild "@deepseek-ai/dsh-subprocess-local" node-pty koffi protobufjs "@google/genai" || true
+
+# Headless profile files only. NO pnpm install under $DSH_HOME/profiles:
+# dsh-app-boot manages profiles/node_modules itself as a symlink farm into
+# the runtime's store, and refuses real directories there. The bundles ride
+# in as dependencies of @deepseek-ai/dsh.
+cd "$DSH_HOME/profiles"
+cat > headless/package.json <<'JSON'
+{
+  "name": "dsh-profile-headless",
+  "private": true,
+  "dependencies": {},
+  "dsh": {
+    "profile": {
+      "bundles": [
+        "@deepseek-ai/dsh-base",
+        "@deepseek-ai/dsh-headless"
+      ]
+    }
+  }
+}
+JSON
+cat > headless/cordis.yml <<'YAML'
+[]
+YAML
+cat > headless/cordis.patch.yml <<'YAML'
+# Reproduces the harness's `minimal` agent preset for the headless profile.
+- id: system-prompt
+  config:
+    persona: |
+      You are a helpful software engineer assistant.
+
+      When a task needs a long-running process (a server, daemon or watcher) to
+      still be running after your turn ends, start it in its own session:
+      `setsid nohup <command> > <log> 2>&1 < /dev/null &`. A bare `nohup ... &`
+      is not enough here - the executor signals the whole process group when a
+      turn finishes, so a merely backgrounded child is killed along with it.
+      After starting one, confirm it is really listening (curl it, or `ss -ltn`)
+      and leave it running.
+
+      When you implement an API, keep to the documented response shape and
+      return values in their natural JSON types - a number stays a JSON
+      number, never a quoted string, because callers compare it numerically.
+      Validate the input: an argument the endpoint cannot meaningfully answer
+      for - missing, wrong type, or out of the range the operation is defined
+      on - is a 4xx, not a 200 carrying a guess.
+- id: tool-pwsh
+  disabled: true
+- id: tool-jobs
+  disabled: true
+- id: tool-fs
+  disabled: true
+- id: tool-fs-search
+  disabled: true
+- id: tool-skill
+  disabled: true
+- id: tool-subagent-control
+  disabled: true
+- id: tool-subagent-list-agents
+  disabled: true
+- id: tool-subagent
+  disabled: true
+- id: tool-subagent-fork
+  disabled: true
+- id: tool-subagent-report
+  disabled: true
+- id: tool-workflow
+  disabled: true
+- id: tool-todo
+  disabled: true
+- id: tool-goal
+  disabled: true
+- id: tool-ralph
+  disabled: true
+- id: tool-web
+  disabled: true
+YAML
+
+# Model route: the 5090 box's NInfer serve, canonical settings.
+cat > "$DSH_HOME/settings.yaml" <<'YAML'
+llm-pi-ai:
+  providers:
+    qwen5090:
+      displayName: Qwen 5090
+      apiKeyEnv: QWEN5090_API_KEY
+      api: openai-completions
+      baseURL: http://<5090-ip>:8000/v1
+      retryPolicy:
+        mode: normal
+        maxRetries: 10
+        backoff:
+          initialDelayMs: 1000
+          maxDelayMs: 30000
+          jitterRatio: 0.1
+      compat:
+        supportsDeveloperRole: false
+        maxTokensField: max_tokens
+        supportsReasoningEffort: true
+      models:
+      - id: qwen3.8-27b
+        name: Qwen 5090
+        contextWindow: 252928
+        reasoningEfforts:
+          'off': none
+          low: low
+          medium: medium
+          xhigh: xhigh
+agent-default-model:
+  provider: qwen5090
+  model: qwen3.8-27b
+  reasoningEffort: xhigh
+YAML
+printf 'QWEN5090_API_KEY=sk-qwen5090-local\n' > "$DSH_HOME/.env"
+chmod 600 "$DSH_HOME/.env"
+
+# Launcher shim on PATH; bakes in the nvm node location.
+NODE_BIN="$(dirname "$(command -v node)")"
+cat > /usr/local/bin/dsh <<SHIM
+#!/usr/bin/env bash
+export DSH_HOME="\${DSH_HOME:-/opt/dsh-home}"
+export PATH="$NODE_BIN:\$PATH"
+exec /opt/dsh-runtime/node_modules/.bin/dsh "\$@"
+SHIM
+chmod +x /usr/local/bin/dsh
+
+# Back to the task's working directory before the agent command runs.
+cd "$__DSH_SETUP_PWD"
+
+# Readiness probe: composes the headless profile, so a broken bundle
+# install fails HERE (surfaced as INSTALL_FAIL_STATUS), not mid-task.
+dsh --profile headless --help >/dev/null

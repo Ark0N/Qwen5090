@@ -1,0 +1,34 @@
+{
+    "id": "d0b71481-51b9-41cc-9e29-bd43ab8f0b3b",
+    "results": [
+        {
+            "id": "d3a8e125-2f83-4ce6-a07b-29039e4b9d02",
+            "trial_name": "hello-world.1-of-1.pi-smoke-1",
+            "task_id": "hello-world",
+            "instruction": "Create a file called hello.txt in the current directory. Write \"Hello, world!\" to it. Make sure it ends in a newline. Don't make any other files or folders.",
+            "is_resolved": true,
+            "failure_mode": "unset",
+            "parser_results": {
+                "test_hello_file_exists": "passed",
+                "test_hello_file_content": "passed"
+            },
+            "recording_path": "pi-smoke-1/hello-world/hello-world.1-of-1.pi-smoke-1/sessions/agent.cast",
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+            "trial_started_at": "2026-08-25T23:56:13.593030+00:00",
+            "trial_ended_at": "2026-08-25T23:57:47.967370+00:00",
+            "agent_started_at": "2026-08-25T23:56:18.410025+00:00",
+            "agent_ended_at": "2026-08-25T23:57:17.637736+00:00",
+            "test_started_at": "2026-08-25T23:57:21.109010+00:00",
+            "test_ended_at": "2026-08-25T23:57:33.562006+00:00"
+        }
+    ],
+    "pass_at_k": {},
+    "n_resolved": 1,
+    "n_unresolved": 0,
+    "resolved_ids": [
+        "hello-world"
+    ],
+    "unresolved_ids": [],
+    "accuracy": 1.0
+}

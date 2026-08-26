@@ -1,0 +1,22 @@
+{
+    "id": "686c5c4a-1926-4f4c-a17a-50e32396a970",
+    "trial_name": "simple-sheets-put.1-of-1.cmp-dsh-opt",
+    "task_id": "simple-sheets-put",
+    "instruction": "1. Create a new spreadsheet named \"Financial Report\"\n2. Create a sheet in this spreadsheet named \"Q1 Data\"\n3. Add the following data to the sheet, starting at cell A1:\n  | Month    | Revenue | Expenses |\n  |----------|---------|----------|\n  | January  | 10000   | 8000     |\n  | February | 12000   | 9000     |\n  | March    | 15000   | 10000    |\n\n4. Add a third column that contains the profit.\n\nThe API is available at http://api:8000.\nThere is an endpoint to get the API documentation at http://api:8000/docs/json.",
+    "is_resolved": true,
+    "failure_mode": "unset",
+    "parser_results": {
+        "test_spreadsheet_created": "passed",
+        "test_sheet_created": "passed",
+        "test_cells_created": "passed"
+    },
+    "recording_path": "cmp-dsh-opt/simple-sheets-put/simple-sheets-put.1-of-1.cmp-dsh-opt/sessions/agent.cast",
+    "total_input_tokens": 0,
+    "total_output_tokens": 0,
+    "trial_started_at": "2026-08-26T05:27:56.806506+00:00",
+    "trial_ended_at": "2026-08-26T05:30:28.573636+00:00",
+    "agent_started_at": "2026-08-26T05:28:12.906950+00:00",
+    "agent_ended_at": "2026-08-26T05:30:05.136939+00:00",
+    "test_started_at": "2026-08-26T05:30:05.209134+00:00",
+    "test_ended_at": "2026-08-26T05:30:13.211431+00:00"
+}

@@ -1,0 +1,68 @@
+#!/bin/bash
+# Install the Claude Code CLI in the task container. Mirrors the stock
+# terminal-bench claude-code setup, plus the two things a bridged, headless
+# run needs: onboarding state pre-seeded (a first run otherwise wants a theme
+# and a trust prompt, which `-p` cannot answer), and a readiness probe so a
+# broken install surfaces as INSTALL_FAIL_STATUS instead of mid-task.
+#
+# Sourced into the task's tmux session, so cd calls leak: save and restore.
+__CC_SETUP_PWD="$PWD"
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y curl ca-certificates
+
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.2/install.sh | bash
+source "$HOME/.nvm/nvm.sh"
+nvm install 22
+npm -v
+
+npm install -g @anthropic-ai/claude-code@{{ version }}
+
+# The runnable part of Claude Code is a platform-native binary that arrives as
+# an optional dependency and is unpacked by a postinstall script. That step is
+# skipped often enough to cost a whole task: the CLI then exits with "claude
+# native binary not installed" and the readiness probe below turns it into
+# AGENT_INSTALLATION_FAILED. Heal it in place rather than losing the trial.
+if ! claude --version >/dev/null 2>&1; then
+  echo "claude launcher not runnable; running postinstall by hand"
+  node "$(npm root -g)/@anthropic-ai/claude-code/install.cjs" || true
+fi
+if ! claude --version >/dev/null 2>&1; then
+  echo "still not runnable; reinstalling with optional deps forced"
+  npm install -g --force --include=optional "@anthropic-ai/claude-code@{{ version }}"
+  node "$(npm root -g)/@anthropic-ai/claude-code/install.cjs" || true
+fi
+
+# Onboarding state. Claude Code stores it in ~/.claude.json; without it the
+# first invocation asks for a theme and to trust the working directory.
+mkdir -p "$HOME/.claude"
+cat > "$HOME/.claude.json" <<'JSON'
+{
+  "hasCompletedOnboarding": true,
+  "bypassPermissionsModeAccepted": true,
+  "theme": "dark",
+  "autoUpdates": false,
+  "hasTrustDialogAccepted": true,
+  "projects": {}
+}
+JSON
+cat > "$HOME/.claude/settings.json" <<'JSON'
+{
+  "includeCoAuthoredBy": false
+}
+JSON
+
+# Launcher shim: the agent command runs in the same tmux session, but bake the
+# nvm node dir into PATH anyway so a re-sourced profile cannot lose it.
+NODE_BIN="$(dirname "$(command -v node)")"
+cat > /usr/local/bin/claude <<SHIM
+#!/usr/bin/env bash
+export PATH="$NODE_BIN:\$PATH"
+exec "$NODE_BIN/claude" "\$@"
+SHIM
+chmod +x /usr/local/bin/claude
+
+cd "$__CC_SETUP_PWD"
+
+# Readiness probe: a version banner proves the bundle actually loads.
+claude --version >/dev/null

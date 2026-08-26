@@ -1,0 +1,21 @@
+{
+    "id": "29ceec95-9db8-49c0-9249-c59e563378cc",
+    "trial_name": "fix-git.1-of-1.cmp-cc",
+    "task_id": "fix-git",
+    "instruction": "I just made some changes to my personal site and checked out master, but now I can't find those changes. Please help me find them and merge them into master.",
+    "is_resolved": false,
+    "failure_mode": "unset",
+    "parser_results": {
+        "test_layout_file": "passed",
+        "test_about_file": "failed"
+    },
+    "recording_path": "cmp-cc/fix-git/fix-git.1-of-1.cmp-cc/sessions/agent.cast",
+    "total_input_tokens": 0,
+    "total_output_tokens": 0,
+    "trial_started_at": "2026-08-26T02:41:23.313584+00:00",
+    "trial_ended_at": "2026-08-26T02:42:49.501880+00:00",
+    "agent_started_at": "2026-08-26T02:41:27.524981+00:00",
+    "agent_ended_at": "2026-08-26T02:42:26.328614+00:00",
+    "test_started_at": "2026-08-26T02:42:29.784806+00:00",
+    "test_ended_at": "2026-08-26T02:42:37.825489+00:00"
+}

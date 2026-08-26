@@ -1,0 +1,22 @@
+{
+    "id": "232c40b0-cac2-4952-9e5c-8c61983a2a82",
+    "trial_name": "incompatible-python-fasttext.base_with_hint.1-of-1.dsh-qwen5090-curated",
+    "task_id": "incompatible-python-fasttext.base_with_hint",
+    "instruction": "For some reason the fasttext python package is not currently working for me.\n\nCan you please help me figure out why and fix it?\n\nI need to be able to use it with the default python interpreter and make predictions with model.bin.\n\nPlease do not install any additional packages but see if you can fix the existing fasttext code.",
+    "is_resolved": false,
+    "failure_mode": "unset",
+    "parser_results": {
+        "test_correct_output": "passed",
+        "test_site_packages_not_overly_changed": "passed",
+        "test_predict_raises_no_error": "failed"
+    },
+    "recording_path": "dsh-qwen5090-curated/incompatible-python-fasttext.base_with_hint/incompatible-python-fasttext.base_with_hint.1-of-1.dsh-qwen5090-curated/sessions/agent.cast",
+    "total_input_tokens": 0,
+    "total_output_tokens": 0,
+    "trial_started_at": "2026-08-25T23:34:56.311990+00:00",
+    "trial_ended_at": "2026-08-25T23:41:32.176246+00:00",
+    "agent_started_at": "2026-08-25T23:38:19.606439+00:00",
+    "agent_ended_at": "2026-08-25T23:41:08.935689+00:00",
+    "test_started_at": "2026-08-25T23:41:12.381317+00:00",
+    "test_ended_at": "2026-08-25T23:41:17.845807+00:00"
+}

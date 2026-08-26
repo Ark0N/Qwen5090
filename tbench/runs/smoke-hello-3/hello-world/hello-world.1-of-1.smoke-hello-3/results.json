@@ -1,0 +1,21 @@
+{
+    "id": "cfe87b92-30ad-4a31-aa75-b5900e4994b1",
+    "trial_name": "hello-world.1-of-1.smoke-hello-3",
+    "task_id": "hello-world",
+    "instruction": "Create a file called hello.txt in the current directory. Write \"Hello, world!\" to it. Make sure it ends in a newline. Don't make any other files or folders.",
+    "is_resolved": true,
+    "failure_mode": "unset",
+    "parser_results": {
+        "test_hello_file_exists": "passed",
+        "test_hello_file_content": "passed"
+    },
+    "recording_path": "smoke-hello-3/hello-world/hello-world.1-of-1.smoke-hello-3/sessions/agent.cast",
+    "total_input_tokens": 0,
+    "total_output_tokens": 0,
+    "trial_started_at": "2026-08-25T22:39:08.874378+00:00",
+    "trial_ended_at": "2026-08-25T22:40:43.812345+00:00",
+    "agent_started_at": "2026-08-25T22:39:13.766135+00:00",
+    "agent_ended_at": "2026-08-25T22:40:19.961707+00:00",
+    "test_started_at": "2026-08-25T22:40:23.420063+00:00",
+    "test_ended_at": "2026-08-25T22:40:29.266735+00:00"
+}

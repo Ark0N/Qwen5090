@@ -1,0 +1,15 @@
+# Benchmark run recordings are bulky (~68M of asciinema casts + per-trial logs)
+# and fully regenerable. Keep only the structured results the report cites
+# (results.json, run_metadata.json) — everything below is reproducible output.
+runs/**/sessions/
+runs/**/panes/
+runs/**/agent-logs/
+runs/**/commands.txt
+*.cast
+run.log
+
+# transient runtime
+*.pid
+litellm-bridge.log
+__pycache__/
+tb.lock

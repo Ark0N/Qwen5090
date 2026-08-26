@@ -1,0 +1,22 @@
+{
+    "id": "6d73b670-1a53-4193-8cb1-37417d098328",
+    "trial_name": "write-compressor.1-of-1.cmp-cc-opt",
+    "task_id": "write-compressor",
+    "instruction": "I have a decompressor in /app/decomp.c. It reads compressed data from stdin and writes the decompresed data to stdout. I also have a file data.txt that has a bunch of text. Write me data.comp that's compressed such that running cat data.comp | ./decomp gives exactly data.txt.\nYou can generate data.comp any way you want, but data.comp must be at most 2500 bytes.",
+    "is_resolved": false,
+    "failure_mode": "agent_timeout",
+    "parser_results": {
+        "test_compressed_file_exists": "failed",
+        "test_decompression_produces_original": "failed",
+        "test_compression_size": "failed"
+    },
+    "recording_path": "cmp-cc-opt/write-compressor/write-compressor.1-of-1.cmp-cc-opt/sessions/agent.cast",
+    "total_input_tokens": 0,
+    "total_output_tokens": 0,
+    "trial_started_at": "2026-08-26T04:43:55.864967+00:00",
+    "trial_ended_at": "2026-08-26T05:04:21.591921+00:00",
+    "agent_started_at": "2026-08-26T04:44:00.023507+00:00",
+    "agent_ended_at": "2026-08-26T05:04:00.222712+00:00",
+    "test_started_at": "2026-08-26T05:04:03.668905+00:00",
+    "test_ended_at": "2026-08-26T05:04:10.050364+00:00"
+}

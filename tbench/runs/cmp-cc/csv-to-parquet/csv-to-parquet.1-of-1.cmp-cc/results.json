@@ -1,0 +1,21 @@
+{
+    "id": "13770ee0-16af-4828-a99c-926f752d9d85",
+    "trial_name": "csv-to-parquet.1-of-1.cmp-cc",
+    "task_id": "csv-to-parquet",
+    "instruction": "Convert the file '/app/data.csv' into a Parquet file named '/app/data.parquet'. The CSV file contains sample data with headers.",
+    "is_resolved": true,
+    "failure_mode": "unset",
+    "parser_results": {
+        "test_parquet_exists": "passed",
+        "test_data_matches": "passed"
+    },
+    "recording_path": "cmp-cc/csv-to-parquet/csv-to-parquet.1-of-1.cmp-cc/sessions/agent.cast",
+    "total_input_tokens": 0,
+    "total_output_tokens": 0,
+    "trial_started_at": "2026-08-26T02:42:31.678603+00:00",
+    "trial_ended_at": "2026-08-26T02:44:57.781763+00:00",
+    "agent_started_at": "2026-08-26T02:42:35.961622+00:00",
+    "agent_ended_at": "2026-08-26T02:44:31.908408+00:00",
+    "test_started_at": "2026-08-26T02:44:35.373753+00:00",
+    "test_ended_at": "2026-08-26T02:44:44.755190+00:00"
+}
