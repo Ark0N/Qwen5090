@@ -1,0 +1,21 @@
+{
+    "id": "de3089e8-2274-4ac7-a32f-a4a3ee49234b",
+    "trial_name": "hello-world.1-of-1.sweep-terminus-medium",
+    "task_id": "hello-world",
+    "instruction": "Create a file called hello.txt in the current directory. Write \"Hello, world!\" to it. Make sure it ends in a newline. Don't make any other files or folders.",
+    "is_resolved": true,
+    "failure_mode": "unset",
+    "parser_results": {
+        "test_hello_file_exists": "passed",
+        "test_hello_file_content": "passed"
+    },
+    "recording_path": "sweep-terminus-medium/hello-world/hello-world.1-of-1.sweep-terminus-medium/sessions/agent.cast",
+    "total_input_tokens": 1950,
+    "total_output_tokens": 271,
+    "trial_started_at": "2026-08-26T10:11:20.198930+00:00",
+    "trial_ended_at": "2026-08-26T10:11:53.664637+00:00",
+    "agent_started_at": "2026-08-26T10:11:26.207448+00:00",
+    "agent_ended_at": "2026-08-26T10:11:29.696393+00:00",
+    "test_started_at": "2026-08-26T10:11:33.123066+00:00",
+    "test_ended_at": "2026-08-26T10:11:42.685905+00:00"
+}

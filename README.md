@@ -98,19 +98,21 @@ drives it, and the harness you pick matters as much as the model. So we ran
 [Terminal-Bench](https://www.tbench.ai/) ourselves, on **this** 4-bit quant,
 across four different agents pointed at the same server with the same effort:
 
-| Coding agent | Score (Terminal-Bench subset) |
+| Coding agent | Best score (Terminal-Bench subset) |
 |---|:---:|
-| **[DeepSeek Harness](app/docs/DEEPSEEK-HARNESS.md)** | **7 / 12** |
-| **pi** | **7 / 12** |
-| **[Claude Code](app/docs/CLAUDE-CODE.md)** | **7 / 12** |
-| terminus | 6 / 12 |
+| **[DeepSeek Harness](app/docs/DEEPSEEK-HARNESS.md)** | **8 / 12** |
+| **pi** | 7 / 12 |
+| **[Claude Code](app/docs/CLAUDE-CODE.md)** | 7 / 12 |
+| terminus | 7 / 12 |
 
-Three of the four tie for the lead after tuning (out of the box the field ran
-7 / 6 / 4 / 3). The takeaway: **pi and the DeepSeek Harness give the best result
-for the least fuss**, and almost every difference between agents was fixable
-plumbing, not the model. The real ceiling is the model's, at 8 / 12 on this
-subset. Full per-task numbers, what each agent is good at, and the honest
-caveats: **[Which coding agent is best on your 5090?](app/docs/HARNESS-BENCHMARKS.md)**
+The winner is the **DeepSeek Harness at medium reasoning effort, 8 / 12** — the
+full ceiling of what this model can do on the subset, from one agent. The biggest
+lesson was that **the best reasoning effort differs per agent** (the DeepSeek
+Harness likes medium, terminus wants low, pi and Claude Code want high), so a
+single "max effort" default leaves accuracy on the table. Almost every difference
+between agents was fixable plumbing, not the model. Full per-task numbers, the
+effort sweep, and the honest caveats:
+**[Which coding agent is best on your 5090?](app/docs/HARNESS-BENCHMARKS.md)**
 
 ## What you need
 

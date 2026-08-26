@@ -141,3 +141,62 @@ write-compressor now runs out the clock instead of aborting on the output cap.
 
 ### Reproduce
 Adapters + configs in `tbench/`: `dsh_agent.py`, `pi_agent.py`, `cc_agent.py`+`cc_hooks.py`+`litellm-bridge.yaml`, `terminus_fix.py`, and the `*-setup.sh.j2` scripts. Baseline driver: `compare.sh`. Per-harness optimization notes: `briefs/opt-*-notes.md`. All runs under `runs/cmp-*`.
+
+---
+
+## Effort sweep (low / medium / xhigh)
+
+Everything above ran at `xhigh`. This sweep runs each harness at `low` and `medium`
+too, on the **8 solvable tasks** (the 4 model-ceiling tasks fail at every effort, so
+they add no signal). It answers: does lower reasoning effort cost accuracy, and is
+xhigh even the right default?
+
+**First, a plumbing bug the sweep exposed.** `reasoning_effort` was being **silently
+dropped for the two LiteLLM-routed harnesses** (Claude Code's proxy and terminus's SDK):
+LiteLLM decides an unrecognised `openai/` model does not support the field and drops it
+under `drop_params`. Proven by sending an invalid `high` and getting `200` where the
+serve documents a hard `400`. So every earlier cc and terminus run used the serve chat
+template's **default** effort (which is xhigh), not a value we set. Fixed with
+`allowed_openai_params=["reasoning_effort"]` on both; an invalid effort now `400`s at the
+serve, confirming delivery. dsh and pi send effort natively and were always correct.
+
+### Result: resolved out of the 8 solvable tasks
+
+| harness | low | medium | xhigh | curve |
+|---|:---:|:---:|:---:|---|
+| **dsh** | 7 | **8** | 7 | flat — effort barely matters, medium slightly best |
+| **terminus** | **7** | 4 | 6 | **inverted — LOW is best** |
+| **pi** | 4 | 6 | **7** | monotonic — wants HIGH |
+| **cc** | 4 | 3 | **7** | wants HIGH; collapses below it |
+
+Avg agent time per task: terminus ~40s (fastest), pi ~70-90s, dsh ~120-130s,
+cc ~180-240s (slowest).
+
+### What it means
+
+- **The optimal effort is not the same for every harness.** This is the core finding.
+  `xhigh` is a bad universal default: it is best only for pi and Claude Code, is a wash
+  for dsh, and is actively *worse* than low for terminus.
+- **terminus is the surprise: low effort is its best config, 7/8.** Its whole failure
+  mode at xhigh was the model's long `reasoning_content` overrunning the output budget
+  and breaking terminus's parser. At low effort the outputs are short and clean, and it
+  jumps from 6 to 7. The earlier "terminus 6/12" was xhigh; **terminus is really a 7/8
+  harness once you stop making it think so hard.**
+- **Claude Code is the opposite: it needs the reasoning.** At medium it drops to 3/8,
+  and every one of those failures is a wrong answer (`unset`), not a timeout or crash —
+  genuine under-thinking. It is the most effort-hungry harness, which fits its being the
+  most reasoning-heavy.
+- **dsh is the most robust: 7-8 at every effort.** And its single best cell in the whole
+  study is here.
+
+### Best overall result: dsh at medium, 8/8
+
+**`dsh` at `medium` effort solves all 8 solvable tasks (8/12 overall) — the full
+frontier, from one harness at one effort.** This revises the pre-sweep conclusion: the
+8-task frontier does **not** require a cross-harness ensemble after all. dsh at medium
+even recovers `openssl-selfsigned-cert`, which dsh *failed* at xhigh — more reasoning was
+making it worse. This is the best single configuration measured, and it is also cheaper
+than xhigh.
+
+**Recommended defaults per harness:** dsh → medium, terminus → low, pi → xhigh,
+Claude Code → xhigh. Runs under `runs/sweep-<harness>-<effort>`.

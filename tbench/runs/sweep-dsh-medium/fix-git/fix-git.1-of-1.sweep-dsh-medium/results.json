@@ -1,0 +1,21 @@
+{
+    "id": "b81e2f4b-2ca9-4543-8224-d45be2965d24",
+    "trial_name": "fix-git.1-of-1.sweep-dsh-medium",
+    "task_id": "fix-git",
+    "instruction": "I just made some changes to my personal site and checked out master, but now I can't find those changes. Please help me find them and merge them into master.",
+    "is_resolved": true,
+    "failure_mode": "unset",
+    "parser_results": {
+        "test_about_file": "passed",
+        "test_layout_file": "passed"
+    },
+    "recording_path": "sweep-dsh-medium/fix-git/fix-git.1-of-1.sweep-dsh-medium/sessions/agent.cast",
+    "total_input_tokens": 0,
+    "total_output_tokens": 0,
+    "trial_started_at": "2026-08-26T09:59:31.583141+00:00",
+    "trial_ended_at": "2026-08-26T10:01:30.756012+00:00",
+    "agent_started_at": "2026-08-26T09:59:36.908846+00:00",
+    "agent_ended_at": "2026-08-26T10:01:05.912741+00:00",
+    "test_started_at": "2026-08-26T10:01:09.369003+00:00",
+    "test_ended_at": "2026-08-26T10:01:16.927022+00:00"
+}

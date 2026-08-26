@@ -4,12 +4,22 @@
 # RTX 5090) speaks OpenAI /v1/chat/completions. LiteLLM's proxy exposes both
 # /v1/messages and /v1/messages/count_tokens and translates between them.
 #
-# The wildcard entry is load-bearing: Claude Code addresses several model ids
-# of its own (haiku for background chores, sonnet for auto-mode classification)
-# regardless of ANTHROPIC_MODEL, and an unmatched name is a hard 400.
+# EFFORT SWEEP: one deployment per reasoning effort, all pointing at the same
+# served checkpoint and differing only in `reasoning_effort`. cc_agent.py picks
+# between them by model name, from TB_EFFORT. The effort cannot travel on the
+# request (Claude Code has no flag for it, and the `thinking` budget it does
+# send has to be stripped — see below) and it cannot travel in this proxy's
+# environment either, because the proxy outlives every `tb run` that sets
+# TB_EFFORT. The model name is the one channel that is per-request.
+#
+# The bare `qwen3.8-27b` entry and the wildcard stay at the xhigh default: the
+# wildcard is load-bearing because Claude Code addresses model ids of its own
+# (haiku for background chores, sonnet for auto-mode classification) and an
+# unmatched name is a hard 400. cc_agent.py pins every one of those slots to an
+# effort alias, so during a sweep nothing should reach the wildcard.
 model_list:
-  - model_name: qwen3.8-27b
-    litellm_params:
+  - model_name: qwen3.8-27b-low
+    litellm_params: &qwen_params
       model: openai/qwen3.8-27b
       api_base: http://<5090-ip>:8000/v1
       api_key: sk-qwen5090-local
@@ -18,41 +28,49 @@ model_list:
       # `openai/` route supports them. Claude Code sends metadata.user_id on
       # every request, which LiteLLM maps to `user`.
       additional_drop_params: ["user", "metadata", "store", "parallel_tool_calls"]
+      # Without this, `reasoning_effort` never reaches the serve at all: LiteLLM
+      # decides an unrecognised `openai/` model does not support reasoning and
+      # `drop_params: true` discards the field silently. Measured with a
+      # deliberately invalid effort — a deployment pinned to `high` returned 200
+      # instead of the documented 400, i.e. nothing was being sent. Note
+      # `model_info.supports_reasoning: true` does NOT fix this; only this does.
+      allowed_openai_params: ["reasoning_effort"]
       # This chat template accepts low/medium/xhigh and 400s on `high`, which is
       # exactly what LiteLLM derives from the Anthropic `thinking` budget Claude
       # Code sends. A default here is NOT enough on the /v1/messages path — the
       # adapter injects its own value after deployment params are merged — so
       # cc_hooks.py strips `thinking` first and this is what is left to reach the
-      # server. xhigh matches the dsh adapter, so the harnesses are compared at
-      # the same effort.
-      reasoning_effort: xhigh
-    model_info:
+      # server.
+      reasoning_effort: low
+    model_info: &qwen_info
       max_input_tokens: 252928
       max_output_tokens: 32768
       supports_function_calling: true
 
+  - model_name: qwen3.8-27b-medium
+    litellm_params:
+      <<: *qwen_params
+      reasoning_effort: medium
+    model_info: *qwen_info
+
+  - model_name: qwen3.8-27b-xhigh
+    litellm_params:
+      <<: *qwen_params
+      reasoning_effort: xhigh
+    model_info: *qwen_info
+
+  # Default route for anything that names no effort.
+  - model_name: qwen3.8-27b
+    litellm_params:
+      <<: *qwen_params
+      reasoning_effort: xhigh
+    model_info: *qwen_info
+
   - model_name: "*"
     litellm_params:
-      model: openai/qwen3.8-27b
-      api_base: http://<5090-ip>:8000/v1
-      api_key: sk-qwen5090-local
-      # NInfer 400s on params it does not implement rather than ignoring them,
-      # and `drop_params` alone will not touch these: LiteLLM believes an
-      # `openai/` route supports them. Claude Code sends metadata.user_id on
-      # every request, which LiteLLM maps to `user`.
-      additional_drop_params: ["user", "metadata", "store", "parallel_tool_calls"]
-      # This chat template accepts low/medium/xhigh and 400s on `high`, which is
-      # exactly what LiteLLM derives from the Anthropic `thinking` budget Claude
-      # Code sends. A default here is NOT enough on the /v1/messages path — the
-      # adapter injects its own value after deployment params are merged — so
-      # cc_hooks.py strips `thinking` first and this is what is left to reach the
-      # server. xhigh matches the dsh adapter, so the harnesses are compared at
-      # the same effort.
+      <<: *qwen_params
       reasoning_effort: xhigh
-    model_info:
-      max_input_tokens: 252928
-      max_output_tokens: 32768
-      supports_function_calling: true
+    model_info: *qwen_info
 
 litellm_settings:
   # The serve rejects params it does not implement outright, and Claude Code

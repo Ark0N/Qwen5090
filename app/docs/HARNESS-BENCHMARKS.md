@@ -103,11 +103,38 @@ tasks fail on every harness (`sanitize-git-repo`, `write-compressor`,
 correctness that the 4-bit 27B model does not reach here. No amount of harness
 tuning moves them.
 
-The best single harness tops out at 7/12 because the 8th solvable task is split:
-`openssl-selfsigned-cert` is solved only by terminus and Claude Code, while
-`fibonacci-server` is solved only by the others. So **the best result available
-on this model is 8/12, reachable by running more than one harness and taking the
-best answer** (an ensemble), not by any single agent.
+At `xhigh` effort the best single harness tops out at 7/12. But that is not the
+end of the story: see the effort sweep below.
+
+## The effort sweep: xhigh is the wrong default
+
+Everything above ran at maximum reasoning effort (`xhigh`). When we swept `low`
+and `medium` too, the biggest surprise of the whole study appeared: **the best
+reasoning effort is different for each agent.**
+
+| agent | low | medium | xhigh | wants |
+|---|:---:|:---:|:---:|---|
+| **DeepSeek Harness** | 7/8 | **8/8** | 7/8 | anything (medium best) |
+| **terminus** | **7/8** | 4/8 | 6/8 | **low** |
+| **pi** | 4/8 | 6/8 | **7/8** | high |
+| **Claude Code** | 4/8 | 3/8 | **7/8** | high |
+
+(Scored on the 8 solvable tasks; the other 4 fail at every effort.)
+
+- **The DeepSeek Harness at `medium` solves everything solvable: 8/8, i.e. 8/12
+  overall.** That is the best single result in the entire study, from one agent
+  at one effort, and it is cheaper than xhigh. It even recovers a task it *failed*
+  at xhigh, because too much reasoning was making its answer worse. **This is the
+  configuration to use.**
+- **terminus is a low-effort agent.** Its trouble at xhigh was the model's long
+  reasoning overrunning its output budget and breaking its parser; at low effort it
+  jumps to 7/8. Turning the effort *down* is what fixes it.
+- **Claude Code and pi want the reasoning.** Claude Code drops to 3/8 at medium,
+  and every one of those is a plain wrong answer, not a crash: genuine under-thinking.
+
+So the honest ceiling on this model is **8/12**, and unlike what the xhigh-only
+numbers suggested, you do not need to run several agents to reach it: the
+DeepSeek Harness at medium effort gets there by itself.
 
 Two caveats, stated plainly:
 

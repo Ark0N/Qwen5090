@@ -89,3 +89,48 @@ Changes in `pi-setup.sh.j2`:
 Verified: `opt-pi-install-1` (hello-world) resolved on the hardened script.
 `~/.pi/agent/models.json` and `pi_agent.py` are unchanged — pi's capability is
 untouched on purpose, per the brief.
+
+---
+
+# Effort-sweep knob (TB_EFFORT)
+
+`TB_EFFORT` (`low`|`medium`|`xhigh`, default `xhigh`) is read once at agent
+construction in both adapters and validated there, so a bad value fails before
+any container starts rather than 400ing on the first request of every task.
+`high`/`minimal`/`max`/`none` are refused by name.
+
+| harness | file:line | how it reaches the model |
+|---|---|---|
+| pi | `pi_agent.py:26-46` (knob), `:55` (resolve), `:84` (use) | CLI flag `--thinking <effort>` → pi maps it through `thinkingLevelMap` → `reasoning_effort` in the request body |
+| dsh | `dsh_agent.py:20-40` (knob), `:49` (resolve), `:61-63` (`_get_template_variables`) → `dsh-setup.sh.j2:163` | jinja var `{{ effort }}` → `agent-default-model.reasoningEffort` in the container's `settings.yaml` → `reasoning_effort` in the request body |
+
+**Wire-verified, not inferred.** A recording mock serve on 127.0.0.1:8099
+(`scratchpad/mock_serve.py`) captured the actual request bodies:
+
+- pi `--thinking low|medium|xhigh` → `reasoning_effort` `low|medium|xhigh`.
+- dsh `reasoningEffort: low|medium|xhigh` → same, on the agent turn.
+  dsh also fires a second request with `reasoning_effort: "none"` and
+  `max_tokens: 64` — its **session-title helper**, deliberately non-thinking.
+  It is not part of the agent loop and is correctly left alone.
+
+`dsh-setup.sh.j2:187` echoes `grep reasoningEffort "$DSH_HOME/settings.yaml"`
+after the readiness probe, so the effort a trial actually ran at is recorded in
+its own pane capture. pi needs no equivalent - its effort is on the command
+line, which `commands.txt` already records verbatim.
+
+Smoke at medium (both resolved, both artifacts confirm medium):
+
+```
+knob-dsh-med  hello-world  resolved  ->  pane: "31:  reasoningEffort: medium"
+knob-pi-med   hello-world  resolved  ->  commands.txt: "--thinking medium"
+```
+
+## Unrelated: cmp-pi-opt scored 0/12 on a serve outage
+
+Recorded here so it is not misread as an install-hardening regression.
+`cmp-dsh-opt` ran first and scored 7/12 (fibonacci-server recovered, no
+regression). `cmp-pi-opt` ran next and every one of its 12 tasks installed pi
+cleanly and then died at the first model request with a bare `Request timed
+out.`, failure_mode `unset`. The serve answered `/v1/models` and a full
+completion in 0.17 s afterwards, so the window was transient. **cmp-pi-opt
+needs re-running before its number means anything.**

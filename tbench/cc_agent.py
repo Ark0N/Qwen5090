@@ -9,6 +9,7 @@ ANTHROPIC_API_KEY out of the launching environment (KeyError without one) and
 never forwards ANTHROPIC_BASE_URL, so it can only talk to api.anthropic.com.
 """
 
+import os
 import shlex
 from pathlib import Path
 
@@ -47,6 +48,36 @@ BRIDGE_URL = "http://<bridge-host>:4001"
 MODEL_ID = "qwen3.8-27b"
 API_KEY = "sk-qwen5090-local"
 
+# Effort sweep knob. The serve accepts low/medium/xhigh and 400s on anything
+# else, so an unrecognised TB_EFFORT falls back to the default rather than
+# failing every request of a run.
+EFFORTS = ("low", "medium", "xhigh")
+DEFAULT_EFFORT = "xhigh"
+
+
+def _effort() -> str:
+    value = (os.environ.get("TB_EFFORT") or DEFAULT_EFFORT).strip().lower()
+    return value if value in EFFORTS else DEFAULT_EFFORT
+
+
+def _model_for_effort() -> str:
+    """The bridge alias that carries this effort.
+
+    The effort cannot ride on the request: Claude Code has no flag for it, and
+    the `thinking` budget it does send is what cc_hooks.py has to strip (it
+    becomes reasoning_effort=high, a 400 here). And it cannot ride on the proxy's
+    environment either — the bridge is a long-lived process started well before
+    any `tb run`, so TB_EFFORT set in the launching shell never reaches it.
+
+    So it rides on the model name. litellm-bridge.yaml declares one deployment
+    per effort, each pinning its own `reasoning_effort` and all pointing at the
+    same served checkpoint; picking the alias picks the effort. That keeps the
+    knob per-request rather than per-proxy, so two runs at different efforts
+    cannot contaminate each other, and it makes the effort visible in the
+    trial transcript (Claude Code echoes the model id it was given).
+    """
+    return f"{MODEL_ID}-{_effort()}"
+
 
 class CCBridgeAgent(ClaudeCodeAgent):
     @staticmethod
@@ -69,11 +100,14 @@ class CCBridgeAgent(ClaudeCodeAgent):
             # small/fast slot is used for background chores and the haiku slot
             # for auto-mode style classification; an unset slot sends a real
             # Anthropic model id that the bridge would have to guess at.
-            "ANTHROPIC_MODEL": MODEL_ID,
-            "ANTHROPIC_SMALL_FAST_MODEL": MODEL_ID,
-            "ANTHROPIC_DEFAULT_SONNET_MODEL": MODEL_ID,
-            "ANTHROPIC_DEFAULT_HAIKU_MODEL": MODEL_ID,
-            "ANTHROPIC_DEFAULT_OPUS_MODEL": MODEL_ID,
+            # Every slot gets the effort-carrying alias: an unset slot would
+            # send a real Anthropic model id, which the bridge's wildcard would
+            # then serve at the default effort instead of the swept one.
+            "ANTHROPIC_MODEL": _model_for_effort(),
+            "ANTHROPIC_SMALL_FAST_MODEL": _model_for_effort(),
+            "ANTHROPIC_DEFAULT_SONNET_MODEL": _model_for_effort(),
+            "ANTHROPIC_DEFAULT_HAIKU_MODEL": _model_for_effort(),
+            "ANTHROPIC_DEFAULT_OPUS_MODEL": _model_for_effort(),
             # 16384 was too low and cost two tasks outright. Reasoning tokens
             # are billed against max_tokens on this serve, and at xhigh a single
             # turn routinely spends >16K on thinking alone — Claude Code then

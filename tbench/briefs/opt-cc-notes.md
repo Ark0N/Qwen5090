@@ -137,3 +137,56 @@ Note on the cap: tb logged `Agent timed out after 900.0s for task write-compress
 `--global-agent-timeout-sec 900` took effect. The 1200.2 s figure in results.json for that
 trial is `agent_started_at -> agent_ended_at`, i.e. it includes the harness tearing down
 the blocking tmux command after the kill — not extra model time.
+
+## TB_EFFORT knob (effort sweep prep)
+
+`TB_EFFORT=low|medium|xhigh`, default `xhigh`. Flow:
+`TB_EFFORT` -> `cc_agent._model_for_effort()` -> all five `ANTHROPIC_*_MODEL` slots get
+`qwen3.8-27b-<effort>` -> `cc_hooks` reads the suffix off `data["model"]` and sets
+`reasoning_effort` -> the deployment's `allowed_openai_params` lets it through to the serve.
+
+It rides on the model name because neither of the other two channels exists: Claude Code
+has no effort flag, and the proxy is a long-lived process started before any `tb run`, so
+`TB_EFFORT` in the launching shell never reaches it. A consequence worth having: the knob
+is per-request, so two runs at different efforts cannot contaminate each other.
+
+### The finding that mattered: reasoning_effort was never being sent at all
+
+`reasoning_effort` in `litellm_params` was silently discarded on every run to date.
+LiteLLM decides an unrecognised `openai/` model does not support reasoning, and
+`drop_params: true` then drops the field. Proven with a deliberately invalid value: a
+deployment pinned to `reasoning_effort: high` returned **200** where the serve documents a
+hard 400 — i.e. nothing was reaching it. `model_info.supports_reasoning: true` does not fix
+this; `allowed_openai_params: ["reasoning_effort"]` does (same probe then 400s as it
+should), and so does `extra_body`.
+
+**So every cc run before this one used the chat template's own default effort, not a
+value we sent.** That default is xhigh, so the `cmp-cc*` numbers stand as xhigh results —
+but they were xhigh by the serve's default, not by our configuration. Anything else routed
+through LiteLLM at an "explicit" effort deserves the same probe.
+
+Second measured detail: with `allowed_openai_params` in place, a `reasoning_effort` on the
+*request* beats the deployment's. That is why the hook sets it rather than leaving it to
+the deployment default — the alias then wins regardless of what the client sent.
+
+### Verification
+
+| probe | expected | got |
+|---|---|---|
+| deployment pinned to the invalid `high`, no whitelist | 400 if transmitted | **200** — not transmitted |
+| same, with `allowed_openai_params` | 400 | **400** |
+| same, with `model_info.supports_reasoning: true` | 400 | 200 — does not work |
+| `qwen3.8-27b-low` + request `reasoning_effort: high` | 200 (hook overwrites) | **200** |
+| `qwen3.8-27b` (no suffix) + request `high` | 400 (nothing to overwrite) | **400** |
+| identical prompt across aliases, `/v1/messages` | output tokens rise with effort | **71 / 85 / 103** for low / medium / xhigh |
+
+Smoke `knob-cc-med-2`: hello-world **resolved**, both tests passed, and the trial
+transcript's `modelUsage` is keyed on `qwen3.8-27b-medium` alone (`canonicalModel` likewise),
+so every billed call went to the medium alias. The bare `qwen3.8-27b` in that transcript is
+only the response-side model field LiteLLM fills from the underlying checkpoint.
+
+`knob-cc-med` (the first attempt) died in install: nodejs.org dropped the tarball read, nvm
+fell back to a source build, and that build fails on this image. `cc-setup.sh.j2` now uses
+`nvm install -b` with three retries so a transport error stays retryable instead of turning
+into a doomed 10-minute compile — the same flake class that cost cc nginx-request-logging at
+baseline. Flagged as a deliberate extra change: it is install robustness, not the knob.

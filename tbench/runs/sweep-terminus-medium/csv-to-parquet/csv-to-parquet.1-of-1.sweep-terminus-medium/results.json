@@ -1,0 +1,21 @@
+{
+    "id": "cb684d75-c304-4a7c-9a61-411df7483908",
+    "trial_name": "csv-to-parquet.1-of-1.sweep-terminus-medium",
+    "task_id": "csv-to-parquet",
+    "instruction": "Convert the file '/app/data.csv' into a Parquet file named '/app/data.parquet'. The CSV file contains sample data with headers.",
+    "is_resolved": true,
+    "failure_mode": "unset",
+    "parser_results": {
+        "test_parquet_exists": "passed",
+        "test_data_matches": "passed"
+    },
+    "recording_path": "sweep-terminus-medium/csv-to-parquet/csv-to-parquet.1-of-1.sweep-terminus-medium/sessions/agent.cast",
+    "total_input_tokens": 34450,
+    "total_output_tokens": 1521,
+    "trial_started_at": "2026-08-26T10:13:44.305520+00:00",
+    "trial_ended_at": "2026-08-26T10:15:48.058424+00:00",
+    "agent_started_at": "2026-08-26T10:13:48.417238+00:00",
+    "agent_ended_at": "2026-08-26T10:15:21.987976+00:00",
+    "test_started_at": "2026-08-26T10:15:25.448546+00:00",
+    "test_ended_at": "2026-08-26T10:15:35.492773+00:00"
+}

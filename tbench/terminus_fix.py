@@ -26,10 +26,11 @@ Three faults are fixed here, all found by reading the baseline run's episode log
    lost csv-to-parquet. Fix: recognise any heredoc delimiter, send the batch
    unblocked, and wait on a separate no-op so blocking semantics survive.
 
-Effort is left at the template default (xhigh), the same as every other harness in
-the comparison. The one exception is the overflow-recovery call, which drops to
-`reasoning_effort=low` for that single retry -- it only ever runs on a turn that
-already produced nothing.
+Effort comes from `TB_EFFORT` (`low`|`medium`|`xhigh`, default `xhigh`, which is the
+chat template's own default and so reproduces the pre-knob behaviour). The one
+exception is the overflow-recovery call, which is pinned to `reasoning_effort=low`
+whatever the sweep is set to -- it only ever runs on a turn that already produced
+nothing, and low is never above the swept effort.
 """
 
 import json
@@ -46,6 +47,19 @@ from terminal_bench.terminal.tmux_session import TmuxSession
 
 # The serve defaults to 8192, which xhigh reasoning exhausts on its own.
 MAX_TOKENS = int(os.environ.get("TERMINUS_MAX_TOKENS", "16384"))
+
+# Effort sweep knob. Terminus sends no `reasoning_effort` of its own, so the serve's
+# chat template applies its default -- which is xhigh. Sending it explicitly is what
+# makes low/medium reachable; `xhigh` reproduces the previous behaviour exactly.
+# The template accepts low/medium/xhigh only: `high` and `none` are hard 400s, so an
+# unknown value fails loudly here rather than silently sweeping the wrong effort.
+VALID_EFFORTS = ("low", "medium", "xhigh")
+EFFORT = os.environ.get("TB_EFFORT", "xhigh")
+if EFFORT not in VALID_EFFORTS:
+    raise ValueError(
+        f"TB_EFFORT={EFFORT!r} is not supported by this chat template; "
+        f"use one of {', '.join(VALID_EFFORTS)}."
+    )
 # The recovery turn thinks at low effort, but it must NOT be given a smaller budget
 # than the turn it is rescuing: measured on cmp-terminus-opt, a 4096-token recovery
 # overflows exactly the same way (4096 completion tokens, 8.5K characters of
@@ -125,6 +139,14 @@ class PromptSchemaLiteLLM(LiteLLM):
 
     def call(self, *args, **kwargs) -> str:
         kwargs.setdefault("max_tokens", MAX_TOKENS)
+        # setdefault, so the recovery path's explicit low effort still wins.
+        kwargs.setdefault("reasoning_effort", EFFORT)
+        # Without this, LiteLLM decides an unrecognised openai/ model does not
+        # support reasoning_effort and (drop_params on) DROPS it silently, so the
+        # sweep would run every effort at the serve's template default. Whitelisting
+        # the param forces it onto the wire (verified: an invalid effort then 400s
+        # at the serve instead of passing through).
+        kwargs.setdefault("allowed_openai_params", ["reasoning_effort"])
         return _extract_json(super().call(*args, **kwargs))
 
 

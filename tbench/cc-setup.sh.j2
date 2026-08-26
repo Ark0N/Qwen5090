@@ -13,7 +13,21 @@ apt-get install -y curl ca-certificates
 
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.2/install.sh | bash
 source "$HOME/.nvm/nvm.sh"
-nvm install 22
+
+# nodejs.org intermittently drops the tarball read ("decryption failed or bad
+# record mac"). Plain `nvm install` reacts by falling back to a ~10 minute
+# source build, which then dies on this image anyway
+# (`configure.py ... too many values to unpack`), and the trial is lost with no
+# node and no npm at all. `-b` forbids that fallback so a transport error stays
+# a transport error, which is the kind worth retrying.
+for _attempt in 1 2 3; do
+  nvm install -b 22 && break
+  echo "node binary install attempt $_attempt failed; retrying"
+  sleep 5
+done
+# Last resort only: let it build from source rather than give up entirely.
+command -v node >/dev/null 2>&1 || nvm install 22
+command -v npm >/dev/null 2>&1 || { echo "node/npm unavailable after retries"; return 1 2>/dev/null || exit 1; }
 npm -v
 
 npm install -g @anthropic-ai/claude-code@{{ version }}

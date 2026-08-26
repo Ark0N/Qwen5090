@@ -160,7 +160,7 @@ llm-pi-ai:
 agent-default-model:
   provider: qwen5090
   model: qwen3.8-27b
-  reasoningEffort: xhigh
+  reasoningEffort: {{ effort }}
 YAML
 printf 'QWEN5090_API_KEY=sk-qwen5090-local\n' > "$DSH_HOME/.env"
 chmod 600 "$DSH_HOME/.env"
@@ -181,3 +181,7 @@ cd "$__DSH_SETUP_PWD"
 # Readiness probe: composes the headless profile, so a broken bundle
 # install fails HERE (surfaced as INSTALL_FAIL_STATUS), not mid-task.
 dsh --profile headless --help >/dev/null
+
+# Echo the effort this run was configured with, so the sweep knob is visible in
+# the trial's own pane capture rather than only in the launching shell.
+grep -n 'reasoningEffort:' "$DSH_HOME/settings.yaml"
