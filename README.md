@@ -90,6 +90,11 @@ Two things worth being straight about:
   NVFP4 quantisation, which is what makes 27B fit in 32 GB of VRAM at all â€” it
   costs some accuracy. Treat the table as the ceiling, not a promise.
 
+For a measurement on **this** quant rather than the model card, we ran
+Terminal-Bench ourselves across four different coding agents, and found the agent
+you pick matters as much as the model: see
+**[Which coding agent is best on your 5090?](app/docs/HARNESS-BENCHMARKS.md)**
+
 ## What you need
 
 | | |
@@ -267,6 +272,12 @@ Two clients work against this server, and you can have both installed at once â€
 they are ordinary API clients, so neither touches the serving path. **Claude
 Code** is below; **[the DeepSeek Harness](#or-the-deepseek-harness)** is the
 browser-based alternative that needs no bridge.
+
+> **Which one is best?** We benchmarked four harnesses (DeepSeek Harness, pi,
+> Claude Code, and Terminal-Bench's terminus) on the same model and the same
+> tasks. Short version: pi and the DeepSeek Harness give the best result for the
+> least fuss, and after tuning three of the four tie. Full numbers and the honest
+> caveats: **[Which coding agent is best on your 5090?](app/docs/HARNESS-BENCHMARKS.md)**
 
 ### Claude Code
 
