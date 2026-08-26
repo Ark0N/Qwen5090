@@ -217,6 +217,40 @@ decides: at the full 252,928 window on a 32 GB card the Engine's runtime
 reservation leaves room for **2**, and 4 refuses to start outright
 (`minimum Engine runtime reservation requires …`). See NINFER.md.
 
+## Set the effort to medium, not xhigh
+
+When we [benchmarked the harnesses](HARNESS-BENCHMARKS.md), the DeepSeek Harness
+was the standout, and its best setting was a surprise: **`medium` reasoning
+effort, not `xhigh`.** On the Terminal-Bench subset it scored:
+
+| effort | solved (of 8 solvable) |
+|---|:---:|
+| low | 7 / 8 |
+| **medium** | **8 / 8** |
+| xhigh | 7 / 8 |
+
+`medium` solved everything the model can do on that set, the best single result
+of the whole four-harness study, and it did so *cheaper* than xhigh. It even
+solved a task that xhigh got wrong: past a point, more reasoning was making the
+answer worse, not better. The harness is unusually effort-robust either way (7 to
+8 out of 8 at every level), so this is a free win rather than a knife-edge.
+
+To set it, change the `reasoningEffort` under `agent-default-model` in
+`~/.dsh/settings.yaml` (the [self-optimization loop](SELF-OPTIMIZATION.md) can
+also land here on its own):
+
+```yaml
+agent-default-model:
+  provider: qwen5090
+  model: qwen3.8-27b
+  reasoningEffort: medium      # was xhigh
+```
+
+This is measured on the 4-bit NVFP4 quant and a curated task set, so treat it as
+a strong default rather than a law. The [full comparison](HARNESS-BENCHMARKS.md)
+has the per-task detail and the other agents' very different effort curves
+(terminus, for one, wants the opposite: `low`).
+
 ## pnpm, not npm
 
 `npm install @deepseek-ai/dsh` does not finish. Measured 2026-08-22 on a 29 GB
