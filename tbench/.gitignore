@@ -13,3 +13,6 @@ run.log
 litellm-bridge.log
 __pycache__/
 tb.lock
+
+# throwaway single-task effort-knob verification smokes
+runs/knob-*/
