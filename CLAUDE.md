@@ -334,20 +334,49 @@ dsh can drive". All three findings are measured against a running server.
 - **PEG-native tool output is parsed by an auto-generated parser, and it is
   brittle.** llama.cpp rejected syntactically correct JSON:
   `common_chat_peg_parse: unparsed peg-native output: {"tool_calls": [...`.
-  Target a format llama.cpp has a *hand-written* parser for instead. Hermes
-  style (`<tool_call>…</tool_call>`) is the one to pick: plain text, no special
-  vocabulary the model has to know, a lenient parser, and it emits standard
-  OpenAI `tool_calls` - which is exactly what pi-ai, and therefore dsh, expects
-  back.
+  Hermes style (`<tool_call>…</tool_call>`) was the answer to that, and it was
+  the right answer against the llama.cpp of the time - **but see the DSML
+  finding below: it has been superseded.** The generic PEG path is still
+  brittle; what changed is that this model no longer has to use it.
 - **`tojson` returns Markup, and concatenating it with a literal HTML-escapes
   the literal.** A template that builds `'<tool_call>' + x|tojson` emits
   `&lt;tool_call&gt;` and nothing parses. Emit the pieces separately.
 
 `app/templates/deepseek-v4-hermes.jinja` is the result: the V4 encoder's
-structure with Hermes tool tags added. `serve-gguf.ps1` and `serve-gguf.sh`
-select it automatically for a DeepSeek model; `-StockTemplate` /
-`STOCK_TEMPLATE=1` serves the model's own instead, which is the reference for
-answer quality and cannot call tools.
+structure with Hermes tool tags added. `-StockTemplate` / `STOCK_TEMPLATE=1`
+serves the model's own instead, which is the reference for answer quality and
+cannot call tools.
+
+### The native DSML template supersedes Hermes (2026-08-22, issue #1)
+
+**Hermes is no longer the default, and the reason is a measurement.** The Q2_K
+REAP build keeps slipping *out* of Hermes syntax mid-task - observed once as
+its own `<|DSML|>tool_call` markup, once as a malformed `<tool_calls>` block -
+and an unparsed tool call reads as a final text answer, so dsh exits and the
+task dies half-done. Lowering the temperature to 0.6 did not save it.
+`openssl-selfsigned-cert` scored **0% on Hermes, twice, and 100% on the native
+template**.
+
+What changed upstream: llama.cpp gained a **specialized DeepSeek V3.2/V4 chat
+handler** (`common/chat.cpp`) that engages when the template source contains
+`dsml_token` + `DSML` + `tool_calls`. It renders tools in the markup the model
+was actually trained on, builds a PEG parser *and a grammar* from the tool
+schemas, and still emits standard OpenAI `tool_calls`. So the "PEG-native is
+brittle" finding above was measured against the generic path, before this
+handler existed - it is not wrong, it is just no longer the situation this
+model is in.
+
+`app/templates/deepseek-v4-flash-0731-dsml.jinja` is llama.cpp's own
+`models/templates/deepseek-ai-DeepSeek-V4-Flash-0731.jinja`, verbatim. Both
+serve-gguf scripts prefer it and fall back to Hermes only if the file is
+missing; force Hermes with `CHAT_TEMPLATE=` / `-ChatTemplate` on a llama.cpp
+too old to carry the handler. Two serving consequences, both now automatic:
+**the template defaults thinking OFF**, so it is started with
+`--chat-template-kwargs '{"thinking":true}'`, and **`--temp 0.6`** is set
+explicitly because pi-ai sends no temperature at all, which left llama.cpp's
+0.8 default governing every agent request. Its effort tiers are low/high/max,
+validated by the template itself - the same tiers `REASONING_EFFORT` already
+enforces.
 
 ## DeepSeek Harness, and measuring it
 

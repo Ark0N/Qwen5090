@@ -655,7 +655,8 @@ app/                       everything under the hood:
     chat.py, benchmark.sh      clients against the OpenAI endpoint
     lib-*.sh                   shared helpers (build tools, model catalog,
                                NInfer, GPU telemetry, WSL/Linux detection)
-  templates/                 chat templates (DeepSeek V4 + Hermes tool calls)
+  templates/                 chat templates (DeepSeek V4 native DSML, and
+                             the older Hermes-style one it replaced)
   optimization/              the harness's autonomous tuning loop (see
                              docs/SELF-OPTIMIZATION.md); state stays local
   docs/                      troubleshooting, performance, Claude Code,

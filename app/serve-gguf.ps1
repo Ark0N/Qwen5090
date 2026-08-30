@@ -84,6 +84,16 @@ param(
     # Serve the model's own template even when a bundled one exists. Its
     # answers are the reference; it just cannot call tools.
     [switch]$StockTemplate,
+    # Ask the template for thinking. Empty resolves to on for the DSML
+    # template, which switches thinking OFF when the caller says nothing -
+    # and the reasoning is where this model does its work.
+    [ValidateSet("", "on", "off")]
+    [string]$Thinking = "",
+    # Sampling temperature. Empty resolves to 0.6 for a DeepSeek checkpoint:
+    # DeepSeek's own recommendation, and worth setting explicitly because
+    # pi-ai sends no temperature at all, so llama.cpp's 0.8 default was
+    # governing every agent request.
+    [string]$Temp = "",
     # What /v1/models calls this. Without it llama.cpp reports the full path -
     # "E:\Qwen5090\models\...\DeepSeek-V4-Flash-0731-reap-150b-Q2_K.gguf" - which
     # pins every client config to a drive letter and a quant tier, and whose
@@ -159,10 +169,32 @@ $label = if ($entry) { $entry.Label } else { $Model }
 # whichever drive it was first written to: it is part of the product, it needs
 # to survive a re-download, and it is the only reason an agent client can drive
 # this model at all.
+#
+# Two of them, and the model's native markup wins. llama.cpp has a specialized
+# DeepSeek V3.2/V4 chat handler that engages when the template source carries
+# dsml_token + DSML + tool_calls: it renders tools in the markup this model was
+# trained on, builds a PEG parser *and* a grammar from the tool schemas, and
+# emits standard OpenAI tool_calls. The Q2_K REAP build otherwise keeps
+# slipping out of Hermes syntax mid-task, and an unparsed tool call reads as a
+# final text answer - the agent stops and the task dies half-done. Measured on
+# openssl-selfsigned-cert: 0% on Hermes, twice, against 100% on this one.
+# Hermes stays for a llama.cpp too old to have the handler: pass its path to
+# -ChatTemplate.
+$dsmlTemplate = $false
 if (-not $ChatTemplate -and -not $StockTemplate -and $Model -match "(?i)deepseek") {
-    $bundled = Join-Path $PSScriptRoot "templates\deepseek-v4-hermes.jinja"
-    if (Test-Path $bundled) { $ChatTemplate = $bundled }
+    foreach ($name in @("deepseek-v4-flash-0731-dsml", "deepseek-v4-hermes")) {
+        $bundled = Join-Path $PSScriptRoot "templates\$name.jinja"
+        if (Test-Path $bundled) {
+            $ChatTemplate = $bundled
+            $dsmlTemplate = $name -like "*dsml*"
+            Write-Host "Chat template: $name"
+            break
+        }
+    }
 }
+# The DSML template's own default is thinking=false.
+if (-not $Thinking) { $Thinking = if ($dsmlTemplate) { "on" } else { "off" } }
+if (-not $Temp -and $Model -match "(?i)deepseek") { $Temp = "0.6" }
 
 # Bytes of KV cache per token, read off the GGUF header rather than guessed:
 # deepseek4 is 43 blocks with head_count_kv=1 and key/value lengths of 512, so
@@ -465,6 +497,9 @@ if ($ChatTemplate) {
     } else {
         $llamaArgs += @("--chat-template", $ChatTemplate)
     }
+    if ($Thinking -eq "on") {
+        $llamaArgs += @("--chat-template-kwargs", '{"thinking":true}')
+    }
 }
 if (-not $Alias) {
     $Alias = if ($Model -match "(?i)deepseek") { "deepseek-v4-flash" }
@@ -489,6 +524,7 @@ $llamaArgs += @(
 # ...except the experts, which do not fit. 0 means all of them stay on the CPU,
 # which is the setting that always starts.
 if ($NCpuMoe -gt 0) { $llamaArgs += @("--n-cpu-moe", "$NCpuMoe") } else { $llamaArgs += "--cpu-moe" }
+if ($Temp)            { $llamaArgs += @("--temp", $Temp) }
 if ($ReasoningFormat) { $llamaArgs += @("--reasoning-format", $ReasoningFormat) }
 if ($ReasoningEffort) { $llamaArgs += @("--reasoning-effort", $ReasoningEffort) }
 if ($KvQuant)       { $llamaArgs += @("-ctk", $KvQuant, "-ctv", $KvQuant) }

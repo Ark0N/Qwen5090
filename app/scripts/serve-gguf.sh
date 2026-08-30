@@ -53,6 +53,15 @@ CHAT_TEMPLATE="${CHAT_TEMPLATE:-}"
 # STOCK_TEMPLATE=1 serves the model's own instead: its answers are the
 # reference, it just cannot call tools.
 STOCK_TEMPLATE="${STOCK_TEMPLATE:-0}"
+# Ask the template for thinking. Empty resolves below: on for the DSML
+# template, which switches thinking OFF when the caller says nothing, and the
+# reasoning is where this model does its work.
+THINKING="${THINKING:-}"
+# Sampling temperature. Empty resolves to 0.6 for a DeepSeek checkpoint -
+# DeepSeek's own recommendation, and worth setting explicitly because pi-ai
+# sends no temperature at all, which leaves llama.cpp's 0.8 default governing
+# every agent request.
+TEMP="${TEMP:-}"
 # What /v1/models calls this. Without it llama.cpp reports the whole path, which
 # pins client configs to a drive letter and a quant tier.
 ALIAS="${ALIAS:-}"
@@ -79,10 +88,35 @@ QUANT=""
 
 qwen5090_model_preflight "$MODEL" || exit 1
 
+# Two bundled templates, and the model's native markup wins. llama.cpp has a
+# specialized DeepSeek V3.2/V4 chat handler that engages when the template
+# source carries dsml_token + DSML + tool_calls: it renders tools in the markup
+# this model was trained on, builds a PEG parser *and* a grammar from the tool
+# schemas, and emits standard OpenAI tool_calls.
+#
+# That matters because the Q2_K REAP build keeps slipping out of Hermes syntax
+# mid-task - observed once as its own <|DSML|>tool_call markup, once as a
+# malformed <tool_calls> block - and an unparsed tool call reads as a final
+# text answer, so the agent stops and the task dies half-done. Lowering the
+# temperature did not save it. Measured on openssl-selfsigned-cert: 0% on
+# Hermes, twice, against 100% on this one.
+#
+# The Hermes template stays for a llama.cpp too old to carry that handler
+# (it predates it): CHAT_TEMPLATE=app/templates/deepseek-v4-hermes.jinja.
+DSML_TEMPLATE=0
 if [[ -z "$CHAT_TEMPLATE" && "$STOCK_TEMPLATE" != "1" && "$MODEL" == *[Dd]eep[Ss]eek* ]]; then
-  bundled="$SCRIPT_DIR/../templates/deepseek-v4-hermes.jinja"
-  [[ -f "$bundled" ]] && CHAT_TEMPLATE="$bundled"
+  for bundled in deepseek-v4-flash-0731-dsml deepseek-v4-hermes; do
+    if [[ -f "$SCRIPT_DIR/../templates/$bundled.jinja" ]]; then
+      CHAT_TEMPLATE="$SCRIPT_DIR/../templates/$bundled.jinja"
+      [[ "$bundled" == *dsml* ]] && DSML_TEMPLATE=1
+      say "chat template: $bundled"
+      break
+    fi
+  done
 fi
+# The DSML template's own default is thinking=false.
+THINKING="${THINKING:-$DSML_TEMPLATE}"
+if [[ -z "$TEMP" && "$MODEL" == *[Dd]eep[Ss]eek* ]]; then TEMP=0.6; fi
 
 # ------------------------------------------------------------- llama.cpp ----
 # The release page ships no CUDA build for Linux - only CPU, Vulkan and SYCL -
@@ -206,6 +240,7 @@ ARGS=(
 if [[ -n "$CHAT_TEMPLATE" ]]; then
   if [[ -f "$CHAT_TEMPLATE" ]]; then ARGS+=(--chat-template-file "$CHAT_TEMPLATE")
   else ARGS+=(--chat-template "$CHAT_TEMPLATE"); fi
+  [[ "$THINKING" == "1" ]] && ARGS+=(--chat-template-kwargs '{"thinking":true}')
 fi
 if [[ -z "$ALIAS" ]]; then
   case "$MODEL" in
@@ -227,6 +262,7 @@ ARGS+=(
 if (( N_CPU_MOE > 0 )); then ARGS+=(--n-cpu-moe "$N_CPU_MOE"); else ARGS+=(--cpu-moe); fi
 [[ -n "$REASONING_FORMAT" ]] && ARGS+=(--reasoning-format "$REASONING_FORMAT")
 [[ -n "$REASONING_EFFORT" ]] && ARGS+=(--reasoning-effort "$REASONING_EFFORT")
+[[ -n "$TEMP"     ]] && ARGS+=(--temp "$TEMP")
 [[ -n "$KV_QUANT" ]] && ARGS+=(-ctk "$KV_QUANT" -ctv "$KV_QUANT")
 [[ -n "$DRAFT"   ]] && ARGS+=(-md "$DRAFT")
 [[ -n "$API_KEY" ]] && ARGS+=(--api-key "$API_KEY")
@@ -234,6 +270,6 @@ if (( N_CPU_MOE > 0 )); then ARGS+=(--n-cpu-moe "$N_CPU_MOE"); else ARGS+=(--cpu
 # mmap stays on (the default): the weights are mapped, not read, so the pages
 # that do not fit are simply not resident. --no-mmap would try to read the
 # whole file into RAM and fail.
-say "model=$(basename "$FIRST") ctx=$CTX port=$PORT cpu_moe=${N_CPU_MOE:-all}"
+say "model=$(basename "$FIRST") ctx=$CTX port=$PORT cpu_moe=${N_CPU_MOE:-all} temp=${TEMP:-default} thinking=${THINKING:-0}"
 say "first load reads ${MODEL_SIZE_GB:-?} GB off the disk - give it a few minutes"
 exec "$LLAMA_SERVER" "${ARGS[@]}"
