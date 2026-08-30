@@ -26,6 +26,40 @@ DEFAULT_EFFORT = "xhigh"
 QWEN_URL = (os.environ.get("QWEN_URL") or "http://localhost:8000").rstrip("/")
 
 
+# --- persona knob ------------------------------------------------------------
+# TB_DSH_PERSONA selects the persona rules rendered into the headless profile
+# (baseline | structured), defaulting to baseline, which renders the container
+# persona byte-identical to every run in REPORT.md. `structured` appends the
+# six rules of the self-optimization loop's winning persona
+# (app/optimization/tb_agent.py, `structured`), which is what the TUI's
+# qwen5090 preset now carries - this knob is how that promotion gets measured
+# in the benchmark rather than assumed from the loop's own suite.
+PERSONAS = {
+    "baseline": "",
+    "structured": (
+        "\n\n"
+        "      Rules:\n"
+        "      - Inspect before you change: list files and read the relevant ones first.\n"
+        "      - Run commands in small steps and read their output; a failing command is\n"
+        "        information, not failure.\n"
+        "      - Never assume file contents or exit codes; verify with cat/ls/python3.\n"
+        "      - Prefer one focused command per tool call; avoid commands that read from\n"
+        "        stdin (they block the shell).\n"
+        "      - Keep a clear final verification step that proves the task is done.\n"
+        "      - When everything is verified, end with a short final message that does\n"
+        "        not call any tools."
+    ),
+}
+
+
+def _persona_rules() -> str:
+    """Persona rules for this run, read once from TB_DSH_PERSONA."""
+    persona = (os.environ.get("TB_DSH_PERSONA") or "baseline").strip()
+    if persona not in PERSONAS:
+        raise ValueError(f"TB_DSH_PERSONA={persona!r} is not one of {tuple(PERSONAS)}")
+    return PERSONAS[persona]
+
+
 def _effort() -> str:
     """Reasoning effort for this run, read once from TB_EFFORT.
 
@@ -52,6 +86,7 @@ class DshAgent(AbstractInstalledAgent):
         super().__init__(*args, **kwargs)
         self._version = kwargs.get("version", "0.1.1-rc.2")
         self._effort = _effort()
+        self._persona_rules = _persona_rules()
 
     @property
     def _env(self) -> dict[str, str]:
@@ -69,6 +104,9 @@ class DshAgent(AbstractInstalledAgent):
             "version": self.version,
             "effort": self._effort,
             "qwen_url": QWEN_URL,
+            # Appended to the persona's first line; empty for `baseline`, so the
+            # rendered profile stays byte-identical to the published runs.
+            "persona_rules": self._persona_rules,
         }
 
     @property

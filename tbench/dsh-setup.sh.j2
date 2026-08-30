@@ -80,7 +80,7 @@ cat > headless/cordis.patch.yml <<'YAML'
 - id: system-prompt
   config:
     persona: |
-      You are a helpful software engineer assistant.
+      You are a helpful software engineer assistant.{{ persona_rules }}
 
       When a task needs a long-running process (a server, daemon or watcher) to
       still be running after your turn ends, start it in its own session:
