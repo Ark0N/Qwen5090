@@ -1,0 +1,21 @@
+{
+    "id": "5564e380-b880-4b31-98e5-5bdfbe78acb3",
+    "trial_name": "hello-world.1-of-1.low12-dsh",
+    "task_id": "hello-world",
+    "instruction": "Create a file called hello.txt in the current directory. Write \"Hello, world!\" to it. Make sure it ends in a newline. Don't make any other files or folders.",
+    "is_resolved": false,
+    "failure_mode": "unset",
+    "parser_results": {
+        "test_hello_file_exists": "failed",
+        "test_hello_file_content": "failed"
+    },
+    "recording_path": "low12-dsh/hello-world/hello-world.1-of-1.low12-dsh/sessions/agent.cast",
+    "total_input_tokens": 0,
+    "total_output_tokens": 0,
+    "trial_started_at": "2026-08-30T13:37:09.609032+00:00",
+    "trial_ended_at": "2026-08-30T13:37:41.375798+00:00",
+    "agent_started_at": "2026-08-30T13:37:14.234170+00:00",
+    "agent_ended_at": "2026-08-30T13:37:15.510494+00:00",
+    "test_started_at": "2026-08-30T13:37:18.957475+00:00",
+    "test_ended_at": "2026-08-30T13:37:28.804806+00:00"
+}

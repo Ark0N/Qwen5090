@@ -1,0 +1,30 @@
+{
+    "run_id": "low12-dsh-helloretry",
+    "uuid": "7d32e1e6-165b-415c-b1ee-bf4e014a6399",
+    "dataset_path": null,
+    "dataset_name": "terminal-bench-core",
+    "dataset_version": "0.1.1",
+    "output_path": "<repo>/tbench/runs",
+    "agent_name": "dsh-qwen5090",
+    "no_rebuild": false,
+    "cleanup": false,
+    "log_level": 20,
+    "task_ids": [
+        "hello-world"
+    ],
+    "exclude_task_ids": null,
+    "n_tasks": null,
+    "n_concurrent_trials": 1,
+    "n_attempts": 1,
+    "dataset_size": 1,
+    "accuracy": 1.0,
+    "model_name": null,
+    "start_time": "2026-08-30T14:32:54.038119+00:00",
+    "end_time": "2026-08-30T14:34:18.703020+00:00",
+    "commit_hash": "cc9923eba034be0196dda7ddf6e9fe70ec670eab",
+    "username": "Ark0N",
+    "s3_bucket": null,
+    "agent_kwargs": null,
+    "pass_at_k": {},
+    "resumed_at": null
+}

@@ -200,3 +200,54 @@ than xhigh.
 
 **Recommended defaults per harness:** dsh → medium, terminus → low, pi → xhigh,
 Claude Code → xhigh. Runs under `runs/sweep-<harness>-<effort>`.
+
+## Low effort on the full 12-task subset (2026-08-30)
+
+The effort sweep above ran `low` only on the 8 solvable tasks. This run puts `low`
+across the **full 12-task comparison subset** for the three harnesses the maintainer
+asked about (dsh, pi, cc; terminus not re-run), so the numbers sit on the same
+denominator as the `/12` headline. Driver: `low12.sh`. Runs: `runs/low12-{dsh,pi,cc}`.
+
+| harness | 12-task | same 8 as the sweep | sweep's earlier low/8 | wall time |
+|---|:---:|:---:|:---:|---|
+| **dsh** | **8/12** | 7/8 | 7/8 | 20m43s |
+| **pi**  | 6/12 | 6/8 | 4/8 | 16m24s |
+| **cc**  | 6/12 | 5/8 | 4/8 | 35m26s |
+
+dsh reproduces its earlier low score exactly (7/8). pi and cc both came out **2 and 1
+tasks better** than the same configuration in the sweep — same effort, same tasks, same
+timeout — which puts the run-to-run noise on this suite at roughly ±1-2 tasks and is a
+caution against reading single-task differences anywhere in this report as signal.
+
+dsh's 8/12 is **corrected**: its raw result was 7/12 because `hello-world` failed with a
+broken container install (`E: Package 'make' has no installation candidate`, no `curl`,
+no npm/pnpm, so `/opt/dsh-runtime/node_modules/.bin/dsh` was never created). That is an
+apt-index flake in one container, not a capability result — it hit no other task in the
+run, and dsh passes `hello-world` at low everywhere else. Re-run in
+`runs/low12-dsh-helloretry`: resolved. Note the setup script's readiness probe did **not**
+catch it — Terminal-Bench recorded `failure_mode: unset` rather than
+`agent_installation_failed`, so the probe is not as load-bearing as the README claims.
+
+### Correction: the ceiling is not 8/12, and `pytorch-model-cli.hard` is not a ceiling task
+
+The "real ceiling is the model, and it's 8/12" claim above names four tasks that
+"fail on every harness". **One of them is wrong.** At low effort `pytorch-model-cli.hard`
+is solved cleanly by **both dsh and cc** — all 6 subtests pass, and pi gets 5 of 6.
+
+It was never actually measured at xhigh. In `cmp-dsh-opt` and `cmp-cc-opt` that task
+recorded `is_resolved: null` with `failure_mode: parse_error` — the trial errored in
+result *parsing*, not in solving — and the scoring recipe in `README.md`
+(`jq -r .is_resolved | grep -c true`) counts `null` as a non-pass, so it was silently
+folded in as a capability failure and became one of the four "ceiling" tasks.
+
+The evidence was already on disk, too: `runs/dsh-curated-2`, from before the comparison,
+also has it resolved. Nothing contradicted the ceiling claim loudly enough to be noticed
+because the scoring recipe hid the difference between "failed" and "not measured".
+
+So: the union of what some harness solves is **9/12**, not 8 (the 8 solved at low, plus
+`openssl-selfsigned-cert`, which low never gets but dsh-medium and cc/terminus do). The
+genuine model-ceiling set is **three** tasks — `sanitize-git-repo`, `write-compressor`,
+`nginx-request-logging` — all still unsolved by every harness at every effort measured.
+
+**When scoring a run, count `null` separately from `false`.** A `parse_error` trial is
+missing data, and treating it as a failure understates the model.
