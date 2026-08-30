@@ -198,4 +198,5 @@ container setup scripts, the comparison driver, the raw per-task results, and th
 
 [← Back to the README](../../README.md) ·
 [Claude Code](CLAUDE-CODE.md) ·
-[DeepSeek Harness](DEEPSEEK-HARNESS.md)
+[DeepSeek Harness](DEEPSEEK-HARNESS.md) ·
+[What makes a harness good?](HARNESS-DESIGN.md)

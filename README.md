@@ -323,6 +323,10 @@ of the twelve tasks are beyond this 4-bit quant at any setting. Treat a
 one-task gap as noise: re-running the same configuration moves the score by
 1–2. Full per-task numbers, the effort sweep, and the honest caveats:
 **[Which coding agent is best on your 5090?](app/docs/HARNESS-BENCHMARKS.md)**
+And for why the harnesses differ at all — what each of Claude Code, Codex,
+the DeepSeek Harness, pi and OpenCode decides differently, and what the
+public evidence says about which decisions matter:
+**[What makes an agent harness good?](app/docs/HARNESS-DESIGN.md)**
 
 ## What you get
 
