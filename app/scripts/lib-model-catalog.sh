@@ -65,7 +65,7 @@ qwen5090_model_info() {
       MODEL_NINFER_BYTES=21492695040
       MODEL_NINFER_SHA256="bb3360522a06e136e0367f5703414d26272b7285c8a6ab6194135c17dbd81b32"
       MODEL_NINFER_MAXCTX=252928
-      MODEL_NOTES="the same unsloth NVFP4 weights vLLM serves, repacked for NInfer: ~2x the decode rate and a 262K window whose prefill does not collapse. Needs the NInfer build."
+      MODEL_NOTES="the same unsloth NVFP4 weights vLLM serves, repacked for NInfer: ~1.5x the decode rate and a 262K window whose prefill does not collapse. Needs the NInfer build."
       ;;
     neroued/Qwen3.8-27B-NInfer)
       MODEL_BACKEND="ninfer"

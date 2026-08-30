@@ -133,7 +133,7 @@ effort sweep, and the honest caveats:
   it.
 - **A faster engine, if you want it.** The same Qwen3.8-27B can be served by
   [NInfer](https://github.com/Neroued/ninfer) instead — a C++/CUDA engine built
-  for the 5090 specifically. **About twice the speed**, and a very long
+  for the 5090 specifically. **Around 1.5x the speed**, and a very long
   document is read in seconds instead of minutes. It compiles itself during
   setup, which takes a while and happens once. See
   [Go faster with NInfer](#go-faster-with-ninfer).
@@ -235,10 +235,15 @@ by a different engine.
 
 |  | Standard (vLLM) | NInfer |
 |---|---|---|
-| Speed | ~80 words-ish/second | **~150–195** |
+| Speed | ~80 words-ish/second | **~120–170** |
 | Pasting a very long document | minutes, and it gives up past ~139K | **seconds** |
 | Uncensored build available | yes | no |
 | Setup | download and go | compiles an engine first (once) |
+
+Where in that range you land depends on how long the reply is: a short answer
+runs ~170, a long one ~120, and a real coding session averaged ~150. NInfer's
+own published figure is 151–195, which we could not reproduce on a long
+generation — see [NINFER.md](app/docs/NINFER.md).
 
 Tick it, click **Install**, and that is all — it is remembered, so every later
 start uses it without touching anything. To go back, pick Standard again.
@@ -256,6 +261,24 @@ bash app/scripts/setup-ninfer.sh   # Linux
 Full detail — the other four models it can serve, the settings, and what to do
 when the build cannot find a CUDA toolkit — is in
 [NINFER.md](app/docs/NINFER.md).
+
+## The rest of the Model dropdown
+
+Four entries beyond the three Qwen3.8-27B builds. None of them is the
+recommended setup, and the tooltip on each says the same thing the app does:
+
+| Entry | What it is | On a 32 GB PC |
+|---|---|---|
+| **Qwen3.6-35B-A3B via NInfer** | mixture-of-experts, 35B total but 3B active per token | very fast (~590 tok/s), text only, an older Qwen release |
+| **DeepSeek V4-Flash (pruned, 63 GB)** | V4-Flash 0731 with experts pruned 284B → ~150B, then 2-bit | runs, slowly — llama.cpp serves it from **system RAM**, so single-digit tokens/second, and it wants ~69 GB of RAM+VRAM |
+| **DeepSeek V4-Flash (full, 105 GB)** | the intact 0731 weights at 3-bit | **will not start** — it needs ~112 GB of RAM+VRAM, i.e. a 128 GB machine |
+
+The DeepSeek entries exist because V4-Flash is a strong agent model, not
+because they are comfortable here: 284B parameters do not fit in 32 GB of VRAM
+at any quantisation, so `serve-gguf.ps1` maps the weights from disk and lets
+Windows page them. The pruned build is also a *different model* from the one
+whose published scores you may have read — pruning and 2-bit both cost
+accuracy. Treat it as an experiment.
 
 ## How it works
 
@@ -444,7 +467,7 @@ Elevated PowerShell for install; scripts live in `app\`:
 
 ```powershell
 .\app\install.ps1    # everything the GUI does; add -SkipDownload / -Unattended
-.\app\install.ps1 -Ninfer         # the NInfer backend instead: ~2x faster, compiles an engine
+.\app\install.ps1 -Ninfer         # the NInfer backend instead: ~1.5x faster, compiles an engine
 .\app\install.ps1 -WslMemoryOnly   # only re-size the WSL VM from this PC's RAM
 .\app\run.ps1        # serve on http://localhost:8000/v1
 .\app\chat.ps1       # terminal chat (second terminal)
@@ -459,7 +482,7 @@ bash app/scripts/serve.sh           # serve on http://localhost:8000/v1
 bash app/scripts/chat.py            # terminal chat
 bash app/scripts/claude-code.sh run # Claude Code against this server
 bash app/scripts/patch-mtp.sh apply # opt-in: MTP at the full 262K window
-bash app/scripts/setup-ninfer.sh    # opt-in: the NInfer backend, ~2x faster
+bash app/scripts/setup-ninfer.sh    # opt-in: the NInfer backend, ~1.5x faster
 bash app/scripts/install-service.sh install   # start automatically at boot
 ```
 
@@ -526,7 +549,7 @@ Quick benchmark while it runs (from WSL): `bash app/scripts/benchmark.sh`
 
 <br>
 
-Pick *Uncensored (abliterated)* in the Setup tab's **Model** dropdown, or from
+Pick *Uncensored (no account)* in the Setup tab's **Model** dropdown, or from
 PowerShell:
 
 ```powershell
@@ -549,7 +572,7 @@ smaller than the standard build, so there is more room for KV cache.
 Both builds run entirely on your PC. The author also notes it occasionally drops
 a closing parenthesis when generating code.
 
-A third entry, *Uncensored - OrcaRouter (sign-in)*
+A third entry, *Uncensored (sign-in)*
 ([`orcarouter/Qwen3.8-27B-Uncensored-NVFP4`](https://huggingface.co/orcarouter/Qwen3.8-27B-Uncensored-NVFP4),
 ~23 GB), is a different abliteration of the same model. It is **gated**: sign in
 at Hugging Face, accept the terms on the model page, create a **read** token at
@@ -606,6 +629,9 @@ app/                       everything under the hood:
   uninstall.ps1              remove everything (distro + model); GUI 'Cleanup' button
   collect-logs.ps1           zip all logs + system state for bug reports
   claude-code.ps1            run Claude Code against this server
+  deepseek-harness.ps1       run the DeepSeek Harness against this server
+  serve-gguf.ps1             llama.cpp on Windows, for the DeepSeek GGUF builds
+  move-to-drive.ps1          relocate an installed WSL distro to a bigger drive
   scripts/                   the Linux side — runs under WSL *and* on native Linux:
     setup-linux.sh             one-time setup on a Linux box (wraps setup-wsl.sh)
     setup-wsl.sh               venv + vLLM + model download (what install.ps1 runs)
@@ -631,6 +657,9 @@ app/                       everything under the hood:
   docs/                      troubleshooting, performance, Claude Code,
                              DeepSeek Harness, Linux, NInfer
     images/                    control-panel screenshots used by this README
+tbench/                    how the harness benchmark was run: the four agent
+                           adapters and the raw results (repo only - it is
+                           kept out of the download)
 ```
 
 ## Something not working?

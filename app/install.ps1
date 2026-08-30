@@ -18,7 +18,7 @@
   .\install.ps1
   .\install.ps1 -SkipDownload   # set everything up but let vLLM fetch weights on first run
   .\install.ps1 -Uncensored     # the abliterated build (public download, no account)
-  .\install.ps1 -Ninfer         # the NInfer backend instead of vLLM: ~2x faster, compiles an engine
+  .\install.ps1 -Ninfer         # the NInfer backend instead of vLLM: ~1.5x faster, compiles an engine
   .\install.ps1 -Unattended     # no prompts; what gui.ps1 runs under the hood
   .\install.ps1 -WslMemoryOnly  # only re-size the WSL VM from this PC's RAM, then exit
 #>

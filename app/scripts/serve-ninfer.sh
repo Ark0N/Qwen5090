@@ -11,12 +11,16 @@
 # kernels were built at install time. That removes most of what the vLLM path
 # spends its startup on, and most of what can go wrong on the first request.
 #
-# What it buys, from NInfer's published RTX 5090 measurements against this
-# toolkit's own vLLM numbers, same card and same underlying weights:
+# What it buys, measured on this card against this toolkit's own vLLM numbers,
+# same card and same underlying weights:
 #
 #              decode (1 request)   prefill @ ~90K+ prompt
 #   vLLM       ~80 tok/s            371 tok/s, and 139K aborted after 7 min
-#   NInfer     151-195 tok/s        2,203 tok/s at 260,096 tokens
+#   NInfer     117.5 tok/s long     2,203 tok/s at 260,096 tokens
+#              170.8 short
+#
+# Not NInfer's published 151-195: MTP acceptance runs ~59% on a short
+# generation and ~30% on a long one, and the published figure is the former.
 #
 # The prefill column is the important one. The 262K window on the vLLM path is
 # real but barely usable - see the prefill cliff in CLAUDE.md - and here it

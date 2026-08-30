@@ -584,7 +584,7 @@ $xaml = @'
               <ComboBoxItem Content="Uncensored (sign-in)" Tag="orcarouter/Qwen3.8-27B-Uncensored-NVFP4"
                             ToolTip="orcarouter/Qwen3.8-27B-Uncensored-NVFP4 - a different abliterated build, about 23 GB. Gated on Hugging Face: accept its terms there and paste a read token."/>
               <ComboBoxItem Content="Qwen3.8-27B via NInfer (fastest)" Tag="neroued/Qwen3.8-27B-nvfp4-NInfer"
-                            ToolTip="The same Qwen3.8-27B NVFP4 weights as Standard, served by NInfer instead of vLLM - a C++/CUDA engine built for this exact card. About twice the speed, and a very long prompt is read in seconds rather than minutes. Setup compiles the engine, which takes a while and happens once."/>
+                            ToolTip="The same Qwen3.8-27B NVFP4 weights as Standard, served by NInfer instead of vLLM - a C++/CUDA engine built for this exact card. Around 1.5x the speed, and a very long prompt is read in seconds rather than minutes. Setup compiles the engine, which takes a while and happens once."/>
               <ComboBoxItem Content="Qwen3.6-35B-A3B via NInfer" Tag="neroued/Qwen3.6-35B-A3B-NInfer"
                             ToolTip="A mixture-of-experts model: 35B total but only 3B active per token, so it answers far faster than any of the others - around 590 tokens/second. Text only, and an older Qwen release than 3.8."/>
               <ComboBoxItem Content="DeepSeek V4-Flash (pruned, 63 GB)" Tag="puwaer/DeepSeek-V4-Flash-0731-reap-150b-gguf:Q2_K"
@@ -906,7 +906,7 @@ function Update-ModelChoice {
         $TxtModelHint.Text = "Served from system RAM by llama.cpp - tens of GB to download, and far slower than the Qwen builds."
     } elseif (Test-NinferModel $sel) {
         # The compile is the surprising part - say so before Install is clicked.
-        $TxtModelHint.Text = "About twice the speed of Standard. Setup compiles an engine for your card first, which takes a while and happens once."
+        $TxtModelHint.Text = "Around 1.5x the speed of Standard. Setup compiles an engine for your card first, which takes a while and happens once."
     } else {
         $TxtModelHint.Text = ""
     }

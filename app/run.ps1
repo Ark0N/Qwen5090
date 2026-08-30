@@ -8,7 +8,7 @@
   .\run.ps1 -Ctx 65536          # smaller window, if you are gaming at the same time
   .\run.ps1 -Port 8080 -NoMtp
   .\run.ps1 -Uncensored         # serve the abliterated build instead
-  .\run.ps1 -Ninfer             # serve through NInfer: ~2x the speed, if you installed it
+  .\run.ps1 -Ninfer             # serve through NInfer: ~1.5x the speed, if you installed it
   .\run.ps1 -Model "puwaer/DeepSeek-V4-Flash-0731-reap-150b-gguf:Q2_K"   # DeepSeek, via llama.cpp
   .\run.ps1 -Share              # also reachable from LAN/Tailscale (one admin prompt)
 #>

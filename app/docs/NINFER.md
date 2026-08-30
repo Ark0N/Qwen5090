@@ -8,20 +8,30 @@ Triton and no FlashInfer anywhere in the serving path.
 
 One of its five artifacts is a repack of `unsloth/Qwen3.8-27B-NVFP4` — the same
 weights this toolkit already serves through vLLM. So this is not a different
-model. It is the same model, roughly twice as fast.
+model. It is the same model, roughly 1.5 times as fast to generate — and far
+more than that to read a long prompt, which is the real reason to want it.
 
 ## What it actually buys you
 
-Measured on an RTX 5090, NInfer's published figures against this toolkit's own
-vLLM measurements (see [PERFORMANCE.md](PERFORMANCE.md)):
+Measured here on an RTX 5090, against this toolkit's own vLLM numbers (see
+[PERFORMANCE.md](PERFORMANCE.md)). Rows marked *published* are NInfer's own
+figures, which we have not reproduced independently:
 
 | | vLLM here | NInfer |
 |---|---|---|
-| decode, one request | ~80 tok/s @ 128K | **151–195 tok/s** (MTP3) |
-| decode, 8 requests | — | **766 tok/s** aggregate |
-| prefill, 7,680-token prompt | — | **8,340 tok/s** |
+| decode, 1,200-token reply | ~80 tok/s @ 128K | **117.5 tok/s** (MTP3) |
+| decode, 26-token reply | — | **170.8 tok/s** |
+| decode, mean over 110 agent turns | — | **152.9 tok/s** (222.5 peak) |
+| decode, 8 requests | — | 766 tok/s aggregate *(published)* |
+| prefill, 7,680-token prompt | — | 8,340 tok/s *(published)* |
 | prefill, ~90K-token prompt | 371 tok/s | — |
 | prefill, 260,096-token prompt | *aborted at ~139K after 7 min* | **2,203 tok/s** |
+
+**On decode, expect 1.5x, not the 151–195 tok/s NInfer publishes.** The spread
+across the first three rows is one number moving: MTP acceptance, which is
+~59% on a short generation and collapses to ~30% on a long one. The published
+figure is plausible at the short-generation acceptance rate; it is not what a
+1,200-token answer gets on this card. Quote 117.5 for a long reply.
 
 The last row is the one that matters most. On the vLLM path the 262K window is
 real but barely usable — pasting a large document can take minutes before the
