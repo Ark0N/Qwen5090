@@ -711,5 +711,7 @@ needs.
 - [huihui-ai](https://huggingface.co/huihui-ai) and [sakamakismile](https://huggingface.co/sakamakismile) — the abliterated build
 - [MiaAI-Lab](https://github.com/MiaAI-Lab/Qwen3.8-27B-NVFP4-RTX-5090) — the MTP-at-262K patch this repo backports
 
-Tooling in this repo is [MIT-licensed](LICENSE). Not affiliated with Alibaba,
-Unsloth, NVIDIA, the vLLM project, or NInfer.
+Tooling in this repo is [MIT-licensed](LICENSE). **The model weights are
+licensed separately by their own authors** — Qwen3.8-27B is Apache 2.0 from the
+Qwen team — and the MIT licence covers only the tooling here. Not affiliated
+with Alibaba, Unsloth, NVIDIA, the vLLM project, or NInfer.
