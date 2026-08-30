@@ -6,15 +6,19 @@
 
 No cloud · no subscription · no rate limits · nothing you type ever leaves your PC
 
-**It takes one click on your Windows 11 PC.** Unzip, double-click, press
-Install - the app sets up everything itself. When it finishes you can chat with
-the model right there, and you can point
-**[Claude Code](app/docs/CLAUDE-CODE.md)** straight at it: the same agent you
-already know, answered by the GPU in your own machine.
+**One click on Windows 11, one command on Linux.** On Windows you unzip,
+double-click and press Install, and the app sets up everything itself; on Linux
+the scripts run directly. Either way you can chat with the model when it
+finishes, and you can put a **real coding agent** on top of it:
+the **[DeepSeek Harness](app/docs/DEEPSEEK-HARNESS.md)** in your browser, which
+came first of the four we benchmarked, or
+**[Claude Code](app/docs/CLAUDE-CODE.md)** if you would rather use the client
+you already know. Both read and write your files and run commands — answered by
+the GPU in your own machine.
 
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
-[![Windows 11](https://img.shields.io/badge/Windows_11-one--click-0078D6?style=flat-square&logo=windows11&logoColor=white)](#get-started-3-steps)
-[![Linux](https://img.shields.io/badge/Linux-native-FCC624?style=flat-square&logo=linux&logoColor=black)](app/docs/LINUX.md)
+[![Windows 11](https://img.shields.io/badge/Windows_11-one--click-0078D6?style=flat-square&logo=windows11&logoColor=white)](#get-started-on-windows)
+[![Linux](https://img.shields.io/badge/Linux-native-FCC624?style=flat-square&logo=linux&logoColor=black)](#get-started-on-linux)
 [![RTX 5090](https://img.shields.io/badge/RTX_5090-NVFP4_4--bit-76B900?style=flat-square&logo=nvidia&logoColor=white)](#why-nvfp4-on-a-5090)
 [![Model](https://img.shields.io/badge/Qwen3.8--27B-Apache_2.0-6f42c1?style=flat-square)](https://huggingface.co/Qwen/Qwen3.8-27B)
 [![Engine](https://img.shields.io/badge/engine-vLLM-ff6f00?style=flat-square)](https://github.com/vllm-project/vllm)
@@ -27,18 +31,21 @@ already know, answered by the GPU in your own machine.
 
 **Unzip → double-click `Start Qwen 5090.cmd` → click Install. That's it.**
 
+<sub>**Running Linux instead?** There is no installer to download and no WSL —
+the scripts run directly on your box. **[Start here](#get-started-on-linux).**</sub>
+
 <img src="app/docs/images/setup.png" alt="The Qwen 5090 control panel: status pills across the top, a model picker, and one Install / Repair button" width="820">
 
 <sub><em>The control panel. One button installs WSL2, Ubuntu, the AI engine and the model.</em></sub>
 
 <br>
 
-**[Get started](#get-started-3-steps)** &nbsp;·&nbsp;
-**[Benchmarks](#how-good-is-it)** &nbsp;·&nbsp;
-**[Best coding agent](#which-coding-agent-works-best)** &nbsp;·&nbsp;
-**[Requirements](#what-you-need)** &nbsp;·&nbsp;
-**[Linux](#already-running-linux)** &nbsp;·&nbsp;
+**[Windows](#get-started-on-windows)** &nbsp;·&nbsp;
+**[Linux](#get-started-on-linux)** &nbsp;·&nbsp;
 **[Coding agents](#use-it-as-a-coding-agent)** &nbsp;·&nbsp;
+**[How good is it?](#how-good-is-it)** &nbsp;·&nbsp;
+**[Which agent wins](#which-coding-agent-works-best)** &nbsp;·&nbsp;
+**[Requirements](#what-you-need)** &nbsp;·&nbsp;
 **[Power users](#for-power-users)** &nbsp;·&nbsp;
 **[Troubleshooting](app/docs/TROUBLESHOOTING.md)**
 
@@ -50,7 +57,7 @@ The model is Qwen3.8-27B, and it is not a toy: on real-world bug fixing it
 scores **61.7 against Claude Opus 4.6 Max's 53.4** — see
 [How good is it?](#how-good-is-it) for the full table and the honest caveats.
 
-## Get started (3 steps)
+## Get started on Windows
 
 1. **[Download the ZIP](https://github.com/Ark0N/Qwen5090/releases/latest/download/Qwen5090.zip)**
    and unzip it anywhere (Desktop is fine).
@@ -68,121 +75,13 @@ You also get a **Qwen 5090** desktop shortcut, and an OpenAI-compatible API at
 `http://localhost:8000/v1` that works with any AI app (Open WebUI, Continue,
 Cline, ...) — API key can be anything.
 
-## How good is it?
+## Get started on Linux
 
-Qwen3.8-27B trades blows with the frontier commercial models on coding and
-computer-use benchmarks — while being Apache 2.0 and running on hardware you
-already own:
-
-| Benchmark | Qwen3.8-27B | Claude Opus 4.6 Max |
-|---|:---:|:---:|
-| **SWE-bench Pro** — fixing real bugs in real repos | **61.7** | 53.4 |
-| **LiveCodeBench v6** — competitive programming | **90.3** | 88.8 |
-| **Terminal-Bench 2.1** — driving a shell | 73.0 | **78.2** |
-| **OSWorld-Verified** — using a desktop | **84.3** | 72.7 |
-| **AndroidWorld** — using a phone | **81.9** | 62.0 |
-
-Scores are from the [official Qwen model card](https://huggingface.co/Qwen/Qwen3.8-27B).
-Two things worth being straight about:
-
-- **Opus still wins Terminal-Bench.** "Challenges the frontier" is the honest
-  claim here, not "beats it at everything".
-- **Those numbers are for the full-precision model.** This app ships the 4-bit
-  NVFP4 quantisation, which is what makes 27B fit in 32 GB of VRAM at all — it
-  costs some accuracy. Treat the table as the ceiling, not a promise.
-
-## Which coding agent works best?
-
-The model is only half of a coding agent. The other half is the **harness** that
-drives it, and the harness you pick matters as much as the model. So we ran
-[Terminal-Bench](https://www.tbench.ai/) ourselves, on **this** 4-bit quant,
-across four different agents pointed at the same server — first at one shared
-reasoning effort, then swept across three:
-
-| Coding agent | Best score (Terminal-Bench subset) |
-|---|:---:|
-| **[DeepSeek Harness](app/docs/DEEPSEEK-HARNESS.md)** | **8 / 12** |
-| **pi** | 7 / 12 |
-| **[Claude Code](app/docs/CLAUDE-CODE.md)** | 7 / 12 |
-| terminus | 7 / 12 |
-
-The winner is the **DeepSeek Harness at medium reasoning effort, 8 / 12** — the
-best result any single agent reached, and it repeats at low effort too. The
-biggest lesson was that **the best reasoning effort differs per agent** (the
-DeepSeek Harness likes medium, terminus wants low, pi and Claude Code want
-high), so a single "max effort" default leaves accuracy on the table. Almost
-every difference between agents was fixable plumbing, not the model — and three
-of the twelve tasks are beyond this 4-bit quant at any setting. Treat a
-one-task gap as noise: re-running the same configuration moves the score by
-1–2. Full per-task numbers, the effort sweep, and the honest caveats:
-**[Which coding agent is best on your 5090?](app/docs/HARNESS-BENCHMARKS.md)**
-
-## What you need
-
-| | |
-|---|---|
-| 💻 **OS** | Windows 11 — or **native Linux**, see [LINUX.md](app/docs/LINUX.md) |
-| 🎮 **GPU** | NVIDIA RTX 5090 (other RTX 50-series with ≥24 GB also work) |
-| 🔧 **Driver** | NVIDIA 570 or newer ([get the latest](https://www.nvidia.com/drivers)) |
-| 🧠 **RAM** | 16 GB minimum, 32 GB recommended (the installer sizes WSL's share for you) |
-| 💾 **Disk** | ~45 GB free (model ~22 GB, Python + CUDA libraries the rest) |
-
-## What you get
-
-- **A choice of builds**, picked from the **Model** dropdown on the Setup tab:
-  the standard Qwen3.8-27B, or an **uncensored** (abliterated) build whose
-  refusal behaviour has been removed — a plain public download, no account. See
-  [Uncensored build](#uncensored-build); you answer for what you generate with
-  it.
-- **A faster engine, if you want it.** The same Qwen3.8-27B can be served by
-  [NInfer](https://github.com/Neroued/ninfer) instead — a C++/CUDA engine built
-  for the 5090 specifically. **Around 1.5x the speed**, and a very long
-  document is read in seconds instead of minutes. It compiles itself during
-  setup, which takes a while and happens once. See
-  [Go faster with NInfer](#go-faster-with-ninfer).
-- **The model**: Qwen3.8-27B — Alibaba's Apache-2.0, 27B multimodal model
-  (released 2026-08-14) with 262K context and a reasoning dial, in NVIDIA's
-  NVFP4 4-bit format built for your 5090's Blackwell tensor cores. Expect
-  ~80 tokens/s at the default 128K context, or ~49 at the full 262K — see
-  [PERFORMANCE.md](app/docs/PERFORMANCE.md).
-- **Two coding agents, both talking to your own GPU.** Point
-  [Claude Code](https://claude.com/claude-code) at it through a small bridge, or
-  run the [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
-  (`dsh`) — DeepSeek's own agent runtime, with a browser UI, subagents and its
-  own tool set. The harness needs no bridge at all, and one command points it at
-  whichever engine you are running. Both read and write your files and run
-  commands; nothing is billed and nothing leaves your network. See
-  [Use it as a coding agent](#use-it-as-a-coding-agent).
-- **A control panel** (pure Windows, no Electron): one-button install with live
-  progress, server start/stop with health light, and streaming chat where the
-  model's "thinking" renders dim. Thinking mode and effort (low → xhigh) are
-  toggles, and **Share on network** makes the API usable from your other
-  devices over Wi-Fi or [Tailscale](https://tailscale.com).
-- **Logs & diagnostics**: every run is logged (`%LOCALAPPDATA%\Qwen5090\logs`
-  on Windows, `~/.qwen5090/logs` in WSL). If anything breaks, click
-  **Collect diagnostics** — it zips all logs + system info to your Desktop for
-  a one-file bug report.
-- **A clean exit**: **Cleanup / Uninstall** on the Setup tab removes everything
-  the app installed — Ubuntu, the Python environment, and the ~22 GB model —
-  freeing 20+ GB. Reinstalling later is one click.
-
-<table>
-<tr>
-<td width="50%"><img src="app/docs/images/server.png" alt="Server tab: the green SERVER pill reads running on port 8000, with startup output ending in Server is READY"></td>
-<td width="50%"><img src="app/docs/images/chat.png" alt="Chat tab: a question and the model's reply, with its reasoning shown above the answer in dim italic"></td>
-</tr>
-<tr>
-<td align="center"><em>Server tab — one click, then watch it come up.</em></td>
-<td align="center"><em>Chat tab — the model's thinking renders dim above its answer.</em></td>
-</tr>
-</table>
-
-## Already running Linux?
-
-Everything above describes the Windows 11 experience, where one click builds a
-WSL2 Ubuntu box because **vLLM only runs on Linux**. If your RTX 5090 is already
-in a Linux machine, skip all of it — the scripts under `app/scripts/` are plain
-bash and run directly:
+The Windows path above builds a WSL2 Ubuntu box, because **vLLM only runs on
+Linux**. If your RTX 5090 is already in a Linux machine, none of that applies:
+there is nothing to download and nothing to install first. The scripts under
+`app/scripts/` are plain bash and run directly, and this is the *simpler* of
+the two paths, not a lesser one:
 
 ```bash
 git clone https://github.com/Ark0N/Qwen5090.git
@@ -190,7 +89,6 @@ cd Qwen5090
 sudo apt-get install -y build-essential      # Triton needs a C compiler
 bash app/scripts/setup-linux.sh              # venv + vLLM + model (~20 GB)
 bash app/scripts/serve.sh                    # http://localhost:8000/v1
-bash app/scripts/claude-code.sh install && qwen-claude   # Claude Code on your GPU
 ```
 
 Or, with the [NInfer backend](app/docs/NINFER.md) installed, one command serves
@@ -201,14 +99,20 @@ shared on the LAN/tailnet, identical to what the Windows box runs:
 bash app/scripts/serve-full.sh               # see app/docs/LINUX.md
 ```
 
-Prefer a browser to a terminal? The DeepSeek Harness runs here too, and on
-Linux it is the simpler of the two — no bridge process, and it discovers the
-model and context window by itself:
+Then put an agent on top of it. The **[DeepSeek Harness](#the-deepseek-harness-recommended)**
+is the one to reach for — it needs no bridge process and discovers the model and
+context window by itself:
 
 ```bash
 sudo apt-get install -y nodejs                    # 26.04 ships 22.22.1
 bash app/scripts/deepseek-harness.sh install
 bash app/scripts/deepseek-harness.sh start        # http://127.0.0.1:3080
+```
+
+Or **[Claude Code](#claude-code)**, if that is the client you know:
+
+```bash
+bash app/scripts/claude-code.sh install && qwen-claude
 ```
 
 Want it back after a reboot? `bash app/scripts/install-service.sh install`
@@ -230,100 +134,86 @@ with an RTX 5090.
 Full walkthrough — including the **262K-context + MTP** configuration that runs
 at ~139 tok/s — in **[app/docs/LINUX.md](app/docs/LINUX.md)**.
 
-## Go faster with NInfer
+## What you need
 
-The Model dropdown has an entry called **Qwen3.8-27B via NInfer (fastest)**.
-It is the same model as Standard — the same weights, the same answers — served
-by a different engine.
-
-|  | Standard (vLLM) | NInfer |
-|---|---|---|
-| Speed | ~80 words-ish/second | **~120–170** |
-| Pasting a very long document | minutes, and it gives up past ~139K | **seconds** |
-| Uncensored build available | yes | no |
-| Setup | download and go | compiles an engine first (once) |
-
-Where in that range you land depends on how long the reply is: a short answer
-runs ~170, a long one ~120, and a real coding session averaged ~150. NInfer's
-own published figure is 151–195, which we could not reproduce on a long
-generation — see [NINFER.md](app/docs/NINFER.md).
-
-Tick it, click **Install**, and that is all — it is remembered, so every later
-start uses it without touching anything. To go back, pick Standard again.
-
-From a command line:
-
-```powershell
-.\app\install.ps1 -Ninfer     # Windows
-```
-
-```bash
-bash app/scripts/setup-ninfer.sh   # Linux
-```
-
-Full detail — the other four models it can serve, the settings, and what to do
-when the build cannot find a CUDA toolkit — is in
-[NINFER.md](app/docs/NINFER.md).
-
-## The rest of the Model dropdown
-
-Four entries beyond the three Qwen3.8-27B builds. None of them is the
-recommended setup, and the tooltip on each says the same thing the app does:
-
-| Entry | What it is | On a 32 GB PC |
-|---|---|---|
-| **Qwen3.6-35B-A3B via NInfer** | mixture-of-experts, 35B total but 3B active per token | very fast (~590 tok/s), text only, an older Qwen release |
-| **DeepSeek V4-Flash (pruned, 63 GB)** | V4-Flash 0731 with experts pruned 284B → ~150B, then 2-bit | runs, slowly — llama.cpp serves it from **system RAM**, so single-digit tokens/second, and it wants ~69 GB of RAM+VRAM |
-| **DeepSeek V4-Flash (full, 105 GB)** | the intact 0731 weights at 3-bit | **will not start** — it needs ~112 GB of RAM+VRAM, i.e. a 128 GB machine |
-
-The DeepSeek entries exist because V4-Flash is a strong agent model, not
-because they are comfortable here: 284B parameters do not fit in 32 GB of VRAM
-at any quantisation, so `serve-gguf.ps1` maps the weights from disk and lets
-Windows page them. The pruned build is also a *different model* from the one
-whose published scores you may have read — pruning and 2-bit both cost
-accuracy. Treat it as an experiment.
-
-## How it works
-
-vLLM (currently the only engine that runs NVFP4) is Linux-only, so the
-installer sets up **WSL2 + Ubuntu 24.04** — Microsoft's built-in Linux layer —
-completely silently: no Linux prompts, a `qwen` user is created for you, and
-your Windows NVIDIA driver powers the GPU inside WSL automatically. The
-PowerShell scripts hide all of it; `localhost:8000` just works.
-
-```
-you ──► Start Qwen 5090.cmd ──► gui.ps1 ──► install.ps1 / run.ps1
-                                                 │
-                                      WSL2 · Ubuntu 24.04
-                                                 │
-                                  serve.sh ──► vLLM ──► your RTX 5090
-                                                 │
-                                   OpenAI API · localhost:8000/v1
-```
-
-What `install.ps1` actually does: checks Windows 11 + driver ≥ 570 → raises the
-GPU watchdog timeout, which needs one restart → enables WSL2 (one reboot max,
-auto-resumes) → provisions Ubuntu unattended → installs `build-essential`
-(vLLM's kernel compiler needs a C compiler at runtime) → creates a Python 3.13
-venv with `vllm`, `flashinfer`, and the CUTLASS DSL → downloads
-[`unsloth/Qwen3.8-27B-NVFP4`](https://huggingface.co/unsloth/Qwen3.8-27B-NVFP4)
-(~22 GB, skippable) → desktop shortcut. Re-running is always safe.
-
-<a id="claude-code"></a>
+| | |
+|---|---|
+| 💻 **OS** | **Windows 11** ([install](#get-started-on-windows)) or **native Linux** ([install](#get-started-on-linux)) — both fully supported |
+| 🎮 **GPU** | NVIDIA RTX 5090 (other RTX 50-series with ≥24 GB also work) |
+| 🔧 **Driver** | NVIDIA 570 or newer ([get the latest](https://www.nvidia.com/drivers)) |
+| 🧠 **RAM** | 16 GB minimum, 32 GB recommended (the installer sizes WSL's share for you) |
+| 💾 **Disk** | ~45 GB free (model ~22 GB, Python + CUDA libraries the rest) |
 
 ## Use it as a coding agent
 
-Two clients work against this server, and you can have both installed at once —
-they are ordinary API clients, so neither touches the serving path. **Claude
-Code** is below; **[the DeepSeek Harness](#or-the-deepseek-harness)** is the
-browser-based alternative that needs no bridge.
+This is what the machine is for. Two agents work against the server, you can
+have both installed at once, and neither touches the serving path — they are
+ordinary API clients.
 
-> **Which one is best?** We benchmarked four harnesses (DeepSeek Harness, pi,
-> Claude Code, and Terminal-Bench's terminus) on the same model and the same
-> tasks. Short version: the **DeepSeek Harness at medium reasoning effort**
-> wins outright, 8/12, and Claude Code matches every other agent at 7/12 if you
-> want the client you already know. Full numbers and the honest caveats:
-> **[Which coding agent is best on your 5090?](app/docs/HARNESS-BENCHMARKS.md)**
+|  | 🥇 **[DeepSeek Harness](#the-deepseek-harness-recommended)** | **[Claude Code](#claude-code)** |
+|---|---|---|
+| **Where you work** | a browser tab | your terminal |
+| **Reaches the server** | directly — it speaks OpenAI natively | through a small bridge |
+| **[Our benchmark](app/docs/HARNESS-BENCHMARKS.md)** | **8 / 12 — best of four** | 7 / 12 |
+| **Brings** | subagents and its own tool set | the client you already know |
+| **Start it** | **DeepSeek Harness** tab → *Open harness* | **Claude Code** tab → *Open Claude Code* |
+
+**Pick the DeepSeek Harness unless you specifically want Claude Code.** It won
+the head-to-head on this model, it is the simpler of the two to run, and there
+is no bridge process to babysit. We measured four harnesses on the same model
+and the same tasks; the numbers, the per-agent effort settings and the honest
+caveats are in
+**[Which coding agent is best on your 5090?](app/docs/HARNESS-BENCHMARKS.md)**
+
+### The DeepSeek Harness (recommended)
+
+[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`) is
+DeepSeek's own open-source agent runtime, and it speaks the OpenAI API
+natively — so it needs no bridge at all, just a provider route. You work in a
+browser rather than a terminal, and it brings subagents and its own tool set.
+
+On the 5090 PC it is one button: start the model server, open the app's
+**DeepSeek Harness** tab, and click **Open harness** — it installs Node.js and
+the harness on first use (each with its own yes/no), starts it, and opens the
+Web UI in your browser.
+
+<div align="center">
+<img src="app/docs/images/deepseek-harness.png" alt="DeepSeek Harness tab: Open harness, Install harness, Re-read server and Doctor buttons, with the HARNESS pill green on port 3080" width="820">
+</div>
+
+The same thing from a shell — including a machine that is not the 5090:
+
+```bash
+bash app/scripts/deepseek-harness.sh install
+QWEN_URL=http://<5090-ip>:8000 bash app/scripts/deepseek-harness.sh start
+```
+
+That serves its Web UI on <http://127.0.0.1:3080>. `service` keeps it running
+across reboots and `share` publishes it to your tailnet over HTTPS. Details,
+and the five settings that decide whether the requests are accepted at all, in
+**[app/docs/DEEPSEEK-HARNESS.md](app/docs/DEEPSEEK-HARNESS.md)**.
+
+It follows whatever is serving on port 8000 — vLLM or NInfer — without being
+told which: `config` reads that off the server and adjusts the route to match.
+On NInfer it also probes the real context window, because that backend does not
+publish one, and offers an `off` thinking tier that the vLLM path does not
+have. If your `~/.qwen5090/server.env` still carries `MAX_SEQS=1` from the
+vLLM path, raise it to 2 there: the harness runs subagents, and at 1 they queue
+behind each other.
+
+Expect a capable local assistant rather than a frontier one: well-scoped edits,
+refactors and file spelunking go fine; long multi-step planning is weaker, and
+it thinks for a few seconds before each reply (`QWEN_EFFORT=medium` trades some
+of that back). Full guide, settings and troubleshooting:
+**[app/docs/DEEPSEEK-HARNESS.md](app/docs/DEEPSEEK-HARNESS.md)**.
+
+**It has also tuned this very stack.** Pointed at a copy of this repo, the
+harness built `app/optimization/` — an autonomous loop that benchmarks and
+tunes its own settings *and* the live server's flags on the one GPU they
+share, with health probes, quiet-window swaps and automatic rollback. Its
+first findings (a reasoning-effort sweet spot, a serving flag promoted on a
+16/16 run, and two impossible configs rejected safely) are written up in
+**[app/docs/SELF-OPTIMIZATION.md](app/docs/SELF-OPTIMIZATION.md)**.
 
 ### Claude Code
 
@@ -385,7 +275,160 @@ installing anything, and `uninstall` reverses it. `qwen-claude status|stop|docto
 manage the bridge, and `doctor` fires a real end-to-end request when something
 looks off.
 
-### Where the big files go
+## How good is it?
+
+Qwen3.8-27B trades blows with the frontier commercial models on coding and
+computer-use benchmarks — while being Apache 2.0 and running on hardware you
+already own:
+
+| Benchmark | Qwen3.8-27B | Claude Opus 4.6 Max |
+|---|:---:|:---:|
+| **SWE-bench Pro** — fixing real bugs in real repos | **61.7** | 53.4 |
+| **LiveCodeBench v6** — competitive programming | **90.3** | 88.8 |
+| **Terminal-Bench 2.1** — driving a shell | 73.0 | **78.2** |
+| **OSWorld-Verified** — using a desktop | **84.3** | 72.7 |
+| **AndroidWorld** — using a phone | **81.9** | 62.0 |
+
+Scores are from the [official Qwen model card](https://huggingface.co/Qwen/Qwen3.8-27B).
+Two things worth being straight about:
+
+- **Opus still wins Terminal-Bench.** "Challenges the frontier" is the honest
+  claim here, not "beats it at everything".
+- **Those numbers are for the full-precision model.** This app ships the 4-bit
+  NVFP4 quantisation, which is what makes 27B fit in 32 GB of VRAM at all — it
+  costs some accuracy. Treat the table as the ceiling, not a promise.
+
+## Which coding agent works best?
+
+The model is only half of a coding agent. The other half is the **harness** that
+drives it, and the harness you pick matters as much as the model. So we ran
+[Terminal-Bench](https://www.tbench.ai/) ourselves, on **this** 4-bit quant,
+across four different agents pointed at the same server — first at one shared
+reasoning effort, then swept across three:
+
+| Coding agent | Best score (Terminal-Bench subset) |
+|---|:---:|
+| **[DeepSeek Harness](app/docs/DEEPSEEK-HARNESS.md)** | **8 / 12** |
+| **pi** | 7 / 12 |
+| **[Claude Code](app/docs/CLAUDE-CODE.md)** | 7 / 12 |
+| terminus | 7 / 12 |
+
+The winner is the **DeepSeek Harness at medium reasoning effort, 8 / 12** — the
+best result any single agent reached, and it repeats at low effort too. The
+biggest lesson was that **the best reasoning effort differs per agent** (the
+DeepSeek Harness likes medium, terminus wants low, pi and Claude Code want
+high), so a single "max effort" default leaves accuracy on the table. Almost
+every difference between agents was fixable plumbing, not the model — and three
+of the twelve tasks are beyond this 4-bit quant at any setting. Treat a
+one-task gap as noise: re-running the same configuration moves the score by
+1–2. Full per-task numbers, the effort sweep, and the honest caveats:
+**[Which coding agent is best on your 5090?](app/docs/HARNESS-BENCHMARKS.md)**
+
+## What you get
+
+- **A choice of builds**, picked from the **Model** dropdown on the Setup tab:
+  the standard Qwen3.8-27B, or an **uncensored** (abliterated) build whose
+  refusal behaviour has been removed — a plain public download, no account. See
+  [Uncensored build](#uncensored-build); you answer for what you generate with
+  it.
+- **A faster engine, if you want it.** The same Qwen3.8-27B can be served by
+  [NInfer](https://github.com/Neroued/ninfer) instead — a C++/CUDA engine built
+  for the 5090 specifically. **Around 1.5x the speed**, and a very long
+  document is read in seconds instead of minutes. It compiles itself during
+  setup, which takes a while and happens once. See
+  [Go faster with NInfer](#go-faster-with-ninfer).
+- **The model**: Qwen3.8-27B — Alibaba's Apache-2.0, 27B multimodal model
+  (released 2026-08-14) with 262K context and a reasoning dial, in NVIDIA's
+  NVFP4 4-bit format built for your 5090's Blackwell tensor cores. Expect
+  ~80 tokens/s at the default 128K context, or ~49 at the full 262K — see
+  [PERFORMANCE.md](app/docs/PERFORMANCE.md).
+- **Two coding agents, both talking to your own GPU.** The
+  [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`) is
+  DeepSeek's own agent runtime — a browser UI with subagents and its own tool
+  set. It needs no bridge at all, one command points it at whichever engine you
+  are running, and it scored best of the four agents we benchmarked. Or point
+  [Claude Code](https://claude.com/claude-code) at the server through a small
+  bridge and use the client you already know. Both read and write your files and
+  run commands; nothing is billed and nothing leaves your network. See
+  [Use it as a coding agent](#use-it-as-a-coding-agent).
+- **A control panel** (pure Windows, no Electron): one-button install with live
+  progress, server start/stop with health light, and streaming chat where the
+  model's "thinking" renders dim. Thinking mode and effort (low → xhigh) are
+  toggles, and **Share on network** makes the API usable from your other
+  devices over Wi-Fi or [Tailscale](https://tailscale.com).
+- **Logs & diagnostics**: every run is logged (`%LOCALAPPDATA%\Qwen5090\logs`
+  on Windows, `~/.qwen5090/logs` in WSL). If anything breaks, click
+  **Collect diagnostics** — it zips all logs + system info to your Desktop for
+  a one-file bug report.
+- **A clean exit**: **Cleanup / Uninstall** on the Setup tab removes everything
+  the app installed — Ubuntu, the Python environment, and the ~22 GB model —
+  freeing 20+ GB. Reinstalling later is one click.
+
+<table>
+<tr>
+<td width="50%"><img src="app/docs/images/server.png" alt="Server tab: the green SERVER pill reads running on port 8000, with startup output ending in Server is READY"></td>
+<td width="50%"><img src="app/docs/images/chat.png" alt="Chat tab: a question and the model's reply, with its reasoning shown above the answer in dim italic"></td>
+</tr>
+<tr>
+<td align="center"><em>Server tab — one click, then watch it come up.</em></td>
+<td align="center"><em>Chat tab — the model's thinking renders dim above its answer.</em></td>
+</tr>
+</table>
+
+## Go faster with NInfer
+
+The Model dropdown has an entry called **Qwen3.8-27B via NInfer (fastest)**.
+It is the same model as Standard — the same weights, the same answers — served
+by a different engine.
+
+|  | Standard (vLLM) | NInfer |
+|---|---|---|
+| Speed | ~80 words-ish/second | **~120–170** |
+| Pasting a very long document | minutes, and it gives up past ~139K | **seconds** |
+| Uncensored build available | yes | no |
+| Setup | download and go | compiles an engine first (once) |
+
+Where in that range you land depends on how long the reply is: a short answer
+runs ~170, a long one ~120, and a real coding session averaged ~150. NInfer's
+own published figure is 151–195, which we could not reproduce on a long
+generation — see [NINFER.md](app/docs/NINFER.md).
+
+Tick it, click **Install**, and that is all — it is remembered, so every later
+start uses it without touching anything. To go back, pick Standard again.
+
+From a command line:
+
+```powershell
+.\app\install.ps1 -Ninfer     # Windows
+```
+
+```bash
+bash app/scripts/setup-ninfer.sh   # Linux
+```
+
+Full detail — the other four models it can serve, the settings, and what to do
+when the build cannot find a CUDA toolkit — is in
+[NINFER.md](app/docs/NINFER.md).
+
+## The rest of the Model dropdown
+
+Four entries beyond the three Qwen3.8-27B builds. None of them is the
+recommended setup, and the tooltip on each says the same thing the app does:
+
+| Entry | What it is | On a 32 GB PC |
+|---|---|---|
+| **Qwen3.6-35B-A3B via NInfer** | mixture-of-experts, 35B total but 3B active per token | very fast (~590 tok/s), text only, an older Qwen release |
+| **DeepSeek V4-Flash (pruned, 63 GB)** | V4-Flash 0731 with experts pruned 284B → ~150B, then 2-bit | runs, slowly — llama.cpp serves it from **system RAM**, so single-digit tokens/second, and it wants ~69 GB of RAM+VRAM |
+| **DeepSeek V4-Flash (full, 105 GB)** | the intact 0731 weights at 3-bit | **will not start** — it needs ~112 GB of RAM+VRAM, i.e. a 128 GB machine |
+
+The DeepSeek entries exist because V4-Flash is a strong agent model, not
+because they are comfortable here: 284B parameters do not fit in 32 GB of VRAM
+at any quantisation, so `serve-gguf.ps1` maps the weights from disk and lets
+Windows page them. The pruned build is also a *different model* from the one
+whose published scores you may have read — pruning and 2-bit both cost
+accuracy. Treat it as an experiment.
+
+## Where the big files go (Windows)
 
 The DeepSeek builds are 63 to 105 GB, so `serve-gguf.ps1` puts them — and
 llama.cpp itself — on **E:** by default, not on C:. Override with `-ModelDir`,
@@ -410,55 +453,31 @@ It refuses while a server is running, keeps the export until the new copy has
 started and answered, and restores the default user — an imported distro
 otherwise comes back as root, which breaks every script here.
 
-### Or the DeepSeek Harness
+## How it works
 
-[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`) is
-DeepSeek's own open-source agent runtime, and it speaks the OpenAI API
-natively — so it needs no bridge at all, just a provider route. You work in a
-browser rather than a terminal, and it brings subagents and its own tool set.
+vLLM (currently the only engine that runs NVFP4) is Linux-only, so the
+installer sets up **WSL2 + Ubuntu 24.04** — Microsoft's built-in Linux layer —
+completely silently: no Linux prompts, a `qwen` user is created for you, and
+your Windows NVIDIA driver powers the GPU inside WSL automatically. The
+PowerShell scripts hide all of it; `localhost:8000` just works.
 
-On the 5090 PC it is one button: start the model server, open the app's
-**DeepSeek Harness** tab, and click **Open harness** — it installs Node.js and
-the harness on first use (each with its own yes/no), starts it, and opens the
-Web UI in your browser.
-
-<div align="center">
-<img src="app/docs/images/deepseek-harness.png" alt="DeepSeek Harness tab: Open harness, Install harness, Re-read server and Doctor buttons, with the HARNESS pill green on port 3080" width="820">
-</div>
-
-The same thing from a shell — including a machine that is not the 5090:
-
-```bash
-bash app/scripts/deepseek-harness.sh install
-QWEN_URL=http://<5090-ip>:8000 bash app/scripts/deepseek-harness.sh start
+```
+you ──► Start Qwen 5090.cmd ──► gui.ps1 ──► install.ps1 / run.ps1
+                                                 │
+                                      WSL2 · Ubuntu 24.04
+                                                 │
+                                  serve.sh ──► vLLM ──► your RTX 5090
+                                                 │
+                                   OpenAI API · localhost:8000/v1
 ```
 
-That serves its Web UI on <http://127.0.0.1:3080>. `service` keeps it running
-across reboots and `share` publishes it to your tailnet over HTTPS. Details,
-and the five settings that decide whether the requests are accepted at all, in
-**[app/docs/DEEPSEEK-HARNESS.md](app/docs/DEEPSEEK-HARNESS.md)**.
-
-It follows whatever is serving on port 8000 — vLLM or NInfer — without being
-told which: `config` reads that off the server and adjusts the route to match.
-On NInfer it also probes the real context window, because that backend does not
-publish one, and offers an `off` thinking tier that the vLLM path does not
-have. If you run it there, `MAX_SEQS=1` is worth raising to 2 in
-`~/.qwen5090/server.env`: the harness runs subagents, and at 1 they queue
-behind each other.
-
-Expect a capable local assistant rather than a frontier one: well-scoped edits,
-refactors and file spelunking go fine; long multi-step planning is weaker, and
-it thinks for a few seconds before each reply (`QWEN_EFFORT=medium` trades some
-of that back). Full guide, settings and troubleshooting:
-**[app/docs/DEEPSEEK-HARNESS.md](app/docs/DEEPSEEK-HARNESS.md)**.
-
-**It has also tuned this very stack.** Pointed at a copy of this repo, the
-harness built `app/optimization/` — an autonomous loop that benchmarks and
-tunes its own settings *and* the live server's flags on the one GPU they
-share, with health probes, quiet-window swaps and automatic rollback. Its
-first findings (a reasoning-effort sweet spot, a serving flag promoted on a
-16/16 run, and two impossible configs rejected safely) are written up in
-**[app/docs/SELF-OPTIMIZATION.md](app/docs/SELF-OPTIMIZATION.md)**.
+What `install.ps1` actually does: checks Windows 11 + driver ≥ 570 → raises the
+GPU watchdog timeout, which needs one restart → enables WSL2 (one reboot max,
+auto-resumes) → provisions Ubuntu unattended → installs `build-essential`
+(vLLM's kernel compiler needs a C compiler at runtime) → creates a Python 3.13
+venv with `vllm`, `flashinfer`, and the CUTLASS DSL → downloads
+[`unsloth/Qwen3.8-27B-NVFP4`](https://huggingface.co/unsloth/Qwen3.8-27B-NVFP4)
+(~22 GB, skippable) → desktop shortcut. Re-running is always safe.
 
 ## For power users
 
