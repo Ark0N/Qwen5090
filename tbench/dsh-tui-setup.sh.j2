@@ -87,12 +87,24 @@ JSON
 cat > cordis.yml <<'YAML'
 []
 YAML
-# pnpm 11 refuses build scripts unless told; the TUI's README names these two
-# (neither is needed at runtime). Without it pnpm exits non-zero AFTER linking.
+# This file shadows the one `dsh plugin install` would write, so it must carry
+# the launcher's own settings too (they are what ~/.dsh/profiles/dsh-tui has):
+# `autoInstallPeers: false` above all - dsh-tui declares every @deepseek-ai/dsh-*
+# package as a peer, resolved from the runtime at load time, and pnpm 11's
+# default of installing peers drags that tree into the profile, where one of
+# them wants dsh-scope@^0.1.1, a range no published prerelease satisfies
+# (ERR_PNPM_NO_MATCHING_VERSION, the whole install aborted, tui-smoke 2026-08-31).
+# `allowBuilds` because pnpm 11 refuses build scripts unless told; the TUI's
+# README names these two (neither is needed at runtime) and without it pnpm
+# exits non-zero AFTER linking.
 cat > pnpm-workspace.yaml <<'YAML'
 packages:
   - .
 
+nodeLinker: hoisted
+autoInstallPeers: false
+minimumReleaseAgeExclude:
+  - '@deepseek-harness-tui/dsh-tui@{{ tui_version }}'
 allowBuilds:
   '@google/genai': false
   protobufjs: false
@@ -239,6 +251,10 @@ WATCH=/installed-agent/dsh-tui-watch.log
 ) > "$WATCH" 2>&1 &
 dsh --profile dsh-tui
 rc=$?
+# The TUI queries the terminal on exit (device attributes) and quits before the
+# reply arrives, so `1;2c` lands on the shell prompt after it. Drain it, or the
+# stray bytes prefix the next command Terminal-Bench types into the pane.
+read -r -s -t 0.5 -N 64 _junk </dev/tty 2>/dev/null || true
 echo; echo "dsh-tui exited rc=$rc"; cat "$WATCH"
 exit 0
 RUN

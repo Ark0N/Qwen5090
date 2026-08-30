@@ -62,8 +62,11 @@ cd tbench
 ./compare.sh                 # writes runs/cmp-{dsh,terminus,pi,cc}/
 ```
 
-The TUI adapter, one task, watching it work (`--no-cleanup` keeps the cast; the
-watcher's log is `/installed-agent/dsh-tui-watch.log` inside the container):
+The TUI adapter, one task, watching it work (verified 2026-08-31 on `hello-world`:
+composer up in 3 s, task pasted, `turn/end` 9 s later, 2/2 tests; the cast in
+`runs/tui-smoke/.../sessions/agent.cast` shows the TUI rendering the whole turn.
+`--no-cleanup` keeps the cast; the watcher's log is
+`/installed-agent/dsh-tui-watch.log` inside the container):
 
 ```bash
 PYTHONPATH=$PWD TB_EFFORT=medium \
