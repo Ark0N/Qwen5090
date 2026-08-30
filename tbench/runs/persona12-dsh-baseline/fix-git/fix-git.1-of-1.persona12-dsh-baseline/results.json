@@ -1,0 +1,21 @@
+{
+    "id": "afcddf08-cea8-41cb-b6a8-8ef718f960db",
+    "trial_name": "fix-git.1-of-1.persona12-dsh-baseline",
+    "task_id": "fix-git",
+    "instruction": "I just made some changes to my personal site and checked out master, but now I can't find those changes. Please help me find them and merge them into master.",
+    "is_resolved": true,
+    "failure_mode": "unset",
+    "parser_results": {
+        "test_about_file": "passed",
+        "test_layout_file": "passed"
+    },
+    "recording_path": "persona12-dsh-baseline/fix-git/fix-git.1-of-1.persona12-dsh-baseline/sessions/agent.cast",
+    "total_input_tokens": 0,
+    "total_output_tokens": 0,
+    "trial_started_at": "2026-08-30T22:41:19.034303+00:00",
+    "trial_ended_at": "2026-08-30T22:43:26.605034+00:00",
+    "agent_started_at": "2026-08-30T22:41:28.190513+00:00",
+    "agent_ended_at": "2026-08-30T22:43:02.809263+00:00",
+    "test_started_at": "2026-08-30T22:43:06.234109+00:00",
+    "test_ended_at": "2026-08-30T22:43:13.402900+00:00"
+}

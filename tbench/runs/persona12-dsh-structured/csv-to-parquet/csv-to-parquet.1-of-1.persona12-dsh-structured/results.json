@@ -1,0 +1,21 @@
+{
+    "id": "a484e697-a607-4f0a-924f-54cba6262805",
+    "trial_name": "csv-to-parquet.1-of-1.persona12-dsh-structured",
+    "task_id": "csv-to-parquet",
+    "instruction": "Convert the file '/app/data.csv' into a Parquet file named '/app/data.parquet'. The CSV file contains sample data with headers.",
+    "is_resolved": false,
+    "failure_mode": "unset",
+    "parser_results": {
+        "test_parquet_exists": "passed",
+        "test_data_matches": "failed"
+    },
+    "recording_path": "persona12-dsh-structured/csv-to-parquet/csv-to-parquet.1-of-1.persona12-dsh-structured/sessions/agent.cast",
+    "total_input_tokens": 0,
+    "total_output_tokens": 0,
+    "trial_started_at": "2026-08-30T22:54:28.184447+00:00",
+    "trial_ended_at": "2026-08-30T22:56:44.780885+00:00",
+    "agent_started_at": "2026-08-30T22:54:32.454691+00:00",
+    "agent_ended_at": "2026-08-30T22:56:17.282957+00:00",
+    "test_started_at": "2026-08-30T22:56:20.725336+00:00",
+    "test_ended_at": "2026-08-30T22:56:30.710476+00:00"
+}

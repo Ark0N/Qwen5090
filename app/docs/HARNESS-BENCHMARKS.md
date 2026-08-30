@@ -119,6 +119,11 @@ harness tuning moves them.
 > `is_resolved: null` with a parse error, and the scoring recipe counted `null`
 > the same as `false`, so missing data became a capability limit. **When scoring
 > a run of your own, count `null` separately from `false`.**
+>
+> **And one more, 2026-08-31:** `write-compressor` has now been solved once —
+> by the DeepSeek Harness with the tuned persona below, cut off by its
+> timeout with a passing answer on disk. Until it repeats, the ceiling set
+> is two tasks for sure and a third in doubt.
 
 At `xhigh` effort the best single harness tops out at 7/12. But that is not the
 end of the story: see the effort sweep below.
@@ -186,6 +191,46 @@ The DeepSeek Harness matches its medium-effort 8/12 here, over a slightly
 different set of tasks, in a third of Claude Code's wall time. That result
 includes one re-run: `hello-world` failed on a broken apt index inside a single
 container, which is a flake rather than a capability result.
+
+## A tuned persona, measured (2026-08-31)
+
+The [self-optimization loop](SELF-OPTIMIZATION.md) promoted a *persona* — six
+rules added to the agent's system prompt (inspect before changing, work in
+small verified steps, never assume file contents or exit codes, one focused
+command per call, finish with a verification step, end with a tool-free
+message) — and the DeepSeek Harness TUI on this machine now runs with it. Its
+suite is self-expanded, so we measured the persona here too: the same 12
+tasks, `medium` effort, with and without the rules.
+
+| persona | 12-task at `medium` |
+|---|:---:|
+| published (`baseline`) | 5 / 12 |
+| tuned (`structured`) | **7** / 12 |
+
+Two tasks better — which on this suite is the edge of run-to-run noise,
+so: not worse, plausibly better. Agent time was the same on the tasks
+both arms completed.
+The rules recovered `fibonacci-server` (the baseline skipped a validation
+case) and lost `csv-to-parquet` (the tuned agent noticed a stray space in the
+data and "fixed" it; the test wanted the file untouched). Careful reading cuts
+both ways.
+
+One surprise: the tuned run **solved `write-compressor`**, a task listed above
+as unreachable for this model — 3/3 tests, though the agent was cut off by its
+timeout rather than finishing on its own, and it was one run. Treat the
+ceiling as "at least two tasks, maybe three" until that repeats.
+
+A caution that cuts the other way: the *untuned* arm here is exactly the
+configuration that scored 8/12 above, and five days later it scored 5/12 on
+the same tasks, losing three by a single test each. The serve's own flags
+were tuned in between, so this is not a clean repeat — but it means the
+8/12 headline is the top of a range, not a fixed number, and a one- or
+two-task difference between any two runs in this document is noise.
+
+Keep the persona if you like it — it is not worse — but the recommendation
+above does not change: **`medium` effort is the setting that matters.**
+Details, per-task times and the two install flakes that had to be re-run are
+in the [technical report](../../tbench/REPORT.md#persona-ab-at-medium-on-the-full-12-2026-08-31).
 
 ## Reproduce it
 

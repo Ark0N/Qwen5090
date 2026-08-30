@@ -1,0 +1,30 @@
+{
+    "run_id": "persona12-dsh-baseline-retry",
+    "uuid": "b7041be6-858b-4f9e-9272-97f379a1e25a",
+    "dataset_path": null,
+    "dataset_name": "terminal-bench-core",
+    "dataset_version": "0.1.1",
+    "output_path": "/home/arkon/codeman-cases/win11-5090/tbench/runs",
+    "agent_name": "dsh-qwen5090",
+    "no_rebuild": false,
+    "cleanup": false,
+    "log_level": 20,
+    "task_ids": [
+        "sqlite-db-truncate"
+    ],
+    "exclude_task_ids": null,
+    "n_tasks": null,
+    "n_concurrent_trials": 1,
+    "n_attempts": 1,
+    "dataset_size": 1,
+    "accuracy": 0.0,
+    "model_name": null,
+    "start_time": "2026-08-30T23:20:33.650779+00:00",
+    "end_time": "2026-08-30T23:25:12.826588+00:00",
+    "commit_hash": "5736fb71c4760bc872ee112841fd168ec490f365",
+    "username": "Ark0N",
+    "s3_bucket": null,
+    "agent_kwargs": null,
+    "pass_at_k": {},
+    "resumed_at": null
+}

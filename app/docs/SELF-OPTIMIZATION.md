@@ -137,7 +137,9 @@ roughly in order:
    measures speed. Put one task in it that `none`-effort reliably fails (the
    regex-quoting class) so screening carries a correctness signal too.
 5. **Search the space that showed sensitivity.** Effort and draft-tokens moved
-   the numbers; persona barely did once effort was fixed. Next knobs with
+   the numbers; persona barely did once effort was fixed. (Confirmed on Terminal-Bench, 2026-08-31:
+   `structured` 7/12 against the published persona's 5/12 at medium, a gap
+   at the edge of that suite's noise — `tbench/REPORT.md`, "Persona A/B".) Next knobs with
    likely payoff: adaptive effort (classify task difficulty, spend `medium`
    only when a first `none` pass fails — the round-1 failure is exactly this
    shape), the sampler pair the model card recommends (temp 0.7 / top-p 0.8),

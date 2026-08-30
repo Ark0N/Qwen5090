@@ -251,3 +251,127 @@ genuine model-ceiling set is **three** tasks — `sanitize-git-repo`, `write-com
 
 **When scoring a run, count `null` separately from `false`.** A `parse_error` trial is
 missing data, and treating it as a failure understates the model.
+
+## Persona A/B at medium on the full 12 (2026-08-31)
+
+The [self-optimization loop](../app/docs/SELF-OPTIMIZATION.md) promoted a
+`structured` persona — six rules appended to the container persona (inspect
+before changing, small verified steps, never assume file contents or exit
+codes, one focused command per call, a final verification step, end with a
+tool-free message) — on its own 16-task suite (15/16 at medium), and the dsh
+TUI's `qwen5090` preset now carries it. Its own roadmap notes that "persona
+barely did once effort was fixed", so this run puts the question to the
+Terminal-Bench subset instead: the headless adapter with `TB_DSH_PERSONA=
+baseline|structured`, both arms at `medium`, all 12 tasks. Neither arm had been
+measured at medium on the full 12 before (the effort sweep covered 8), so the
+baseline arm is new data as well as the control. Driver `persona12.sh`; runs
+`runs/persona12-dsh-{baseline,structured}` plus the two `-retry` re-runs below.
+
+| task | baseline | | structured | |
+|---|:---:|---:|:---:|---:|
+| hello-world | PASS | 1m08s | PASS | 0m59s |
+| csv-to-parquet | PASS | 1m24s | fail 1/2 | 1m44s |
+| simple-sheets-put | PASS | 1m20s | PASS | 1m26s |
+| tmux-advanced-workflow | PASS | 4m29s | PASS | 1m38s |
+| fix-git | PASS | 1m34s | PASS | 1m19s |
+| sqlite-db-truncate | fail 0/1 † | 4m12s | PASS | 5m24s |
+| fibonacci-server | fail 5/6 | 1m05s | PASS | 1m16s |
+| openssl-selfsigned-cert | fail 5/6 | 1m28s | fail 5/6 | 1m40s |
+| pytorch-model-cli.hard | timeout | 18m12s | fail 5/6 | 6m20s |
+| write-compressor | fail 0/3 | 7m33s | **PASS** (timeout) | 20m00s |
+| sanitize-git-repo | fail 2/3 | 14m38s | fail 2/3 † | 3m39s |
+| nginx-request-logging | fail 1/8 | 2m19s | fail 3/8 | 2m41s |
+| **total** | **5 / 12** | | **7 / 12** | |
+
+Times are agent time per trial (`agent_started_at` → `agent_ended_at`).
+† from the `-retry` re-run; the original trial flaked at install (below).
+
+**Accuracy: 7/12 against 5/12.** Two tasks, which is the edge of this
+suite's ±1–2 run-to-run band — read it as *not worse, plausibly better*. On the ten tasks both arms completed, agent time is a
+wash — 40.6 min baseline against 39.1 min structured, medians 1.6 and 1.7 min.
+The long trials swap rather than shrink: the structured arm finishes
+`pytorch-model-cli.hard` in 6m20s where baseline burned its 18-minute
+timeout, and clears `tmux-advanced-workflow` in a third of the time, but then
+spends 20 minutes on `write-compressor`.
+
+Where the rules moved a result, the per-test detail says how:
+
+- **`fibonacci-server`** — baseline passed 5/6 and missed only
+  `test_negative_number` (a negative `n` returned 200). Structured passed all
+  six. The "final verification step" is the rule that fits: the baseline
+  agent's answer worked for the cases it tried and it stopped there.
+- **`csv-to-parquet`** — the one regression, and it is the "inspect before you
+  change" rule doing exactly what it says. The structured agent noticed the
+  last row's `"Seattle "` carried a trailing space and *cleaned it*; the test
+  wants the Parquet to match the CSV byte for byte. Baseline converted
+  without looking and passed. A persona that makes the model read more
+  carefully also makes it more willing to fix what it was not asked to fix.
+- **`write-compressor`** — the first time any harness has solved this task
+  with this model, and it has to be read with the timeout attached. The agent
+  never returned: Terminal-Bench cut it at the agent timeout
+  (`failure_mode: agent_timeout`) and the `data.comp` on disk at that moment
+  decompressed to `data.txt` exactly, under 2,500 bytes, 3/3 tests. The
+  headless profile prints nothing while it works and the container was gone
+  before its dsh session log could be copied out, so *how* it got there is
+  unrecorded. Baseline scored 0/3 in 7m33s. One solve at n=1 is not a
+  capability claim, but it does mean the task is reachable, which the
+  "ceiling" correction above said it was not.
+- **`sqlite-db-truncate`** — the baseline re-run is a failure on merit and an
+  odd one: dsh ran for 4m12s, printed nothing, and exited with no
+  `recover.json` on disk — an empty turn behind a clean exit, the shape
+  DEEPSEEK-HARNESS.md warns about when a tool call goes unparsed. Structured
+  solved it in 5m24s.
+- **`sanitize-git-repo`** — identical 2/3 in both arms: both find and replace
+  the secrets, both trip `test_no_other_files_changed` (a tokenized dataset
+  file under `exp_data/` gets modified). Still a ceiling task, but a narrow one.
+- **`openssl-selfsigned-cert`** — identical 5/6 in both arms, on the same test:
+  the agent writes "SHA-256" and `test_fingerprint` greps for the literal
+  `sha256`. A wash, and a benchmark-literal miss rather than a model one.
+- **`nginx-request-logging`** — 1/8 vs 3/8, both because `nginx` never gets
+  installed in that container (the structured agent served the index and 404
+  pages from something else, which is what its two extra passes are). Still a
+  ceiling task.
+
+**Two install flakes, two different modes, one per arm** — both re-run above
+under the fixed templates and counted from the re-run, not as fails:
+
+- baseline `sqlite-db-truncate`: the nodejs.org tarball download died
+  (`bad record mac`), so nvm never installed node and `dsh` was never built.
+  This is the flake the nvm retry loop (`0f7f8c5`) was written for; that
+  commit landed mid-arm.
+- structured `sanitize-git-repo`: an apt `Hash Sum mismatch` on
+  `libstdc++-12-dev` killed the install before `curl` existed, so the nvm
+  retry never got its chance. Terminal-Bench did record it as
+  `agent_installation_failed` this time — the readiness-probe fix works — and
+  the apt step now retries too (`5736fb7`). The scorer for this section keys
+  flakes on that failure mode plus the pre-fix pane signature.
+
+**The baseline arm is the sweep's configuration, and it scored three tasks
+lower.** `sweep-dsh-medium` (2026-08-26) resolved all 8 of its tasks; the same
+adapter, persona, effort and task list here resolved 5 of those 8, losing
+`sqlite-db-truncate`, `fibonacci-server` and `openssl-selfsigned-cert` — every
+one a near-miss (0/1, 5/6, 5/6). That is outside the ±1–2 band the low12 run
+established *within* a day. One known confound: the serve is not held constant
+across dates — the [self-optimization loop](../app/docs/SELF-OPTIMIZATION.md)
+tunes the live NInfer flags (`--preserve-thinking` was promoted since the
+sweep), and this run did not record them. So the honest noise figure for a
+cross-date comparison on this suite is more like **±3**, and the "dsh at
+medium, 8/12" headline should be read as the top of a 5–8 range, not a
+point. A same-day re-run of the sweep configuration is the cheap way to
+settle it.
+
+**What it changes.** The structured persona is not worse on the benchmark, it
+recovers one task the baseline misses through under-verification, and its one
+loss is over-eagerness on a task that rewards doing less. That is enough to
+keep it as the TUI's default preset, and not enough to promote it above the
+noise band: with ±1–2 tasks of run-to-run variance on this suite, the
+[HARNESS-BENCHMARKS](../app/docs/HARNESS-BENCHMARKS.md) headline stays
+"medium effort", not "medium effort plus this persona". The loop's own
+finding — effort moved the numbers, persona barely did — holds here too.
+
+Two things this run leaves open: the `write-compressor` solve wants a repeat
+before the ceiling set is rewritten as two tasks, and the headless adapter
+should copy `$DSH_HOME/sessions/*/session.jsonl.zstd` into the trial's
+`agent-logs/` before the turn ends — `--no-cleanup` keeps the casts, not the
+agent containers, and the one trial whose reasoning mattered most is the one
+with no record of it.

@@ -1,0 +1,30 @@
+{
+    "run_id": "persona12-dsh-structured-retry",
+    "uuid": "8b60f451-8d5d-4642-8fee-25556a649647",
+    "dataset_path": null,
+    "dataset_name": "terminal-bench-core",
+    "dataset_version": "0.1.1",
+    "output_path": "/home/arkon/codeman-cases/win11-5090/tbench/runs",
+    "agent_name": "dsh-qwen5090",
+    "no_rebuild": false,
+    "cleanup": false,
+    "log_level": 20,
+    "task_ids": [
+        "sanitize-git-repo"
+    ],
+    "exclude_task_ids": null,
+    "n_tasks": null,
+    "n_concurrent_trials": 1,
+    "n_attempts": 1,
+    "dataset_size": 1,
+    "accuracy": 0.0,
+    "model_name": null,
+    "start_time": "2026-08-30T23:25:19.310630+00:00",
+    "end_time": "2026-08-30T23:29:26.860289+00:00",
+    "commit_hash": "5736fb71c4760bc872ee112841fd168ec490f365",
+    "username": "Ark0N",
+    "s3_bucket": null,
+    "agent_kwargs": null,
+    "pass_at_k": {},
+    "resumed_at": null
+}

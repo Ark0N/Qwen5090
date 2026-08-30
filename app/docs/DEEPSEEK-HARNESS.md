@@ -251,6 +251,36 @@ a strong default rather than a law. The [full comparison](HARNESS-BENCHMARKS.md)
 has the per-task detail and the other agents' very different effort curves
 (terminus, for one, wants the opposite: `low`).
 
+## The tuned persona is optional
+
+The [self-optimization loop](SELF-OPTIMIZATION.md) also promoted a persona:
+six rules appended to the agent's system prompt (inspect before you change,
+small verified steps, never assume file contents or exit codes, one focused
+command per call, a final verification step, end with a tool-free message).
+On this machine the TUI runs it as the `qwen5090` preset
+(`~/.dsh/.agent-presets/qwen5090/`, a copy of the shipped `standard` preset
+with only the `dsh-persona` row changed), selected through the profile patch:
+
+```yaml
+# ~/.dsh/profiles/dsh-tui/cordis.patch.yml
+- id: dsh-tui
+  config:
+    provider: qwen5090
+    model: qwen3.8-27b
+    effort: medium
+    preset: qwen5090
+```
+
+**On Terminal-Bench it is a wash** — 7/12 with the rules against 5/12 without at `medium`, within
+the suite's ±1–2 task noise, with the same agent time. It recovered one task
+through the "verify before you finish" rule and lost one by being *too*
+careful (it tidied a stray space the test wanted left alone). Keep it or drop
+it: delete the `preset:` line from the patch to go back to the shipped
+`standard` preset (a `/preset` choice made inside the TUI does not survive a
+restart while the patch pins one). The setting that moves the
+score is the effort above, not the persona — see
+[HARNESS-BENCHMARKS.md](HARNESS-BENCHMARKS.md#a-tuned-persona-measured-and-it-is-a-wash-2026-08-31).
+
 ## pnpm, not npm
 
 `npm install @deepseek-ai/dsh` does not finish. Measured 2026-08-22 on a 29 GB
