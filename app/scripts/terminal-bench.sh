@@ -157,7 +157,12 @@ if (( $# > 0 )); then shift; fi
 case "$cmd" in
   subset)
     args=()
-    for t in "${SUBSET[@]}"; do args+=(-i "$t"); done
+    # Task ids reach harbor dataset-prefixed. A bare `-i openssl-selfsigned-cert`
+    # is `ValueError: No tasks matched the filter(s)` on harbor 0.22.0, which
+    # kills the whole subset loop; it wants `-i terminal-bench/openssl-...`.
+    # Taken off $DATASET rather than hardcoded, so overriding the dataset
+    # carries the prefix with it.
+    for t in "${SUBSET[@]}"; do args+=(-i "${DATASET%%/*}/$t"); done
     run_job "subset-$(date +%Y%m%d-%H%M%S)" "${args[@]}" "$@"
     summarize ;;
   full)

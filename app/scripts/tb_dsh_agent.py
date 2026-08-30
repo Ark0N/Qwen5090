@@ -103,7 +103,11 @@ class DeepSeekHarness(BaseInstalledAgent):
     # ------------------------------------------------------------ install --
     @override
     async def install(self, environment: BaseEnvironment) -> None:
-        await self.ensure_system_dependencies(environment, ("curl", "bash", "ca-certificates"))
+        # `ca_certificates`, with the underscore: that is the key in harbor's
+        # SYSTEM_PACKAGES, and the hyphenated spelling raises
+        # `ValueError: Unknown system dependencies` before the model is ever
+        # contacted (harbor 0.22.0).
+        await self.ensure_system_dependencies(environment, ("curl", "bash", "ca_certificates"))
         # pnpm rather than npm, and not as a preference: `npm install
         # @deepseek-ai/dsh` does not finish - twelve minutes at full CPU and
         # 3.3 GB resident with nothing written, measured on a 29 GB host. pnpm
@@ -115,12 +119,20 @@ class DeepSeekHarness(BaseInstalledAgent):
             command=(
                 "set -euo pipefail; "
                 f"{nvm_node_install_snippet()} && "
-                "curl -fsSL https://get.pnpm.io/install.sh | SHELL=/bin/bash sh - >/dev/null 2>&1 && "
-                'export PNPM_HOME="$HOME/.local/share/pnpm" && '
-                'export PATH="$PNPM_HOME:$PNPM_HOME/bin:$PATH" && '
+                # Through npm rather than get.pnpm.io: the standalone pnpm
+                # binary links against libatomic.so.1, which the slim task
+                # images do not ship, so the installer dies rc=1 behind its own
+                # >/dev/null and the whole && chain fails with no output. npm's
+                # pnpm is pure JS, and npm is already here from the nvm step.
+                "npm install -g pnpm >/dev/null 2>&1 && "
                 'mkdir -p "$HOME/.dsh-runtime" && cd "$HOME/.dsh-runtime" && '
                 """printf '{"name":"dsh-runtime","private":true}\\n' > package.json && """
-                f'pnpm add "@deepseek-ai/dsh@{self._dsh_version}" >/dev/null && '
+                # pnpm 11 exits 1 on ERR_PNPM_IGNORED_BUILDS - dependency build
+                # scripts it declined to run - *after* linking every package, so
+                # a bare `&&` throws away a working install. The dsh --version
+                # that follows is the real success check, the same way
+                # ensure_dsh_installed judges it on the host.
+                f'(pnpm add "@deepseek-ai/dsh@{self._dsh_version}" >/dev/null || true) && '
                 '"$HOME/.dsh-runtime/node_modules/.bin/dsh" --version'
             ),
             timeout_sec=900,
@@ -164,22 +176,33 @@ class DeepSeekHarness(BaseInstalledAgent):
         # container that has no Python of its own.
         return json.dumps(doc, indent=2)
 
-    def _patch_yaml(self) -> str | None:
-        """Composition patch that rebuilds the minimal preset.
+    def _patch_yaml(self) -> str:
+        """Composition patch: select this route, and rebuild `minimal`.
 
-        `minimal` is a Web-surface preset and the headless profile mounts no
-        preset roster at all, so it cannot be selected - it has to be composed.
-        Two halves: the system prompt fixed to one sentence, and every
-        model-facing tool row disabled except bash and str_replace_editor.
-        Verified against a running harness: the composition comes out with
-        exactly those two registered.
+        Selecting the route is not optional and is why this is written even
+        when `minimal` is off. The headless profile ships
+        `agent-default-model = {provider: deepseek-official, ...}` - DeepSeek's
+        hosted API - and a fresh container has no user settings layer to
+        override it, so every trial dies in seconds with `MISSING_CREDENTIAL:
+        llm-deepseek: no API key for provider route "deepseek-official"`. A
+        host with a default set through the Web UI does not show this, which is
+        why it survived host-side testing. Configuring a route never selects
+        it; the same trap `deepseek-harness.sh config` handles on the host.
+
+        The `minimal` half is a reconstruction: it is a Web-surface preset and
+        the headless profile mounts no preset roster at all, so it cannot be
+        selected - it has to be composed. Two parts: the system prompt fixed to
+        one sentence, and every model-facing tool row disabled except
+        persistent bash and str_replace_editor. Verified against a running
+        harness: the composition comes out with exactly those two registered.
         """
-        if not self._minimal:
-            return None
         rows: list[dict[str, Any]] = [
-            {"id": "system-prompt", "config": {"persona": MINIMAL_PERSONA}}
+            {"id": "agent-default-model",
+             "config": {"provider": "qwen5090", "model": self.model_name}},
         ]
-        rows += [{"id": row, "disabled": True} for row in MINIMAL_DROP]
+        if self._minimal:
+            rows.append({"id": "system-prompt", "config": {"persona": MINIMAL_PERSONA}})
+            rows += [{"id": row, "disabled": True} for row in MINIMAL_DROP]
         return json.dumps(rows, indent=2)
 
     # ------------------------------------------------------------------ run --
@@ -204,13 +227,19 @@ class DeepSeekHarness(BaseInstalledAgent):
             'printf "QWEN5090_API_KEY=%s\\n" "$QWEN5090_API_KEY" > "$DSH_HOME/.env"',
             'chmod 600 "$DSH_HOME/.env"',
         ]
-        patch = self._patch_yaml()
-        if patch:
-            writes.append(f"cat > \"$DSH_HOME/cordis.patch.yml\" <<'DSHPATCH'\n{patch}\nDSHPATCH")
+        writes.append(
+            f"cat > \"$DSH_HOME/cordis.patch.yml\" <<'DSHPATCH'\n{self._patch_yaml()}\nDSHPATCH"
+        )
 
+        # Newline-joined, and that is load-bearing: two of these writes are
+        # heredocs, and `DSHCFG; printf ...` is not a terminator bash accepts -
+        # so the heredoc swallows every following write to EOF. settings.yaml
+        # came out as the JSON plus the leftover shell commands plus the patch,
+        # .env and cordis.patch.yml were never created, and dsh died at boot in
+        # [cordis.init] with the detail hidden inside harbor's output elision.
         await self.exec_as_agent(
             environment,
-            command="set -euo pipefail; " + "; ".join(writes),
+            command="set -euo pipefail\n" + "\n".join(writes),
             env=env,
         )
 
