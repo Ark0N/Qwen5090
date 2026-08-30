@@ -14,6 +14,7 @@ This file is how to run it.
 | file | what it is |
 |---|---|
 | `dsh_agent.py` + `dsh-setup.sh.j2` | DeepSeek Harness adapter (installs `dsh` headless in the task container) |
+| `dsh_tui_agent.py` + `dsh-tui-setup.sh.j2` | DeepSeek Harness **TUI** adapter: runs the real `dsh-tui` in the task's tmux pane (the headless profile prints nothing until its final answer), so the cast shows the model working. `TB_DSH_TUI_PRESET=standard\|minimal` picks the tool set; `TB_EFFORT` / `TB_DSH_PERSONA` as for the headless adapter |
 | `pi_agent.py` + `pi-setup.sh.j2` | pi coding-agent adapter |
 | `cc_agent.py` + `cc-setup.sh.j2` + `cc_hooks.py` + `litellm-bridge.yaml` | Claude Code adapter, routed through a LiteLLM Anthropic-to-OpenAI bridge |
 | `terminus_fix.py` | Terminal-Bench's built-in `terminus` agent, subclassed to stop sending OpenAI structured-output that NInfer rejects |
@@ -58,6 +59,17 @@ never share the single GPU:
 ```bash
 cd tbench
 ./compare.sh                 # writes runs/cmp-{dsh,terminus,pi,cc}/
+```
+
+The TUI adapter, one task, watching it work (`--no-cleanup` keeps the cast; the
+watcher's log is `/installed-agent/dsh-tui-watch.log` inside the container):
+
+```bash
+PYTHONPATH=$PWD TB_EFFORT=medium \
+  tb run --dataset terminal-bench-core==0.1.1 \
+    --agent-import-path dsh_tui_agent:DshTuiAgent \
+    -t hello-world --n-concurrent 1 --no-cleanup \
+    --run-id tui-smoke --output-path $PWD/runs
 ```
 
 One harness on one task (fast smoke), e.g. pi on hello-world:

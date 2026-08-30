@@ -1,0 +1,247 @@
+#!/bin/bash
+# Install the DeepSeek Harness AND its TUI profile in the task container and
+# point it at the qwen5090 serve; dsh_tui_agent.py runs the TUI in the pane.
+# This script is SOURCED into the task's tmux session, so its cd calls leak:
+# the starting directory is saved and restored at the end, or the agent runs
+# from the install tree instead of the task's working directory.
+__DSH_SETUP_PWD="$PWD"
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y curl ca-certificates python3 make g++ zstd
+
+# Node via nvm (same pattern as the Claude Code / Qwen Code agents)
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.2/install.sh | bash
+source "$HOME/.nvm/nvm.sh"
+nvm install 22
+npm install -g pnpm@11.22.0
+
+export DSH_HOME=/opt/dsh-home
+mkdir -p /opt/dsh-runtime "$DSH_HOME/profiles/headless"
+
+# Runtime: the dsh launcher and its plugin tree. The build-script allowlist
+# goes in BOTH supported locations (pnpm 10/11 moved it between them), and
+# an explicit rebuild backstops both: pnpm silently skipping these builds
+# breaks node-pty and the subprocess backend at the first tool call.
+cd /opt/dsh-runtime
+cat > package.json <<'JSON'
+{
+  "name": "dsh-runtime",
+  "private": true,
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@deepseek-ai/dsh-subprocess-local",
+      "node-pty",
+      "koffi",
+      "protobufjs",
+      "@google/genai"
+    ]
+  }
+}
+JSON
+cat > pnpm-workspace.yaml <<'YAML'
+packages:
+  - .
+
+onlyBuiltDependencies:
+  - "@deepseek-ai/dsh-subprocess-local"
+  - node-pty
+  - koffi
+  - protobufjs
+  - "@google/genai"
+YAML
+pnpm add "@deepseek-ai/dsh@{{ version }}"
+pnpm rebuild "@deepseek-ai/dsh-subprocess-local" node-pty koffi protobufjs "@google/genai" || true
+
+# TUI profile: the launcher's own layout (package.json naming the bundles,
+# `dsh plugin ... install` fetching the TUI package into the profile's OWN
+# node_modules). Not under $DSH_HOME/profiles/node_modules - that is the
+# launcher-managed symlink farm, which refuses real directories.
+mkdir -p "$DSH_HOME/profiles/dsh-tui"
+cd "$DSH_HOME/profiles/dsh-tui"
+cat > package.json <<'JSON'
+{
+  "name": "dsh-profile-dsh-tui",
+  "private": true,
+  "dependencies": {
+    "@deepseek-harness-tui/dsh-tui": "{{ tui_version }}"
+  },
+  "dsh": {
+    "profile": {
+      "bundles": [
+        "@deepseek-ai/dsh-base",
+        "@deepseek-harness-tui/dsh-tui"
+      ]
+    }
+  }
+}
+JSON
+cat > cordis.yml <<'YAML'
+[]
+YAML
+# pnpm 11 refuses build scripts unless told; the TUI's README names these two
+# (neither is needed at runtime). Without it pnpm exits non-zero AFTER linking.
+cat > pnpm-workspace.yaml <<'YAML'
+packages:
+  - .
+
+allowBuilds:
+  '@google/genai': false
+  protobufjs: false
+YAML
+/opt/dsh-runtime/node_modules/.bin/dsh plugin --profile dsh-tui install || true
+test -d "$DSH_HOME/profiles/dsh-tui/node_modules/@deepseek-harness-tui/dsh-tui" \
+  || { echo "dsh-tui package did not install"; false; }
+
+# The session's composition: a user preset copied from the shipped
+# `{{ preset }}` preset with its persona swapped for the benchmark's - the
+# same text the headless adapter renders, so the only differences to a
+# headless run are the tool set the preset carries and the TUI itself.
+mkdir -p "$DSH_HOME/.agent-presets/bench"
+python3 - "$DSH_HOME/.agent-presets/bench" <<'PYEOF'
+import re, sys, shutil
+dst = sys.argv[1]
+src = "/opt/dsh-runtime/node_modules/@deepseek-ai/dsh/config/agent-presets/{{ preset }}"
+t = open(f"{src}/agent.cordis.yml").read()
+persona = """You are a helpful software engineer assistant.{{ persona_rules }}
+
+When a task needs a long-running process (a server, daemon or watcher) to
+still be running after your turn ends, start it in its own session:
+`setsid nohup <command> > <log> 2>&1 < /dev/null &`. A bare `nohup ... &`
+is not enough here - the executor signals the whole process group when a
+turn finishes, so a merely backgrounded child is killed along with it.
+After starting one, confirm it is really listening (curl it, or `ss -ltn`)
+and leave it running.
+
+When you implement an API, keep to the documented response shape and
+return values in their natural JSON types - a number stays a JSON
+number, never a quoted string, because callers compare it numerically.
+Validate the input: an argument the endpoint cannot meaningfully answer
+for - missing, wrong type, or out of the range the operation is defined
+on - is a 4xx, not a 200 carrying a guess."""
+block = "    text: |\n" + "".join("      " + l + "\n" for l in persona.splitlines())
+# standard: `text: >-` folded block; minimal: `text: <one line>`. Replace
+# whichever form the persona row carries, leaving its other keys alone.
+pat = re.compile(r"(- id: persona\n  name: '@deepseek-ai/dsh-persona'\n  config:\n)"
+                 r"    text: (?:>-\n(?:      .*\n)+|.*\n)")
+new, n = pat.subn(lambda m: m.group(1) + block, t, count=1)
+assert n == 1, "persona row not found in shipped preset"
+open(f"{dst}/agent.cordis.yml", "w").write(new)
+open(f"{dst}/preset.yml", "w").write(
+    "name: bench\ndescription: shipped {{ preset }} with the benchmark persona\n")
+print("preset bench written from {{ preset }}")
+PYEOF
+
+# Profile patch: route the TUI at the serve, pin the effort and the preset.
+# The TUI resolves its route from THIS row (not agent-default-model), and a
+# route counts only when it names both provider and model.
+cat > "$DSH_HOME/profiles/dsh-tui/cordis.patch.yml" <<'YAML'
+- id: dsh-tui
+  config:
+    provider: qwen5090
+    model: qwen3.8-27b
+    effort: {{ effort }}
+    preset: bench
+YAML
+
+# Model route: the 5090 box's NInfer serve, canonical settings.
+cat > "$DSH_HOME/settings.yaml" <<'YAML'
+llm-pi-ai:
+  providers:
+    qwen5090:
+      displayName: Qwen 5090
+      apiKeyEnv: QWEN5090_API_KEY
+      api: openai-completions
+      baseURL: {{ qwen_url }}/v1
+      retryPolicy:
+        mode: normal
+        maxRetries: 10
+        backoff:
+          initialDelayMs: 1000
+          maxDelayMs: 30000
+          jitterRatio: 0.1
+      compat:
+        supportsDeveloperRole: false
+        maxTokensField: max_tokens
+        supportsReasoningEffort: true
+      models:
+      - id: qwen3.8-27b
+        name: Qwen 5090
+        contextWindow: 252928
+        reasoningEfforts:
+          'off': none
+          low: low
+          medium: medium
+          xhigh: xhigh
+agent-default-model:
+  provider: qwen5090
+  model: qwen3.8-27b
+  reasoningEffort: {{ effort }}
+ui-onboarding:
+  welcomeNoticeVersion: 2026-08-13.1
+YAML
+printf 'QWEN5090_API_KEY=sk-qwen5090-local\n' > "$DSH_HOME/.env"
+chmod 600 "$DSH_HOME/.env"
+
+# Launcher shim on PATH; bakes in the nvm node location.
+NODE_BIN="$(dirname "$(command -v node)")"
+cat > /usr/local/bin/dsh <<SHIM
+#!/usr/bin/env bash
+export DSH_HOME="\${DSH_HOME:-/opt/dsh-home}"
+export PATH="$NODE_BIN:\$PATH"
+exec /opt/dsh-runtime/node_modules/.bin/dsh "\$@"
+SHIM
+chmod +x /usr/local/bin/dsh
+
+# The pane driver. Runs the TUI in the FOREGROUND of the task's tmux pane (so
+# it is what the cast records) and a watcher that types the task and, when
+# the session log carries turn/end, exits the TUI so this command returns.
+cat > /usr/local/bin/dsh-tui-run <<'RUN'
+#!/usr/bin/env bash
+# usage: dsh-tui-run <task-file>   (must run inside a tmux pane)
+TASK_FILE="${1:?task file}"
+export DSH_HOME="${DSH_HOME:-/opt/dsh-home}"
+PANE=$(tmux display-message -p '#{pane_id}') || { echo "not inside tmux"; exit 1; }
+MARK=$(mktemp)           # session logs newer than this are this run's
+WATCH=/installed-agent/dsh-tui-watch.log
+(
+  t0=$(date +%s)
+  until tmux capture-pane -p -t "$PANE" | grep -q '❯'; do
+    sleep 0.5
+    [ $(( $(date +%s) - t0 )) -gt 180 ] && { echo "composer never appeared"; exit 1; }
+  done
+  echo "composer after $(( $(date +%s) - t0 ))s"
+  sleep 1
+  tmux load-buffer -b tbtask "$TASK_FILE" && tmux paste-buffer -p -b tbtask -t "$PANE"
+  sleep 1.5
+  tmux send-keys -t "$PANE" Enter
+  echo "task submitted $(date +%T)"
+  t1=$(date +%s); log=""
+  while :; do
+    [ -z "$log" ] && log=$(find "$DSH_HOME/sessions" -name session.jsonl.zstd -newer "$MARK" 2>/dev/null | head -1)
+    if [ -n "$log" ] && zstd -dcq "$log" 2>/dev/null | grep -q '"type":"turn/end"'; then
+      echo "turn/end $(date +%T) after $(( $(date +%s) - t1 ))s: $(zstd -dcq "$log" 2>/dev/null | grep '"type":"turn/end"' | head -c 200)"
+      break
+    fi
+    [ $(( $(date +%s) - t1 )) -gt {{ max_turn_sec }} ] && { echo "watch timeout after {{ max_turn_sec }}s"; break; }
+    sleep 3
+  done
+  sleep 2
+  tmux send-keys -t "$PANE" C-c; sleep 1; tmux send-keys -t "$PANE" C-c
+) > "$WATCH" 2>&1 &
+dsh --profile dsh-tui
+rc=$?
+echo; echo "dsh-tui exited rc=$rc"; cat "$WATCH"
+exit 0
+RUN
+chmod +x /usr/local/bin/dsh-tui-run
+
+# Back to the task's working directory before the agent command runs.
+cd "$__DSH_SETUP_PWD"
+
+# Readiness probe: composes the TUI profile without booting it, so a broken
+# bundle or preset fails HERE (surfaced as INSTALL_FAIL_STATUS), not mid-task.
+dsh --profile dsh-tui --dump-config >/dev/null
+
+# Echo the effort this run was configured with, so the sweep knob is visible in
+# the trial's own pane capture rather than only in the launching shell.
+grep -n 'reasoningEffort:' "$DSH_HOME/settings.yaml"
