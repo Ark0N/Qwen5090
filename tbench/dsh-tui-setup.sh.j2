@@ -6,8 +6,14 @@
 # from the install tree instead of the task's working directory.
 __DSH_SETUP_PWD="$PWD"
 export DEBIAN_FRONTEND=noninteractive
-apt-get update
-apt-get install -y curl ca-certificates python3 make g++ zstd
+# apt mirrors flake too: a "Hash Sum mismatch" on libstdc++-12-dev killed one
+# trial before curl existed, so the nvm retry below never got its chance and
+# the task scored as a fail. Retry the whole update+install, dropping the
+# partial download between tries.
+for __try in 1 2 3 4; do
+  apt-get update && apt-get install -y curl ca-certificates python3 make g++ zstd && break
+  echo "apt install failed (try $__try)"; apt-get clean; sleep 10
+done
 
 # Node via nvm (same pattern as the Claude Code / Qwen Code agents)
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.2/install.sh | bash
