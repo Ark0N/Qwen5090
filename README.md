@@ -96,7 +96,8 @@ Two things worth being straight about:
 The model is only half of a coding agent. The other half is the **harness** that
 drives it, and the harness you pick matters as much as the model. So we ran
 [Terminal-Bench](https://www.tbench.ai/) ourselves, on **this** 4-bit quant,
-across four different agents pointed at the same server with the same effort:
+across four different agents pointed at the same server — first at one shared
+reasoning effort, then swept across three:
 
 | Coding agent | Best score (Terminal-Bench subset) |
 |---|:---:|
@@ -106,12 +107,14 @@ across four different agents pointed at the same server with the same effort:
 | terminus | 7 / 12 |
 
 The winner is the **DeepSeek Harness at medium reasoning effort, 8 / 12** — the
-full ceiling of what this model can do on the subset, from one agent. The biggest
-lesson was that **the best reasoning effort differs per agent** (the DeepSeek
-Harness likes medium, terminus wants low, pi and Claude Code want high), so a
-single "max effort" default leaves accuracy on the table. Almost every difference
-between agents was fixable plumbing, not the model. Full per-task numbers, the
-effort sweep, and the honest caveats:
+best result any single agent reached, and it repeats at low effort too. The
+biggest lesson was that **the best reasoning effort differs per agent** (the
+DeepSeek Harness likes medium, terminus wants low, pi and Claude Code want
+high), so a single "max effort" default leaves accuracy on the table. Almost
+every difference between agents was fixable plumbing, not the model — and three
+of the twelve tasks are beyond this 4-bit quant at any setting. Treat a
+one-task gap as noise: re-running the same configuration moves the score by
+1–2. Full per-task numbers, the effort sweep, and the honest caveats:
 **[Which coding agent is best on your 5090?](app/docs/HARNESS-BENCHMARKS.md)**
 
 ## What you need
@@ -317,9 +320,10 @@ browser-based alternative that needs no bridge.
 
 > **Which one is best?** We benchmarked four harnesses (DeepSeek Harness, pi,
 > Claude Code, and Terminal-Bench's terminus) on the same model and the same
-> tasks. Short version: pi and the DeepSeek Harness give the best result for the
-> least fuss, and after tuning three of the four tie. Full numbers and the honest
-> caveats: **[Which coding agent is best on your 5090?](app/docs/HARNESS-BENCHMARKS.md)**
+> tasks. Short version: the **DeepSeek Harness at medium reasoning effort**
+> wins outright, 8/12, and Claude Code matches every other agent at 7/12 if you
+> want the client you already know. Full numbers and the honest caveats:
+> **[Which coding agent is best on your 5090?](app/docs/HARNESS-BENCHMARKS.md)**
 
 ### Claude Code
 

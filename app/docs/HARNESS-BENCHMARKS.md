@@ -8,10 +8,13 @@ The same model can score very differently depending on which harness drives it.
 So we measured it. Four harnesses, one model (Qwen3.8-27B NVFP4 on a single
 5090), the same tasks, the same reasoning effort. Only the harness changes.
 
-**Short answer: pick [pi](DEEPSEEK-HARNESS.md) or the DeepSeek Harness for the
-best out-of-the-box result, and Claude Code if you want the client you already
-know.** After a round of tuning, three of the four tie for the lead. The details,
-and the honest caveats, are below.
+**Short answer: run the [DeepSeek Harness](DEEPSEEK-HARNESS.md) at `medium`
+reasoning effort.** It is the only configuration in the study that solves
+everything this model can solve — 8/12, where every other agent tops out at
+7/12 — and it is cheaper than running it at maximum effort. Take
+[Claude Code](CLAUDE-CODE.md) instead if you would rather use the client you
+already know: it ties at 7/12, but it wants `xhigh` and the bridge in the
+middle. The details, and the honest caveats, are below.
 
 ## The test
 
@@ -57,18 +60,24 @@ each harness's own bottleneck.
 | sqlite-db-truncate | PASS | PASS | PASS | err |
 | fibonacci-server | PASS | PASS | fail | PASS |
 | openssl-selfsigned-cert | fail | fail | PASS | PASS |
-| pytorch-model-cli.hard | err | fail | err | fail |
+| pytorch-model-cli.hard † | err | fail | err | fail |
 | sanitize-git-repo | fail | fail | fail | fail |
 | write-compressor | fail | fail | fail | fail |
 | nginx-request-logging | fail | fail | fail | fail |
 | **total** | **7** | **7** | **7** | **6** |
 
+† `err` here is **not measured**, not failed: the trial errored while its result
+was being parsed. At `low` effort this task is solved cleanly — all 6 subtests —
+by both the DeepSeek Harness and Claude Code. See the correction below.
+
 ## What it means
 
-**The three-way tie is real, but the harnesses are not interchangeable:**
+**The three-way tie is real, but the harnesses are not interchangeable.** All of
+this is at `xhigh`; the effort sweep further down changes the ranking.
 
-- **pi is the efficient winner.** It reached 7/12 with no tuning at all and the
-  lightest setup. If you want the best result for the least fuss, this is it.
+- **pi is the efficient winner at this effort.** It reached 7/12 with no tuning
+  at all and the lightest setup. At lower efforts it falls behind — see the
+  sweep.
 - **The DeepSeek Harness is the most robust.** Cleanest failures, real
   end-of-turn signals, native OpenAI so no bridge to babysit. Our recommended
   default for serious use.
@@ -97,11 +106,19 @@ What we changed, per harness:
 
 ## The honest ceiling
 
-**The model, not the harness, sets the real limit, and it is 8 out of 12.** Four
-tasks fail on every harness (`sanitize-git-repo`, `write-compressor`,
-`nginx-request-logging`, `pytorch-model-cli.hard`): these need multi-step
-correctness that the 4-bit 27B model does not reach here. No amount of harness
-tuning moves them.
+**The model, not the harness, sets the real limit, and it is at least 9 out of
+12.** Three tasks fail on every harness at every effort measured —
+`sanitize-git-repo`, `write-compressor` and `nginx-request-logging`. These need
+multi-step correctness the 4-bit 27B model does not reach here, and no amount of
+harness tuning moves them.
+
+> **Corrected 2026-08-30.** This section used to say the ceiling was 8/12 and
+> name a fourth task, `pytorch-model-cli.hard`, as unreachable. It is not: at
+> `low` effort both the DeepSeek Harness and Claude Code solve it, 6 subtests
+> out of 6. It was never actually *measured* at `xhigh` — the trial recorded
+> `is_resolved: null` with a parse error, and the scoring recipe counted `null`
+> the same as `false`, so missing data became a capability limit. **When scoring
+> a run of your own, count `null` separately from `false`.**
 
 At `xhigh` effort the best single harness tops out at 7/12. But that is not the
 end of the story: see the effort sweep below.
@@ -119,24 +136,27 @@ reasoning effort is different for each agent.**
 | **pi** | 4/8 | 6/8 | **7/8** | high |
 | **Claude Code** | 4/8 | 3/8 | **7/8** | high |
 
-(Scored on the 8 solvable tasks; the other 4 fail at every effort.)
+(Scored on the 8 tasks believed solvable when the sweep was run. One of the
+four excluded, `pytorch-model-cli.hard`, turned out to be solvable after all —
+see the correction above.)
 
-- **The DeepSeek Harness at `medium` solves everything solvable: 8/8, i.e. 8/12
-  overall.** That is the best single result in the entire study, from one agent
-  at one effort, and it is cheaper than xhigh. It even recovers a task it *failed*
-  at xhigh, because too much reasoning was making its answer worse. **This is the
-  configuration to use.**
+- **The DeepSeek Harness at `medium` scores 8/8 on these, i.e. 8/12 overall.**
+  That is the best single result in the entire study, from one agent at one
+  effort, and it is cheaper than xhigh. It even recovers a task it *failed* at
+  xhigh, because too much reasoning was making its answer worse. **This is the
+  configuration to use.** (It also reaches 8/12 at `low`, by a different route —
+  see the low-effort run below.)
 - **terminus is a low-effort agent.** Its trouble at xhigh was the model's long
   reasoning overrunning its output budget and breaking its parser; at low effort it
   jumps to 7/8. Turning the effort *down* is what fixes it.
 - **Claude Code and pi want the reasoning.** Claude Code drops to 3/8 at medium,
   and every one of those is a plain wrong answer, not a crash: genuine under-thinking.
 
-So the honest ceiling on this model is **8/12**, and unlike what the xhigh-only
-numbers suggested, you do not need to run several agents to reach it: the
-DeepSeek Harness at medium effort gets there by itself.
+So a single agent reaches **8/12** by itself — you do not need to run several,
+which is what the xhigh-only numbers had suggested. The union of what *some*
+harness solves is 9/12.
 
-Two caveats, stated plainly:
+Three caveats, stated plainly:
 
 - These are on the **4-bit NVFP4 quant** this project ships, not the
   full-precision model in the [official benchmark table](../../README.md#how-good-is-it).
@@ -145,6 +165,27 @@ Two caveats, stated plainly:
 - Under sustained `xhigh` load the serve became a bottleneck of its own. `xhigh`
   generates a lot of reasoning tokens; testing a lower effort (`medium`) is the
   next optimization, and would most help Claude Code, which reasons the most.
+- **Run-to-run noise on this suite is roughly ±1–2 tasks.** Re-running the
+  identical configuration later, pi scored 2 tasks better and Claude Code 1
+  better than the sweep recorded. Read a one-task gap between two harnesses as
+  noise, not as a result.
+
+## The same effort on all 12 tasks (2026-08-30)
+
+The sweep above scored `low` on those 8 tasks only. Re-run across the
+full 12 — same denominator as the headline table — for the three harnesses
+still in use:
+
+| harness | 12-task at `low` | wall time |
+|---|:---:|---|
+| **DeepSeek Harness** | **8/12** | 20m43s |
+| **pi** | 6/12 | 16m24s |
+| **Claude Code** | 6/12 | 35m26s |
+
+The DeepSeek Harness matches its medium-effort 8/12 here, over a slightly
+different set of tasks, in a third of Claude Code's wall time. That result
+includes one re-run: `hello-world` failed on a broken apt index inside a single
+container, which is a flake rather than a capability result.
 
 ## Reproduce it
 
