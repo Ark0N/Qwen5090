@@ -8,7 +8,7 @@ State so far:
   agent executed ZERO commands (agent.log shows only asciinema start/clear/exit).
   Episode record: `runs/smoke-terminus/hello-world/*/agent-logs/episode-0/debug.json`.
 - It was launched with env OPENAI_API_KEY=sk-qwen5090-local,
-  OPENAI_API_BASE=http://<5090-ip>:8000/v1, OPENAI_BASE_URL=(same), and
+  `OPENAI_API_BASE=http://<5090-ip>:8000/v1`, OPENAI_BASE_URL=(same), and
   `--agent terminus --model openai/qwen3.8-27b`.
 
 Your steps:

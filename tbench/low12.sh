@@ -11,11 +11,18 @@
 # Sequential: the GPU is shared with the user's live sessions. 900s agent
 # timeout is the optimized value from REPORT.md (cc needs it; 500 truncated it).
 set -u
-cd <repo>/tbench || exit 1
-export PYTHONPATH=<repo>/tbench
+cd "$(dirname "$(readlink -f "$0")")" || exit 1
+export PYTHONPATH="$PWD"
 export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"
 TB=~/.local/bin/tb
-OUT=<repo>/tbench/runs
+OUT="$PWD/runs"
+
+# The model serve. Every number in REPORT.md was measured against one
+# particular box, whose address has no business in a public repo - point
+# QWEN_URL at your own. Same variable app/scripts/terminal-bench.sh reads.
+QWEN_URL="${QWEN_URL:-http://localhost:8000}"
+# litellm-bridge.yaml reads this one (LiteLLM's os.environ/ indirection).
+export QWEN_API_BASE="$QWEN_URL/v1"
 
 export TB_EFFORT=low
 

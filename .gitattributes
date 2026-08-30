@@ -18,3 +18,8 @@
 CLAUDE.md      export-ignore
 .gitattributes export-ignore
 .gitignore     export-ignore
+# The harness benchmark: 365 files of adapters and recorded results, against
+# app/'s 64. It is linked from app/docs/HARNESS-BENCHMARKS.md and belongs in
+# the repo - but a second top-level folder in the download, five times the
+# size of the product, is exactly what the rule above exists to prevent.
+tbench/        export-ignore

@@ -1,6 +1,6 @@
 # Full-run runbook — harness comparison on the curated 64 tasks
 
-All runs: same 64-task list (16 exclusions), same model (qwen3.8-27b @ <5090-ip>:8000),
+All runs: same 64-task list (16 exclusions), same model (qwen3.8-27b @ `<5090-ip>:8000`),
 effort xhigh everywhere, `--n-concurrent 2 --global-agent-timeout-sec 800 --no-cleanup`,
 output `<repo>/tbench/runs`. Run SEQUENTIALLY (GPU is shared).
 `cd <repo>/tbench` and `PYTHONPATH=$PWD` for every run.

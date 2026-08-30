@@ -10,9 +10,9 @@ State so far:
   (`terminal_bench/agents/installed_agents/claude_code/`) — read it. Its `_env` requires
   ANTHROPIC_API_KEY in the LAUNCHING environment and does not pass ANTHROPIC_BASE_URL,
   so you will subclass it.
-- This host's tailnet IP is `<bridge-host>` — task containers can reach host services on
-  it (verified for the 5090 IP; docker bridge gateways vary per compose network, so use
-  the tailnet IP, not 172.17.0.1).
+- Task containers reach host services on this host's LAN or tailnet address
+  (`TB_BRIDGE_URL`) — docker bridge gateways vary per compose network, so use
+  that, not 172.17.0.1.
 
 Your steps:
 1. Write `tbench/litellm-bridge.yaml`: model_list mapping a model name (suggest alias
@@ -27,7 +27,7 @@ Your steps:
    `docker run --rm alpine wget -qO- http://<bridge-host>:4001/health` (or similar).
 3. Write `tbench/cc_agent.py` (class CCBridgeAgent) subclassing ClaudeCodeAgent,
    overriding `_env` to set: ANTHROPIC_API_KEY=sk-qwen5090-local,
-   ANTHROPIC_BASE_URL=http://<bridge-host>:4001, ANTHROPIC_MODEL=qwen3.8-27b,
+   `ANTHROPIC_BASE_URL=http://<bridge-host>:4001`, ANTHROPIC_MODEL=qwen3.8-27b,
    ANTHROPIC_SMALL_FAST_MODEL=qwen3.8-27b, DISABLE_TELEMETRY=1,
    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 — and NOT reading os.environ (the stock
    class throws without ANTHROPIC_API_KEY in the host env).

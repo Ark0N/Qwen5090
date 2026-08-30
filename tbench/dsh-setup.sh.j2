@@ -136,7 +136,7 @@ llm-pi-ai:
       displayName: Qwen 5090
       apiKeyEnv: QWEN5090_API_KEY
       api: openai-completions
-      baseURL: http://<5090-ip>:8000/v1
+      baseURL: {{ qwen_url }}/v1
       retryPolicy:
         mode: normal
         maxRetries: 10

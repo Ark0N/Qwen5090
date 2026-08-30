@@ -20,6 +20,11 @@ from terminal_bench.terminal.models import TerminalCommand
 EFFORTS = ("low", "medium", "xhigh")
 DEFAULT_EFFORT = "xhigh"
 
+# The model serve, for the provider route rendered into the setup script. Not
+# hardcoded: the address of the box this was measured on has no business in the
+# repo. Same variable app/scripts/terminal-bench.sh reads.
+QWEN_URL = (os.environ.get("QWEN_URL") or "http://localhost:8000").rstrip("/")
+
 
 def _effort() -> str:
     """Reasoning effort for this run, read once from TB_EFFORT.
@@ -60,7 +65,11 @@ class DshAgent(AbstractInstalledAgent):
     def _get_template_variables(self) -> dict[str, str]:
         # `effort` lands in the rendered settings.yaml as the
         # agent-default-model.reasoningEffort dsh sends on every request.
-        return {"version": self.version, "effort": self._effort}
+        return {
+            "version": self.version,
+            "effort": self._effort,
+            "qwen_url": QWEN_URL,
+        }
 
     @property
     def _install_agent_script_path(self):

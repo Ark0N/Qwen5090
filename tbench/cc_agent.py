@@ -41,10 +41,12 @@ CONTINUATION_PROMPT = (
     "explaining one."
 )
 
-# The bridge listens on this host's tailnet address, not a docker bridge
-# gateway: every task gets its own compose network and the gateway address
-# differs per network, while the tailnet IP is reachable from all of them.
-BRIDGE_URL = "http://<bridge-host>:4001"
+# Where the LiteLLM bridge is reachable *from inside a task container*. The
+# loopback default only works for a single-container run: every task gets its
+# own compose network, so on a real run set TB_BRIDGE_URL to an address of this
+# host that those networks can reach - a LAN or tailnet IP. A docker bridge
+# gateway will not do, because it differs per network.
+BRIDGE_URL = (os.environ.get("TB_BRIDGE_URL") or "http://127.0.0.1:4001").rstrip("/")
 MODEL_ID = "qwen3.8-27b"
 API_KEY = "sk-qwen5090-local"
 

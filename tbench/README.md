@@ -38,10 +38,16 @@ the code comments:
 
 - **Docker** running (each task builds a container).
 - **Terminal-Bench** on PATH: `uv tool install terminal-bench` (provides `tb`).
-- **The model serve reachable** at the base URL baked into the adapters (default
-  `http://<5090-ip>:8000/v1`, the NInfer serve). If your serve is elsewhere,
-  edit the `baseURL` / `api_base` in `dsh-setup.sh.j2`, `pi-setup.sh.j2`,
-  `litellm-bridge.yaml`, and the terminus env below.
+- **The model serve reachable**, and `QWEN_URL` pointing at it — the same
+  variable [`app/scripts/terminal-bench.sh`](../app/scripts/terminal-bench.sh)
+  reads, default `http://localhost:8000`. It reaches every harness from there:
+  the driver scripts export `QWEN_API_BASE` for `litellm-bridge.yaml` and for
+  terminus, and the adapters render it into `dsh-setup.sh.j2` and
+  `pi-setup.sh.j2` as `{{ qwen_url }}`. Nothing needs editing by hand.
+- **`TB_BRIDGE_URL` for Claude Code**, if you run more than one task at a time.
+  Each task gets its own compose network, so the bridge has to be reachable
+  from inside a container: a LAN or tailnet address of this host, not the
+  `127.0.0.1` default.
 - For Claude Code only: the **LiteLLM bridge** running (`compare.sh` starts it).
 
 ## Run it
@@ -69,8 +75,8 @@ others set them inside the container):
 
 ```bash
 OPENAI_API_KEY=sk-qwen5090-local \
-OPENAI_API_BASE=http://<5090-ip>:8000/v1 \
-OPENAI_BASE_URL=http://<5090-ip>:8000/v1 \
+OPENAI_API_BASE="$QWEN_URL/v1" \
+OPENAI_BASE_URL="$QWEN_URL/v1" \
   tb run --dataset terminal-bench-core==0.1.1 \
     --agent-import-path terminus_fix:TerminusQwen --model openai/qwen3.8-27b \
     -t hello-world --n-concurrent 1 --no-cleanup --run-id smoke --output-path $PWD/runs

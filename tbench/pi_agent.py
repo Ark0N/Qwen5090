@@ -26,6 +26,11 @@ MODEL = "qwen3.8-27b"
 EFFORTS = ("low", "medium", "xhigh")
 DEFAULT_EFFORT = "xhigh"
 
+# The model serve, for the provider route rendered into the setup script. Not
+# hardcoded: the address of the box this was measured on has no business in the
+# repo. Same variable app/scripts/terminal-bench.sh reads.
+QWEN_URL = (os.environ.get("QWEN_URL") or "http://localhost:8000").rstrip("/")
+
 
 def _effort() -> str:
     """Reasoning effort for this run, read once from TB_EFFORT.
@@ -69,6 +74,10 @@ class PiAgent(AbstractInstalledAgent):
             "PI_OFFLINE": "1",
             "PI_SKIP_VERSION_CHECK": "1",
         }
+
+    def _get_template_variables(self) -> dict[str, str]:
+        # `qwen_url` lands in the rendered models.json as the provider baseUrl.
+        return {"version": self.version, "qwen_url": QWEN_URL}
 
     @property
     def _install_agent_script_path(self):

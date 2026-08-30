@@ -81,7 +81,7 @@ cat > "$PI_CODING_AGENT_DIR/models.json" <<'JSON'
   "providers": {
     "qwen5090": {
       "name": "Qwen 5090",
-      "baseUrl": "http://<5090-ip>:8000/v1",
+      "baseUrl": "{{ qwen_url }}/v1",
       "api": "openai-completions",
       "apiKey": "$QWEN5090_API_KEY",
       "compat": {

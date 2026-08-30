@@ -40,9 +40,7 @@ the NInfer serve), so the only variable is the harness. Three phases:
 - All results committed and pushed to `Ark0N/Qwen5090` `main`. Git is clean.
 - The 3 Codeman worker sessions used to build this (one per harness lane) are **deleted**.
 - The LiteLLM bridge (Claude Code's Anthropic→OpenAI translator) is **stopped**.
-- The model serve (`http://<5090-ip>:8000`, the gaming PC / `<hostname>`) was
-  up at teardown; it can sleep. Wake it with `wakeonlan <mac-address>` from a machine
-  on its LAN (`~/wol/info`).
+- The model serve (`http://<5090-ip>:8000`) was up at teardown; it can sleep.
 
 ## Files
 

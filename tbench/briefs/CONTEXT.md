@@ -22,7 +22,7 @@ Terminal-Bench `terminal-bench-core==0.1.1`, all backed by the SAME local model.
   (prefix it with your worker name), `--output-path <repo>/tbench/runs`.
 - Run tb from the tbench dir with `PYTHONPATH=<repo>/tbench`.
 - Touch ONLY the files your brief assigns you. Other files in tbench belong to other agents.
-- Never write into <home>/default/claudeman.
+- Never write outside this tbench directory.
 - hello-world resolved (`is_resolved: true` in the run's results.json) is your definition of done.
 
 ## Report format (your final message)

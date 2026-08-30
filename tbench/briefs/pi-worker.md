@@ -16,7 +16,7 @@ State so far:
 
 Your steps:
 1. Read models.md, fix `~/.pi/agent/models.json` (provider `qwen5090`, api
-   openai-completions, baseURL http://<5090-ip>:8000/v1, apiKeyEnv QWEN5090_API_KEY,
+   openai-completions, baseURL `http://<5090-ip>:8000/v1`, apiKeyEnv QWEN5090_API_KEY,
    model id `qwen3.8-27b`, contextWindow 252928, reasoningEfforts off:none/low/medium/xhigh —
    NO high, the chat template 400s on it). Verify locally until this works:
    `QWEN5090_API_KEY=sk-qwen5090-local pi -p --provider qwen5090 --model qwen3.8-27b "Reply with exactly: PI-OK"`

@@ -4,11 +4,18 @@
 # its own run-id under runs/. Reuses no partial data — every harness runs the
 # identical list from scratch for a clean comparison.
 set -u
-cd <repo>/tbench || exit 1
-export PYTHONPATH=<repo>/tbench
+cd "$(dirname "$(readlink -f "$0")")" || exit 1
+export PYTHONPATH="$PWD"
 export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"
 TB=~/.local/bin/tb
-OUT=<repo>/tbench/runs
+OUT="$PWD/runs"
+
+# The model serve. Every number in REPORT.md was measured against one
+# particular box, whose address has no business in a public repo - point
+# QWEN_URL at your own. Same variable app/scripts/terminal-bench.sh reads.
+QWEN_URL="${QWEN_URL:-http://localhost:8000}"
+# litellm-bridge.yaml reads this one (LiteLLM's os.environ/ indirection).
+export QWEN_API_BASE="$QWEN_URL/v1"
 
 # 12 simple tasks: all 360s budget, category spread, mix of dsh-tractable and
 # dsh-hard so the comparison has discriminating signal.
@@ -26,8 +33,8 @@ run() { echo "=== [$(date +%T)] START $1"; "${@:2}"; echo "=== [$(date +%T)] END
 run dsh "$TB" run "${COMMON[@]}" --agent-import-path dsh_agent:DshAgent --run-id cmp-dsh
 
 # 2) terminus (needs OPENAI_* in env)
-OPENAI_API_KEY=sk-qwen5090-local OPENAI_API_BASE=http://<5090-ip>:8000/v1 \
-OPENAI_BASE_URL=http://<5090-ip>:8000/v1 \
+OPENAI_API_KEY=sk-qwen5090-local OPENAI_API_BASE="$QWEN_API_BASE" \
+OPENAI_BASE_URL="$QWEN_API_BASE" \
 run terminus "$TB" run "${COMMON[@]}" --agent-import-path terminus_fix:TerminusQwen \
     --model openai/qwen3.8-27b --run-id cmp-terminus
 

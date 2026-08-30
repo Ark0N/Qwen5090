@@ -4,11 +4,18 @@
 # xhigh is already measured in cmp-*-opt. Every adapter reads TB_EFFORT.
 # Sequential (shared GPU). Run-ids: sweep-<harness>-<effort>.
 set -u
-cd <repo>/tbench || exit 1
-export PYTHONPATH=<repo>/tbench
+cd "$(dirname "$(readlink -f "$0")")" || exit 1
+export PYTHONPATH="$PWD"
 export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"
 TB=~/.local/bin/tb
-OUT=<repo>/tbench/runs
+OUT="$PWD/runs"
+
+# The model serve. Every number in REPORT.md was measured against one
+# particular box, whose address has no business in a public repo - point
+# QWEN_URL at your own. Same variable app/scripts/terminal-bench.sh reads.
+QWEN_URL="${QWEN_URL:-http://localhost:8000}"
+# litellm-bridge.yaml reads this one (LiteLLM's os.environ/ indirection).
+export QWEN_API_BASE="$QWEN_URL/v1"
 
 TASKS=(hello-world csv-to-parquet simple-sheets-put tmux-advanced-workflow \
        fix-git sqlite-db-truncate fibonacci-server openssl-selfsigned-cert)
@@ -26,7 +33,7 @@ for EFFORT in medium low; do
        --run-id "sweep-dsh-$EFFORT"
 
   echo "=== terminus $EFFORT"; OPENAI_API_KEY=sk-qwen5090-local \
-    OPENAI_API_BASE=http://<5090-ip>:8000/v1 OPENAI_BASE_URL=http://<5090-ip>:8000/v1 \
+    OPENAI_API_BASE="$QWEN_API_BASE" OPENAI_BASE_URL="$QWEN_API_BASE" \
     "$TB" run "${COMMON[@]}" --agent-import-path terminus_fix:TerminusQwen \
        --model openai/qwen3.8-27b --run-id "sweep-terminus-$EFFORT"
 

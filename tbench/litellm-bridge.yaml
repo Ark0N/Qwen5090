@@ -21,7 +21,9 @@ model_list:
   - model_name: qwen3.8-27b-low
     litellm_params: &qwen_params
       model: openai/qwen3.8-27b
-      api_base: http://<5090-ip>:8000/v1
+      # Set by the driver scripts from QWEN_URL; LiteLLM resolves
+      # os.environ/ at load, and fails loudly if it is unset.
+      api_base: os.environ/QWEN_API_BASE
       api_key: sk-qwen5090-local
       # NInfer 400s on params it does not implement rather than ignoring them,
       # and `drop_params` alone will not touch these: LiteLLM believes an

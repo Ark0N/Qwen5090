@@ -18,5 +18,5 @@ and do NOT touch other harnesses' files. Just:
 3. Report: the exact file+line you changed, how TB_EFFORT flows to the model, and the
    knob-verify result. Keep it short.
 
-Model serve: http://<5090-ip>:8000/v1, model qwen3.8-27b. Work dir
-<repo>/tbench, `PYTHONPATH=$PWD`. `--no-cleanup` always.
+Model serve: `http://<5090-ip>:8000/v1`, model qwen3.8-27b. Work dir
+`<repo>/tbench`, `PYTHONPATH=$PWD`. `--no-cleanup` always.
