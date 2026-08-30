@@ -12,7 +12,10 @@ apt-get install -y curl ca-certificates python3 make g++
 # Node via nvm (same pattern as the Claude Code / Qwen Code agents)
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.2/install.sh | bash
 source "$HOME/.nvm/nvm.sh"
-nvm install 22
+# nodejs.org downloads flake ("Provided file to checksum does not exist" was
+# one such trial): retry, or dsh never installs and the task fails on a
+# missing binary rather than being reported as an install failure.
+for __try in 1 2 3 4; do nvm install 22 && break; echo "nvm install failed (try $__try)"; sleep 10; done
 npm install -g pnpm@11.22.0
 
 export DSH_HOME=/opt/dsh-home
@@ -180,8 +183,13 @@ cd "$__DSH_SETUP_PWD"
 
 # Readiness probe: composes the headless profile, so a broken bundle
 # install fails HERE (surfaced as INSTALL_FAIL_STATUS), not mid-task.
-dsh --profile headless --help >/dev/null
+dsh --profile headless --help >/dev/null; __dsh_probe_rc=$?
 
 # Echo the effort this run was configured with, so the sweep knob is visible in
 # the trial's own pane capture rather than only in the launching shell.
 grep -n 'reasoningEffort:' "$DSH_HOME/settings.yaml"
+# The probe's status must be the LAST status of this sourced script, or
+# Terminal-Bench never sees INSTALL_FAIL_STATUS and a broken install scores
+# as a plain task failure (measured: nvm flake -> `dsh: No such file` ->
+# is_resolved false, failure_mode unset).
+command -v dsh >/dev/null && [ "${__dsh_probe_rc:-1}" -eq 0 ]
