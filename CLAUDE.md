@@ -793,11 +793,21 @@ The WPF dispatcher thread is never blocked. All patterns funnel through one 300 
   checkpoint is being served. Four properties of this server drive its whole design, and
   the first three are already documented above under "Measured on the 5090":
   **(a)** Claude Code sends `reasoning_effort: "high"`, which this template 400s on, so the bridge
-  drops the client's value and injects `QWEN_EFFORT` (default `xhigh`) instead;
+  drops the client's value and injects `QWEN_EFFORT` instead — **whose legal values are a
+  property of the served template, not of the bridge**: Qwen takes `low|medium|xhigh`,
+  DeepSeek V4 takes `low|high|max`, and each 400s on the other's spellings. `QWEN_EFFORT`
+  is therefore resolved *after* discovery, to that template's own default (`xhigh` for
+  Qwen, `low` for DeepSeek V4), and an impossible value is refused there rather than
+  turning every request into a 400. `claude-code.ps1` forwards `-Effort` only when bound,
+  for the same reason;
   **(b)** reasoning tokens count against `max_tokens`, so the `qwen5090-fast` alias that Claude
   Code uses for background chores disables thinking — otherwise those small-cap calls return
   empty behind a 200; **(c)** the model name is unknown to Claude Code, which would assume a 200K
-  window, so `CLAUDE_CODE_MAX_CONTEXT_TOKENS` is exported from the real value;
+  window, so `CLAUDE_CODE_MAX_CONTEXT_TOKENS` is exported from the real value — and when
+  `/v1/models` publishes no `max_model_len`, discovery asks llama.cpp's `/props` for
+  `default_generation_settings.n_ctx` before falling back, because a server started at
+  `-c 65536` was otherwise being described to Claude Code as twice its real size, and
+  Claude Code packs to the number it is given (NInfer answers neither, hence `QWEN_CTX`);
   **(d)** `tool_choice` with an empty `tools` is a hard 400 from vLLM, and Claude Code's WebSearch
   is a *server-side* Anthropic tool (`{"type": "web_search_20250305"}`, no `input_schema`) that
   LiteLLM has no OpenAI function to translate it into, so it drops the tool and forwards

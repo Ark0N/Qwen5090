@@ -30,9 +30,13 @@ param(
     [string]$Distro = "Ubuntu-24.04",
     [int]$Port = 8000,
     [int]$BridgePort = 4000,
-    # The chat template accepts these three and rejects everything else.
-    [ValidateSet('low','medium','xhigh')]
-    [string]$Effort = 'xhigh',
+    # Which levels are legal depends on the checkpoint being served: the Qwen
+    # templates take low|medium|xhigh, DeepSeek V4's takes low|high|max, and
+    # each rejects the other's spellings with a hard 400. So this is forwarded
+    # only when actually bound - the same only-when-bound idiom -GpuUtil uses -
+    # and claude-code.sh picks the served template's own default otherwise.
+    [ValidateSet('low','medium','xhigh','high','max')]
+    [string]$Effort,
     [switch]$Windows,
     # Start the bridge and return, instead of launching a session on top of it.
     [switch]$Start,
@@ -82,7 +86,8 @@ if ($Windows -and -not ($Start -or $Stop -or $Status -or $Doctor -or $InstallCla
 # Everything after -- goes through as ONE bash -c string: wsl.exe re-joins a
 # multi-argument tail through the default shell and quoting does not survive.
 # $ is escaped so bash expands it, not PowerShell.
-$envPrefix = "QWEN_URL=http://localhost:$Port BRIDGE_PORT=$BridgePort BRIDGE_HOST=$bridgeHost QWEN_EFFORT=$Effort"
+$envPrefix = "QWEN_URL=http://localhost:$Port BRIDGE_PORT=$BridgePort BRIDGE_HOST=$bridgeHost"
+if ($PSBoundParameters.ContainsKey('Effort')) { $envPrefix += " QWEN_EFFORT=$Effort" }
 if ($LogPayloads) { $envPrefix += " QWEN_LOG_PAYLOADS=1" }
 $bashCmd = "$envPrefix bash '$scriptWsl' $verb"
 

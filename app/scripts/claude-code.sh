@@ -23,9 +23,11 @@ QWEN_URL="${QWEN_URL:-http://localhost:8000}"     # where the server is listenin
 # The context window to tell Claude Code about. Normally discovered from
 # /v1/models, which is right for vLLM - but only vLLM publishes max_model_len
 # there. NInfer's model object carries id/object/created/owned_by and nothing
-# else, so the discovery below falls back to 131072 and Claude Code would stop
-# short of a window that is actually 252,928. Set this to the CTX the server
-# was started with when serving through NInfer at a longer context.
+# else. llama.cpp publishes none either, but does answer /props, which the
+# discovery below now asks; NInfer answers neither, so set this to the CTX the
+# server was started with when serving through NInfer at a longer context.
+# Getting it wrong is not symmetric: too low wastes the window, too high lets
+# Claude Code pack a prompt the server will refuse.
 QWEN_CTX="${QWEN_CTX:-}"
 BRIDGE_PORT="${BRIDGE_PORT:-4000}"                # where the bridge listens
 BRIDGE_HOST="${BRIDGE_HOST:-127.0.0.1}"           # loopback: this is not an auth boundary
@@ -38,11 +40,17 @@ INSTALL_NAME="${INSTALL_NAME:-qwen-claude}"
 # against max_tokens on this model, so those requests come back EMPTY unless
 # thinking is off - hence a separate alias rather than one model for both.
 FAST_THINKING="${FAST_THINKING:-0}"
-# How hard the model thinks. The chat template accepts low, medium and xhigh
-# ONLY - it rejects "high" outright, and "high" is exactly what Claude Code
-# sends when extended thinking is on, so the bridge drops the client's value and
-# substitutes this one. See the reasoning_effort note in the config below.
-QWEN_EFFORT="${QWEN_EFFORT:-xhigh}"
+# How hard the model thinks. The bridge drops the client's value and
+# substitutes this one, because Claude Code sends "high" when extended thinking
+# is on and the Qwen template rejects that outright.
+#
+# Which levels are legal depends on the checkpoint, not on this script: the
+# Qwen templates take low|medium|xhigh and 400 on anything else, while DeepSeek
+# V4's takes low|high|max. Left unset it resolves after discovery, to whichever
+# template's own default applies - xhigh for Qwen, low for DeepSeek V4 - and a
+# value that the served model cannot accept is refused there rather than
+# turning every request into a 400.
+QWEN_EFFORT="${QWEN_EFFORT:-}"
 # Debugging aid, off by default: record every request and reply the bridge
 # handles, as JSONL. That is the full text of your prompts, your files and the
 # model's answers, so it is opt-in per bridge start and never on by accident.
@@ -62,10 +70,12 @@ LOG_FILE="$LOG_DIR/bridge.log"
 PID_FILE="$BRIDGE_HOME/bridge.pid"
 BRIDGE_URL="http://$BRIDGE_HOST:$BRIDGE_PORT"
 
+# A cheap spelling check here; which of these the *served* model actually
+# accepts is settled in resolve_effort() once discovery knows what it is.
 case "$QWEN_EFFORT" in
-  low|medium|xhigh) ;;
-  *) printf 'ERROR: QWEN_EFFORT must be low, medium or xhigh (got "%s").\n' "$QWEN_EFFORT" >&2
-     printf '       The chat template rejects every other value, "high" included.\n' >&2
+  ""|low|medium|xhigh|high|max) ;;
+  *) printf 'ERROR: QWEN_EFFORT="%s" is not a level any of these templates knows.\n' "$QWEN_EFFORT" >&2
+     printf '       Qwen takes low|medium|xhigh; DeepSeek V4 takes low|high|max.\n' >&2
      exit 1 ;;
 esac
 
@@ -108,10 +118,55 @@ d=json.load(sys.stdin)["data"][0]
 print(d.get("max_model_len") or 131072)' 2>/dev/null || true)
 
   [[ -n "${MODEL_ID:-}" ]] || die "could not read a model id from $QWEN_URL/v1/models"
-  # An explicit QWEN_CTX wins over discovery: on a backend that does not
-  # advertise its window, discovery cannot do better than the fallback.
+
+  # llama.cpp publishes no max_model_len, but it does answer /props, where
+  # default_generation_settings.n_ctx is the window a slot actually has. Left
+  # to the 131072 fallback, a server started with -c 65536 had Claude Code
+  # told it has twice the room it does, and Claude Code packs to the number it
+  # is given. Only asked when /v1/models came back without one.
+  if [[ -z "${MODEL_CTX:-}" || "$MODEL_CTX" == "131072" ]]; then
+    local props
+    props=$(curl -sf -m 10 "$QWEN_URL/props" 2>/dev/null || true)
+    if [[ -n "$props" ]]; then
+      local probed
+      probed=$(printf '%s' "$props" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+g=d.get("default_generation_settings") or {}
+n=g.get("n_ctx") or d.get("n_ctx")
+print(n if isinstance(n,int) and n>0 else "")' 2>/dev/null || true)
+      [[ -n "$probed" ]] && MODEL_CTX="$probed"
+    fi
+  fi
+
+  # An explicit QWEN_CTX wins over discovery: on a backend that advertises its
+  # window nowhere - NInfer answers neither /v1/models nor /props with one -
+  # discovery cannot do better than the fallback.
   [[ -n "$QWEN_CTX" ]] && MODEL_CTX="$QWEN_CTX"
   MODEL_CTX="${MODEL_CTX:-131072}"
+
+  resolve_effort
+}
+
+# The legal thinking levels are a property of the loaded chat template, so this
+# can only run once discovery knows which checkpoint is being served. Both
+# lists are enforced by the template itself, with a hard 400 for anything else
+# - which, injected on every request, would mean nothing worked at all.
+resolve_effort() {
+  local levels default
+  case "$MODEL_ID" in
+    *[Dd]eep[Ss]eek*) levels="low high max";      default=low ;;
+    *)                levels="low medium xhigh";  default=xhigh ;;
+  esac
+  if [[ -z "$QWEN_EFFORT" ]]; then QWEN_EFFORT="$default"; return 0; fi
+  case " $levels " in
+    *" $QWEN_EFFORT "*) ;;
+    *) die "QWEN_EFFORT=$QWEN_EFFORT is not a level $MODEL_ID accepts.
+
+Its chat template takes: ${levels// /, }.
+That is a hard 400 from the server, and the bridge injects this value on every
+request - so the session would fail on the first message." ;;
+  esac
 }
 
 # ---------------------------------------------------------------- install ---
@@ -630,8 +685,9 @@ cmd_install() {
 #   NAME status|doctor|stop|restart
 #
 # Override the server with QWEN_URL, its context window with QWEN_CTX,
-# the thinking depth with QWEN_EFFORT
-# (low|medium|xhigh).
+# the thinking depth with QWEN_EFFORT (low|medium|xhigh on the Qwen
+# checkpoints, low|high|max on DeepSeek V4; left unset, each template's
+# own default).
 set -euo pipefail
 : "${QWEN_URL:=@@URL@@}"
 export QWEN_URL
