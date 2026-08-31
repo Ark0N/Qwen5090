@@ -93,9 +93,12 @@ cat > headless/cordis.patch.yml <<'YAML'
 
       When a task needs a long-running process (a server, daemon or watcher) to
       still be running after your turn ends, start it in its own session:
-      `setsid nohup <command> > <log> 2>&1 < /dev/null &`. A bare `nohup ... &`
+      `setsid -f nohup <command> > <log> 2>&1 < /dev/null &`. A bare `nohup ... &`
       is not enough here - the executor signals the whole process group when a
       turn finishes, so a merely backgrounded child is killed along with it.
+      The `-f` matters as well: without it a form like `cd dir && setsid ... &`
+      leaves the process inside the shell's process tree, and the tool kills
+      that whole tree when the session ends.
       After starting one, confirm it is really listening (curl it, or `ss -ltn`)
       and leave it running.
 

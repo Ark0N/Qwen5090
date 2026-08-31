@@ -94,7 +94,10 @@ What we changed, per harness:
 - **DeepSeek Harness** killed its own background server at the end of a turn (it
   signals the whole process group), so a task that starts a web server saw
   "connection refused" at test time even though the agent's answer was correct.
-  Fix: launch background servers with `setsid`.
+  Fix: launch background servers with `setsid -f` (the `-f` was added
+  2026-08-31: the persistent bash tool in the `minimal` preset kills its whole
+  descendant tree at session end, and without the fork a `cd dir && setsid …`
+  form leaves the server inside that tree).
 - **Claude Code** was not slowed by the bridge (measured at ~0.15 s per call,
   zero retries). Two "timeouts" were really its own 16k output-token cap tripping
   on long reasoning, and one was the model narrating its next step without

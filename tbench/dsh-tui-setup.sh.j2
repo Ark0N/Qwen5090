@@ -127,9 +127,12 @@ persona = """You are a helpful software engineer assistant.{{ persona_rules }}
 
 When a task needs a long-running process (a server, daemon or watcher) to
 still be running after your turn ends, start it in its own session:
-`setsid nohup <command> > <log> 2>&1 < /dev/null &`. A bare `nohup ... &`
+`setsid -f nohup <command> > <log> 2>&1 < /dev/null &`. A bare `nohup ... &`
 is not enough here - the executor signals the whole process group when a
 turn finishes, so a merely backgrounded child is killed along with it.
+The `-f` matters as well: without it a form like `cd dir && setsid ... &`
+leaves the process inside the shell's process tree, and the tool kills that
+whole tree when the session ends.
 After starting one, confirm it is really listening (curl it, or `ss -ltn`)
 and leave it running.
 
@@ -256,8 +259,13 @@ rc=$?
 # stray bytes prefix the next command Terminal-Bench types into the pane.
 read -r -s -t 0.5 -N 64 _junk </dev/tty 2>/dev/null || true
 echo; echo "dsh-tui exited rc=$rc"; cat "$WATCH"
-# Keep the session log and the watcher log where the adapter collects them.
+# Keep the session log and the watcher log where the adapter collects them,
+# plus a process/socket snapshot from right after the TUI exit - a detached
+# server that is alive here and refused at test time died in the test phase,
+# not with the TUI (toolset12 minimal/fibonacci-server, 2026-08-31).
 mkdir -p /installed-agent/logs
+ps -eo pid,ppid,pgid,sid,tty,stat,etimes,cmd > /installed-agent/logs/ps-after-exit.txt 2>&1
+cat /proc/net/tcp /proc/net/tcp6 > /installed-agent/logs/tcp-after-exit.txt 2>&1
 cp -r "${DSH_HOME:-/opt/dsh-home}/sessions" /installed-agent/logs/ 2>/dev/null || true
 cp "$WATCH" /installed-agent/logs/ 2>/dev/null || true
 exit 0
