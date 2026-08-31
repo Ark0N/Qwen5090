@@ -1,0 +1,30 @@
+{
+    "run_id": "headless-smoke",
+    "uuid": "daecd0ca-fc76-4aec-9d4a-3d177b9df517",
+    "dataset_path": null,
+    "dataset_name": "terminal-bench-core",
+    "dataset_version": "0.1.1",
+    "output_path": "/home/arkon/codeman-cases/win11-5090/tbench/runs",
+    "agent_name": "dsh-qwen5090",
+    "no_rebuild": false,
+    "cleanup": false,
+    "log_level": 20,
+    "task_ids": [
+        "hello-world"
+    ],
+    "exclude_task_ids": null,
+    "n_tasks": null,
+    "n_concurrent_trials": 1,
+    "n_attempts": 1,
+    "dataset_size": 1,
+    "accuracy": 1.0,
+    "model_name": null,
+    "start_time": "2026-08-31T00:08:37.252280+00:00",
+    "end_time": "2026-08-31T00:10:23.051141+00:00",
+    "commit_hash": "8da5f0ce90f62b421b743650ea744440c2d13688",
+    "username": "Ark0N",
+    "s3_bucket": null,
+    "agent_kwargs": null,
+    "pass_at_k": {},
+    "resumed_at": null
+}

@@ -256,6 +256,10 @@ rc=$?
 # stray bytes prefix the next command Terminal-Bench types into the pane.
 read -r -s -t 0.5 -N 64 _junk </dev/tty 2>/dev/null || true
 echo; echo "dsh-tui exited rc=$rc"; cat "$WATCH"
+# Keep the session log and the watcher log where the adapter collects them.
+mkdir -p /installed-agent/logs
+cp -r "${DSH_HOME:-/opt/dsh-home}/sessions" /installed-agent/logs/ 2>/dev/null || true
+cp "$WATCH" /installed-agent/logs/ 2>/dev/null || true
 exit 0
 RUN
 chmod +x /usr/local/bin/dsh-tui-run

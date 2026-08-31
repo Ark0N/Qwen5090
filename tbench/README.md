@@ -13,16 +13,16 @@ This file is how to run it.
 
 | file | what it is |
 |---|---|
-| `dsh_agent.py` + `dsh-setup.sh.j2` | DeepSeek Harness adapter (installs `dsh` headless in the task container). `TB_EFFORT=low\|medium\|xhigh` sets the reasoning effort; `TB_DSH_PERSONA=baseline\|structured` appends the self-optimization loop's six persona rules (`baseline` renders the published persona byte-identical) |
+| `dsh_agent.py` + `dsh-setup.sh.j2` | DeepSeek Harness adapter (installs `dsh` headless in the task container). `TB_EFFORT=low\|medium\|xhigh` sets the reasoning effort; `TB_DSH_PERSONA=baseline\|structured\|tuned` appends the self-optimization loop's six persona rules, or those plus a budget-awareness rule (`baseline` renders the published persona byte-identical). The task runs through `dsh-headless-run`, which keeps dsh's output, retries once on an empty turn, and leaves the session log in `/installed-agent/logs` for the adapter to copy into the trial's `agent-logs/` |
 | `dsh_tui_agent.py` + `dsh-tui-setup.sh.j2` | DeepSeek Harness **TUI** adapter: runs the real `dsh-tui` in the task's tmux pane (the headless profile prints nothing until its final answer), so the cast shows the model working. `TB_DSH_TUI_PRESET=standard\|minimal` picks the tool set; `TB_EFFORT` / `TB_DSH_PERSONA` as for the headless adapter |
 | `pi_agent.py` + `pi-setup.sh.j2` | pi coding-agent adapter |
 | `cc_agent.py` + `cc-setup.sh.j2` + `cc_hooks.py` + `litellm-bridge.yaml` | Claude Code adapter, routed through a LiteLLM Anthropic-to-OpenAI bridge |
 | `terminus_fix.py` | Terminal-Bench's built-in `terminus` agent, subclassed to stop sending OpenAI structured-output that NInfer rejects |
 | `compare.sh` | the driver: runs all four harnesses over the fixed 12-task subset, sequentially |
-| `low12.sh`, `persona12.sh` | follow-up drivers over the same 12 tasks: the three harnesses at `low`; dsh's `baseline` vs `structured` persona at `medium` |
+| `low12.sh`, `persona12.sh`, `toolset12.sh` | follow-up drivers over the same 12 tasks: the three harnesses at `low`; dsh's `baseline` vs `structured` persona at `medium`; the TUI's `standard` vs `minimal` tool set at `medium` with the `tuned` persona |
 | `runbook.md` | the exact per-harness commands and flags |
 | `REPORT.md` | full results, per-task matrix, optimization findings, verdict |
-| `runs/` | raw results (`results.json` + `run_metadata.json` per run; the bulky asciinema casts and per-trial logs are gitignored) |
+| `runs/` | raw results (`results.json` + `run_metadata.json` per run; the bulky asciinema casts and per-trial logs are gitignored). Since 2026-08-31 the dsh adapters also copy the container's `/installed-agent/logs` — dsh's session log (`sessions/*/session.jsonl.zstd`, decompress with `zstd -dc`) and the captured output of each shot — into each trial's `agent-logs/`, which stays local |
 
 The four adapters are [Terminal-Bench installed-agents](https://www.tbench.ai/docs):
 each ships a Jinja setup script that Terminal-Bench copies into the task container and

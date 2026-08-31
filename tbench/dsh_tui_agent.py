@@ -17,7 +17,7 @@ the session's append-only log for the `turn/end` event, and sends Ctrl-C
 twice so the TUI exits and the pane command completes. All four mechanics
 were verified against dsh-tui 0.9.2 in a scratch tmux session on 2026-08-31.
 
-Knobs: TB_EFFORT and TB_DSH_PERSONA as in dsh_agent.py; TB_DSH_TUI_PRESET
+Knobs: TB_EFFORT and TB_DSH_PERSONA (baseline|structured|tuned) as in dsh_agent.py; TB_DSH_TUI_PRESET
 selects which shipped preset the session composes from - `standard` (the 25
 tools a real TUI user gets) or `minimal` (bash + str_replace_editor, the
 published benchmark composition) - with the persona swapped for the
@@ -32,7 +32,7 @@ from terminal_bench.agents.installed_agents.abstract_installed_agent import (
 )
 from terminal_bench.terminal.models import TerminalCommand
 
-from dsh_agent import QWEN_URL, _effort, _persona_rules
+from dsh_agent import QWEN_URL, _effort, _persona_rules, collect_container_logs
 
 TUI_VERSION = "0.9.2"  # the profile installed on the 5090 box, 2026-08-31
 PRESETS = ("standard", "minimal")
@@ -86,6 +86,11 @@ class DshTuiAgent(AbstractInstalledAgent):
     @property
     def _install_agent_script_path(self):
         return self._get_templated_script_path("dsh-tui-setup.sh.j2")
+
+    def perform_task(self, instruction, session, logging_dir=None):
+        result = super().perform_task(instruction, session, logging_dir)
+        collect_container_logs(session, logging_dir)
+        return result
 
     def _run_agent_commands(self, task_description: str) -> list[TerminalCommand]:
         # The task goes to a file (typed the same way the headless adapter types

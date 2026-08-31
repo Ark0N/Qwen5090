@@ -184,6 +184,31 @@ exec /opt/dsh-runtime/node_modules/.bin/dsh "\$@"
 SHIM
 chmod +x /usr/local/bin/dsh
 
+# Headless runner: the one `dsh --profile headless "<task>"` shot, with its
+# output kept and ONE retry on an empty turn. Measured on persona12's
+# sqlite-db-truncate re-run: dsh worked for 4m12s, printed nothing, wrote
+# nothing, and exited 0 - a zero-cost failure with nothing to show for it.
+# Output is judged on stdout+stderr together (dsh's README: successful runs
+# keep stderr empty), so a run that at least reported an error is not retried.
+# Everything lands in /installed-agent/logs, which the adapter copies into the
+# trial's agent-logs/ - the container itself does not survive the run.
+cat > /usr/local/bin/dsh-headless-run <<'RUN'
+#!/usr/bin/env bash
+TASK_FILE="${1:?task file}"
+LOGS=/installed-agent/logs
+mkdir -p "$LOGS"
+task="$(cat "$TASK_FILE")"
+dsh --profile headless "$task" 2>&1 | tee "$LOGS/dsh-out-1.txt"
+rc=${PIPESTATUS[0]}
+if [ -z "$(tr -d '[:space:]' < "$LOGS/dsh-out-1.txt")" ]; then
+  echo "[dsh-headless-run] empty turn (dsh rc=$rc, no output at all) - retrying once"
+  dsh --profile headless "You started this task earlier and stopped without a final message. Inspect the current state of the working directory first, then finish the task and end with a short summary of what is in place. The task: $task" 2>&1 | tee "$LOGS/dsh-out-2.txt"
+fi
+cp -r "${DSH_HOME:-/opt/dsh-home}/sessions" "$LOGS/" 2>/dev/null || true
+exit 0
+RUN
+chmod +x /usr/local/bin/dsh-headless-run
+
 # Back to the task's working directory before the agent command runs.
 cd "$__DSH_SETUP_PWD"
 

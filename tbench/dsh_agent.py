@@ -6,8 +6,12 @@ published `minimal` preset), routes it at the qwen5090 NInfer serve, and
 answers each task with one `dsh --profile headless "<instruction>"` shot.
 """
 
+import io
+import logging
 import os
 import shlex
+import tarfile
+from pathlib import Path
 
 from terminal_bench.agents.installed_agents.abstract_installed_agent import (
     AbstractInstalledAgent,
@@ -34,22 +38,61 @@ QWEN_URL = (os.environ.get("QWEN_URL") or "http://localhost:8000").rstrip("/")
 # (app/optimization/tb_agent.py, `structured`), which is what the TUI's
 # qwen5090 preset now carries - this knob is how that promotion gets measured
 # in the benchmark rather than assumed from the loop's own suite.
+STRUCTURED_RULES = (
+    "\n\n"
+    "      Rules:\n"
+    "      - Inspect before you change: list files and read the relevant ones first.\n"
+    "      - Run commands in small steps and read their output; a failing command is\n"
+    "        information, not failure.\n"
+    "      - Never assume file contents or exit codes; verify with cat/ls/python3.\n"
+    "      - Prefer one focused command per tool call; avoid commands that read from\n"
+    "        stdin (they block the shell).\n"
+    "      - Keep a clear final verification step that proves the task is done.\n"
+    "      - When everything is verified, end with a short final message that does\n"
+    "        not call any tools."
+)
+# `tuned` = structured + budget awareness. write-compressor passed persona12
+# only because a valid file was on disk when the timeout hit, and
+# pytorch-model-cli.hard sat at 5/6 polishing: the agent has no idea it is on a
+# clock, so it should bank a working answer first.
+BUDGET_RULE = (
+    "\n"
+    "      - Get a working answer in place early - a first version that satisfies the\n"
+    "        task as stated - and only then improve it. Time is limited: a finished\n"
+    "        first version beats an unfinished better one."
+)
 PERSONAS = {
     "baseline": "",
-    "structured": (
-        "\n\n"
-        "      Rules:\n"
-        "      - Inspect before you change: list files and read the relevant ones first.\n"
-        "      - Run commands in small steps and read their output; a failing command is\n"
-        "        information, not failure.\n"
-        "      - Never assume file contents or exit codes; verify with cat/ls/python3.\n"
-        "      - Prefer one focused command per tool call; avoid commands that read from\n"
-        "        stdin (they block the shell).\n"
-        "      - Keep a clear final verification step that proves the task is done.\n"
-        "      - When everything is verified, end with a short final message that does\n"
-        "        not call any tools."
-    ),
+    "structured": STRUCTURED_RULES,
+    "tuned": STRUCTURED_RULES + BUDGET_RULE,
 }
+
+# Where the in-container runner leaves what the trial directory would otherwise
+# lose: the dsh session log (session.jsonl.zstd) and the captured output of
+# each shot. The container does not survive the run - the one persona12 trial
+# whose reasoning mattered most (write-compressor) had no record of it.
+CONTAINER_LOGS = "/installed-agent/logs"
+
+
+def collect_container_logs(session, logging_dir) -> None:
+    """Copy CONTAINER_LOGS out of the task container into the trial's agent-logs/.
+
+    Best effort by design: a trial must never fail over its logs.
+    """
+    if logging_dir is None:
+        return
+    try:
+        stream, _stat = session.container.get_archive(CONTAINER_LOGS)
+        buf = io.BytesIO()
+        for chunk in stream:
+            buf.write(chunk)
+        buf.seek(0)
+        with tarfile.open(fileobj=buf) as tar:
+            tar.extractall(Path(logging_dir), filter="data")
+    except Exception as exc:  # noqa: BLE001 - logs are optional, the result is not
+        logging.getLogger(__name__).warning(
+            "could not collect %s from the container: %s", CONTAINER_LOGS, exc
+        )
 
 
 def _persona_rules() -> str:
@@ -113,10 +156,22 @@ class DshAgent(AbstractInstalledAgent):
     def _install_agent_script_path(self):
         return self._get_templated_script_path("dsh-setup.sh.j2")
 
+    def perform_task(self, instruction, session, logging_dir=None):
+        result = super().perform_task(instruction, session, logging_dir)
+        collect_container_logs(session, logging_dir)
+        return result
+
     def _run_agent_commands(self, task_description: str) -> list[TerminalCommand]:
+        # The task goes to a file and dsh-headless-run (written by the setup
+        # script) makes the one `dsh --profile headless "<task>"` shot from it,
+        # keeping its output and retrying once on an empty turn.
         return [
             TerminalCommand(
-                command=f"dsh --profile headless {shlex.quote(task_description)}",
+                command=(
+                    f"printf '%s' {shlex.quote(task_description)} "
+                    "> /installed-agent/task.txt && "
+                    "dsh-headless-run /installed-agent/task.txt"
+                ),
                 max_timeout_sec=float("inf"),
                 block=True,
             )
