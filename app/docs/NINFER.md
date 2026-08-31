@@ -227,7 +227,7 @@ Unlike the Claude Code bridge above, **you do not have to tell it the window**.
 and probes the real ceiling by deliberately overrunning it, reading the number
 out of the refusal. `QWEN_CTX` is there if you want to pin it anyway.
 
-Two other things it adapts on this backend:
+Three other things it adapts on this backend:
 
 - **An `off` thinking tier.** NInfer validates `reasoning_effort` ahead of the
   chat template and accepts `none`, which returns no reasoning at all. The
@@ -237,6 +237,14 @@ Two other things it adapts on this backend:
   25-tool preamble, which costs the llama.cpp backend around fourteen minutes
   on a cold turn. NInfer prefills the same preamble in about a second, so the
   preset would delete 23 tools to save nothing. Leave the full set on.
+- **Leave the sampler alone — it is already the model card's.** The harness
+  sends no sampling parameters at all (its pi-ai adapter can forward only a
+  `temperature`, and dsh never sets one), so NInfer's *model-aware defaults*
+  govern every request. Measured 2026-08-31 with a fixed `seed`: the output
+  with nothing set is byte-identical to `temperature 0.7`, `top_p 0.8` and
+  `presence_penalty 1.5` sent explicitly — the values Qwen recommends — and
+  differs from 1.0/0.6, 0.95/1.0 and penalty 0. There is nothing to pin.
+  (`temperature: 0` is honoured and deterministic if you ever need it.)
 
 The one thing that *is* worth setting is `MAX_SEQS`: the harness runs
 subagents, and at 1 they serialise. See the table above — 2 is the ceiling at

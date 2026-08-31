@@ -375,3 +375,19 @@ should copy `$DSH_HOME/sessions/*/session.jsonl.zstd` into the trial's
 `agent-logs/` before the turn ends — `--no-cleanup` keeps the casts, not the
 agent containers, and the one trial whose reasoning mattered most is the one
 with no record of it.
+
+### Sampling defaults are the model card's (measured 2026-08-31)
+
+A candidate lever after the persona A/B was pinning the sampler: pi-ai sends
+no sampling parameters, so the serve's default governs every agent request,
+and the model card recommends `temperature 0.7 / top_p 0.8 / top_k 20 /
+presence_penalty 1.5`. Two facts closed it without a run. First, dsh cannot
+pin anything but `temperature` — its pi-ai adapter forwards only that field
+and no settings key feeds it. Second, it does not need to: NInfer honours
+`seed`, and with a fixed seed the output with nothing set is byte-identical to
+the output with `0.7`, `0.8` and `1.5` sent explicitly (and to the full set),
+while `temperature 1.0`/`0.6`, `top_p 1.0`/`0.95` and `presence_penalty 0`
+each produce different text. `top_k` 20/0/40 were indistinguishable under
+`top_p 0.8`. NInfer's "model-aware sampling defaults" are the card's values;
+`temperature: 0` is deterministic. Scripts: the `probe_*.py` files are not
+kept — the recipe is three requests with the same `seed`.

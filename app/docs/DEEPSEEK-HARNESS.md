@@ -256,7 +256,11 @@ has the per-task detail and the other agents' very different effort curves
 The [self-optimization loop](SELF-OPTIMIZATION.md) also promoted a persona:
 six rules appended to the agent's system prompt (inspect before you change,
 small verified steps, never assume file contents or exit codes, one focused
-command per call, a final verification step, end with a tool-free message).
+command per call, a final verification step, end with a tool-free message),
+plus a seventh added 2026-08-31 — *get a working answer in place early, then
+improve it* — because the benchmark showed the agent has no sense of its
+time budget (one task passed only because a valid file happened to be on
+disk when the timeout hit).
 On this machine the TUI runs it as the `qwen5090` preset
 (`~/.dsh/.agent-presets/qwen5090/`, a copy of the shipped `standard` preset
 with only the `dsh-persona` row changed), selected through the profile patch:
@@ -277,7 +281,9 @@ through the "verify before you finish" rule and lost one by being *too*
 careful (it tidied a stray space the test wanted left alone). Keep it or drop
 it: delete the `preset:` line from the patch to go back to the shipped
 `standard` preset (a `/preset` choice made inside the TUI does not survive a
-restart while the patch pins one). The setting that moves the
+restart while the patch pins one). The sampler is not a lever either: NInfer already applies the
+model card's values by default (see [NINFER.md](NINFER.md)), and the harness
+could only override `temperature` anyway. The setting that moves the
 score is the effort above, not the persona — see
 [HARNESS-BENCHMARKS.md](HARNESS-BENCHMARKS.md#a-tuned-persona-measured-and-it-is-a-wash-2026-08-31).
 
