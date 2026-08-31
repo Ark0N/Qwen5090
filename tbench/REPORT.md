@@ -391,3 +391,100 @@ each produce different text. `top_k` 20/0/40 were indistinguishable under
 `top_p 0.8`. NInfer's "model-aware sampling defaults" are the card's values;
 `temperature: 0` is deterministic. Scripts: the `probe_*.py` files are not
 kept — the recipe is three requests with the same `seed`.
+
+## Tool set A/B in the TUI: `standard` vs `minimal` (2026-08-31)
+
+The harness research ([HARNESS-DESIGN.md](../app/docs/HARNESS-DESIGN.md)) had
+one finding that applied directly here and had never been measured on this
+model: smaller models do better with fewer tools. The headless adapter runs
+dsh's `minimal` composition (bash + `str_replace_editor`, 3 rows); a real TUI
+user gets `standard` (16 rows: file tools, search, jobs, todo, subagents, web,
+…). With the TUI adapter working, the comparison is one flag. Both arms at
+`medium` with the `tuned` persona (structured rules + budget awareness,
+`dsh_agent.py` PERSONAS), through `dsh_tui_agent.py`, so every trial also has
+a cast of the TUI at work and, since this run, the dsh session log in
+`agent-logs/`. Driver `toolset12.sh`; runs `runs/toolset12-tui-{standard,minimal}`
+plus `runs/toolset12-tui-minimal-retry` (below).
+
+| task | standard | | minimal | |
+|---|:---:|---:|:---:|---:|
+| hello-world | PASS | 1m47s | PASS | 1m36s |
+| simple-sheets-put | PASS | 2m19s | PASS | 2m04s |
+| tmux-advanced-workflow | PASS | 2m09s | PASS | 2m54s |
+| sqlite-db-truncate | PASS | 7m53s | PASS | 3m35s |
+| fibonacci-server | PASS | 2m16s | PASS † | 2m07s |
+| csv-to-parquet | fail 1/2 | 3m38s | **PASS** | 5m18s |
+| fix-git | PASS | 2m31s | fail 1/2 † | 2m14s |
+| openssl-selfsigned-cert | PASS | 2m09s | fail 5/6 | 2m01s |
+| write-compressor | fail 0/3 | 4m52s | timeout | 20m00s |
+| sanitize-git-repo | fail 2/3 | 3m08s | fail 2/3 | 2m29s |
+| nginx-request-logging | fail 7/8 | 2m05s | fail 7/8 | 2m12s |
+| pytorch-model-cli.hard | err(test_timeout) | 4m37s | err(test_timeout) | 5m25s |
+| **total** | **7 / 11** | | **6 / 11** | |
+
+Times are agent time per trial. `err(test_timeout)` is **not measured**: the
+task's own tests pip-install a 176 MB torch wheel inside a 120 s test budget;
+the headless agents had installed torch themselves during the turn, the TUI
+agents extracted the weights without it, and the tests then timed out in both
+arms. † re-run after the fix below.
+
+**Verdict: no evidence that fewer tools help this model — `standard` 7/11
+against `minimal` 6/11, one task, inside the noise, and each arm took one the
+other lost** (minimal passed `csv-to-parquet` where standard declared the age
+column `int32`; standard passed `fix-git` and `openssl`, the latter the usual
+`sha256`-literal miss on minimal). Agent time is comparable once minimal's
+20-minute `write-compressor` timeout is set aside (34 min vs 32 min over the
+other eleven). The research finding is real for some models; on this one, in
+this harness, the 25-tool preamble costs nothing measurable, which is what
+NINFER.md's "leave the full set on" already predicted from prefill cost. Keep
+`standard`. The `tuned` persona (structured rules plus budget awareness) was
+in both arms and is therefore not separately measured here: the TUI arms sit
+at 7/11 where the headless `structured` run sat at 7/12, which is consistent
+with "no harm" and nothing stronger.
+
+Two trials were lost to infrastructure and re-run: the minimal arm's
+`fix-git`, whose turn ended with `PI_AI_ERROR: inference request expired while
+waiting for admission` after two tool calls — local reproduction turns for the
+defect below were hitting the same serve (`MAX_SEQS=2`) while the arm ran at
+two concurrent, which is a mistake of this run and not of the harness — and
+its `fibonacci-server`, which is the defect. Every other turn in both arms
+ended `completed`, except the standard arm's `write-compressor`, which ended
+with reason **`max-tokens`**: the model's answer hit its output cap and dsh
+ended the turn there, with no continuation. That is a harness failure mode
+worth its own fix (a "continue" on `max-tokens`, the way Claude Code's cap
+was raised in the first comparison) and is now visible only because the
+session logs are collected.
+
+### What the minimal arm's `fibonacci-server` found: a harness defect
+
+The minimal arm scored 0/6 on `fibonacci-server` with the server *correctly*
+started — `cd /repo && setsid nohup python3 server.py > server.log 2>&1
+< /dev/null &` — and curl-verified at 200 on every endpoint in the same
+turn. At test time port 3000 refused. The standard arm, same rule, same
+persona, passed.
+
+Reproduced locally against the live TUI with the agent's exact command
+shape, then explained with `ps -o pid,ppid,pgid,sid`:
+
+- Under `minimal`, the `bash` tool is `dsh-tool-bash-persistent`: one
+  long-lived interactive shell. A backgrounded **list** — `cd dir && setsid …
+  &` — forks a subshell that runs `cd`, then `setsid`, and *waits* on the
+  server as its last command. The server gets its own session (`sid = pgid =
+  self`, so `setsid` worked) but its parent is that still-alive subshell,
+  whose parent is the persistent shell, whose parent is dsh. When the session
+  ends, the persistent tool kills its **descendant tree**, not merely the
+  process group — and the server is still in it.
+- The bare `setsid nohup … &` form survives, by accident: the job is a group
+  leader, so `setsid` forks, the intermediate exits, and the server is
+  re-parented to init *before* the TUI exits. Out of the tree.
+- Under `standard`, the `bash` tool is one-shot (`bash -c` per call), so
+  every child is orphaned to init the moment the call returns. Immune, also
+  by accident.
+
+`setsid -f` (always fork) makes the server leave the tree regardless of
+command shape; verified alive after TUI exit with the failing form (ppid 1
+before exit), and present in Debian 12 and Ubuntu 22.04. The rule now says
+so in both templates and the live preset (`27ad164`). The headless profile
+runs the same persistent tool and is **not** affected — both forms were
+measured alive after `dsh --profile headless` exits — so this is the TUI's
+interactive shutdown path specifically, and the persona12 numbers stand.

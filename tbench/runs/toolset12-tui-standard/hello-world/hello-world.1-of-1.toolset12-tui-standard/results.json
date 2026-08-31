@@ -1,0 +1,21 @@
+{
+    "id": "fde0ad63-96cd-4eda-9f44-1ed15a724aea",
+    "trial_name": "hello-world.1-of-1.toolset12-tui-standard",
+    "task_id": "hello-world",
+    "instruction": "Create a file called hello.txt in the current directory. Write \"Hello, world!\" to it. Make sure it ends in a newline. Don't make any other files or folders.",
+    "is_resolved": true,
+    "failure_mode": "unset",
+    "parser_results": {
+        "test_hello_file_exists": "passed",
+        "test_hello_file_content": "passed"
+    },
+    "recording_path": "toolset12-tui-standard/hello-world/hello-world.1-of-1.toolset12-tui-standard/sessions/agent.cast",
+    "total_input_tokens": 0,
+    "total_output_tokens": 0,
+    "trial_started_at": "2026-08-31T00:18:05.448402+00:00",
+    "trial_ended_at": "2026-08-31T00:20:26.844304+00:00",
+    "agent_started_at": "2026-08-31T00:18:11.842824+00:00",
+    "agent_ended_at": "2026-08-31T00:19:58.980864+00:00",
+    "test_started_at": "2026-08-31T00:20:02.556481+00:00",
+    "test_ended_at": "2026-08-31T00:20:10.145334+00:00"
+}

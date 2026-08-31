@@ -242,6 +242,10 @@ WATCH=/installed-agent/dsh-tui-watch.log
   t1=$(date +%s); log=""
   while :; do
     [ -z "$log" ] && log=$(find "$DSH_HOME/sessions" -name session.jsonl.zstd -newer "$MARK" 2>/dev/null | head -1)
+    # Copy the (append-only, zstd-framed) log on every poll: a trial that hits
+    # Terminal-Bench's agent timeout is killed mid-turn, before the post-exit
+    # copy below ever runs, and those are the turns whose record matters most.
+    [ -n "$log" ] && { mkdir -p /installed-agent/logs; cp -f "$log" /installed-agent/logs/session-live.jsonl.zstd 2>/dev/null || true; }
     if [ -n "$log" ] && zstd -dcq "$log" 2>/dev/null | grep -q '"type":"turn/end"'; then
       echo "turn/end $(date +%T) after $(( $(date +%s) - t1 ))s: $(zstd -dcq "$log" 2>/dev/null | grep '"type":"turn/end"' | head -c 200)"
       break

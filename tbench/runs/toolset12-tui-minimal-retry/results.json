@@ -1,0 +1,61 @@
+{
+    "id": "c36954be-b993-4bb3-9446-4b02149bd348",
+    "results": [
+        {
+            "id": "ed9cc2ef-c4ae-4844-bb34-4e005d1bf8a6",
+            "trial_name": "fibonacci-server.1-of-1.toolset12-tui-minimal-retry",
+            "task_id": "fibonacci-server",
+            "instruction": "Create and run a server on port 3000 that has a single GET endpoint: /fib.\n\nIt should expect a query param /fib?n={some number} and return the nth Fibonacci number as a JSON object with a key 'result'.\n\nIf the query param is not provided, it should return a 400 Bad Request error.\nIf the query param is not an integer, it should return a 400 Bad Request error.",
+            "is_resolved": true,
+            "failure_mode": "unset",
+            "parser_results": {
+                "test_server_running": "passed",
+                "test_fibonacci_endpoint_small_numbers": "passed",
+                "test_fibonacci_large_number": "passed",
+                "test_negative_number": "passed",
+                "test_missing_parameter": "passed",
+                "test_non_integer_parameter": "passed"
+            },
+            "recording_path": "toolset12-tui-minimal-retry/fibonacci-server/fibonacci-server.1-of-1.toolset12-tui-minimal-retry/sessions/agent.cast",
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+            "trial_started_at": "2026-08-31T01:07:54.906827+00:00",
+            "trial_ended_at": "2026-08-31T01:10:32.695129+00:00",
+            "agent_started_at": "2026-08-31T01:08:01.600088+00:00",
+            "agent_ended_at": "2026-08-31T01:10:08.932516+00:00",
+            "test_started_at": "2026-08-31T01:10:12.377276+00:00",
+            "test_ended_at": "2026-08-31T01:10:18.959915+00:00"
+        },
+        {
+            "id": "33236ceb-801c-44bc-bfe6-5cc7a127e47f",
+            "trial_name": "fix-git.1-of-1.toolset12-tui-minimal-retry",
+            "task_id": "fix-git",
+            "instruction": "I just made some changes to my personal site and checked out master, but now I can't find those changes. Please help me find them and merge them into master.",
+            "is_resolved": false,
+            "failure_mode": "unset",
+            "parser_results": {
+                "test_layout_file": "passed",
+                "test_about_file": "failed"
+            },
+            "recording_path": "toolset12-tui-minimal-retry/fix-git/fix-git.1-of-1.toolset12-tui-minimal-retry/sessions/agent.cast",
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+            "trial_started_at": "2026-08-31T01:07:54.905390+00:00",
+            "trial_ended_at": "2026-08-31T01:10:40.508798+00:00",
+            "agent_started_at": "2026-08-31T01:08:01.763666+00:00",
+            "agent_ended_at": "2026-08-31T01:10:16.201800+00:00",
+            "test_started_at": "2026-08-31T01:10:19.642477+00:00",
+            "test_ended_at": "2026-08-31T01:10:26.254593+00:00"
+        }
+    ],
+    "pass_at_k": {},
+    "n_resolved": 1,
+    "n_unresolved": 1,
+    "resolved_ids": [
+        "fibonacci-server"
+    ],
+    "unresolved_ids": [
+        "fix-git"
+    ],
+    "accuracy": 0.5
+}

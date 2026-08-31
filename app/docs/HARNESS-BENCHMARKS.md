@@ -235,6 +235,23 @@ above does not change: **`medium` effort is the setting that matters.**
 Details, per-task times and the two install flakes that had to be re-run are
 in the [technical report](../../tbench/REPORT.md#persona-ab-at-medium-on-the-full-12-2026-08-31).
 
+### Fewer tools did not help (2026-08-31)
+
+One more harness knob measured the same day, through the DeepSeek Harness's
+real TUI in the task container: its full `standard` tool set (about 25 tools)
+against the two-tool `minimal` composition the benchmark adapter uses. Same
+12 tasks, same effort, same persona: **standard 7/11, minimal 6/11** — one
+task apart, each side winning one the other lost. The "small models want
+fewer tools" finding from the harness research does not show up on this
+model here, so leave the default tool set on.
+
+That run also caught a real harness defect: with the `minimal` preset's
+persistent shell, a background server started as `cd dir && setsid … &`
+dies when the TUI session ends, because it is still a descendant of the
+tool's shell and the tool kills its whole tree. The fix is `setsid -f`;
+the shipped persona rule now says so. Headless runs and the standard preset
+were never affected.
+
 ## Reproduce it
 
 Everything is in [`tbench/`](../../tbench/): the four harness adapters, the
