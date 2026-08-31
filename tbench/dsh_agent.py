@@ -103,6 +103,26 @@ def _persona_rules() -> str:
     return PERSONAS[persona]
 
 
+# --- output-cap knob ----------------------------------------------------------
+# TB_DSH_MAX_TOKENS is the per-step output cap rendered into the route's model
+# entry (pi-ai's default is 32768). A step that spends the whole cap on reasoning
+# ends the turn with reason `max-tokens` and no tool call; the runners answer
+# that with a continuation (see the setup scripts). Small values force the
+# condition for testing that path.
+DEFAULT_MAX_TOKENS = 65536
+
+
+def _max_tokens() -> int:
+    raw = (os.environ.get("TB_DSH_MAX_TOKENS") or str(DEFAULT_MAX_TOKENS)).strip()
+    try:
+        value = int(raw)
+    except ValueError:
+        raise ValueError(f"TB_DSH_MAX_TOKENS={raw!r} is not an integer") from None
+    if value < 1:
+        raise ValueError(f"TB_DSH_MAX_TOKENS={raw!r} must be >= 1")
+    return value
+
+
 def _effort() -> str:
     """Reasoning effort for this run, read once from TB_EFFORT.
 
@@ -130,6 +150,7 @@ class DshAgent(AbstractInstalledAgent):
         self._version = kwargs.get("version", "0.1.1-rc.2")
         self._effort = _effort()
         self._persona_rules = _persona_rules()
+        self._max_tokens = _max_tokens()
 
     @property
     def _env(self) -> dict[str, str]:
@@ -150,6 +171,7 @@ class DshAgent(AbstractInstalledAgent):
             # Appended to the persona's first line; empty for `baseline`, so the
             # rendered profile stays byte-identical to the published runs.
             "persona_rules": self._persona_rules,
+            "max_tokens": str(self._max_tokens),
         }
 
     @property

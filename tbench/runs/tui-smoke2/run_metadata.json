@@ -1,0 +1,30 @@
+{
+    "run_id": "tui-smoke2",
+    "uuid": "4b7bb974-d1e8-42c9-bf6b-5cfa71d779e2",
+    "dataset_path": null,
+    "dataset_name": "terminal-bench-core",
+    "dataset_version": "0.1.1",
+    "output_path": "/home/arkon/codeman-cases/win11-5090/tbench/runs",
+    "agent_name": "dsh-tui-qwen5090",
+    "no_rebuild": false,
+    "cleanup": false,
+    "log_level": 20,
+    "task_ids": [
+        "hello-world"
+    ],
+    "exclude_task_ids": null,
+    "n_tasks": null,
+    "n_concurrent_trials": 1,
+    "n_attempts": 1,
+    "dataset_size": 1,
+    "accuracy": 1.0,
+    "model_name": null,
+    "start_time": "2026-08-31T01:11:37.042631+00:00",
+    "end_time": "2026-08-31T01:13:42.735879+00:00",
+    "commit_hash": "0976157f9b76f83e88ec38033d8afe76bcbec7b5",
+    "username": "Ark0N",
+    "s3_bucket": null,
+    "agent_kwargs": null,
+    "pass_at_k": {},
+    "resumed_at": null
+}

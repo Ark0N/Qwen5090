@@ -11,17 +11,19 @@ export DEBIAN_FRONTEND=noninteractive
 # the task scored as a fail. Retry the whole update+install, dropping the
 # partial download between tries.
 for __try in 1 2 3 4; do
-  apt-get update && apt-get install -y curl ca-certificates python3 make g++ && break
+  apt-get update && apt-get install -y curl ca-certificates python3 make g++ zstd && break
   echo "apt install failed (try $__try)"; apt-get clean; sleep 10
 done
 
 # Node via nvm (same pattern as the Claude Code / Qwen Code agents)
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.2/install.sh | bash
 source "$HOME/.nvm/nvm.sh"
+# `-b`: binary only. Without it a failed download falls back to compiling
+# node from source - a 40-minute build that a retry loop happily starts.
 # nodejs.org downloads flake ("Provided file to checksum does not exist" was
 # one such trial): retry, or dsh never installs and the task fails on a
 # missing binary rather than being reported as an install failure.
-for __try in 1 2 3 4; do nvm install 22 && break; echo "nvm install failed (try $__try)"; sleep 10; done
+for __try in 1 2 3 4; do nvm install -b 22 && break; echo "nvm install failed (try $__try)"; sleep 10; done
 npm install -g pnpm@11.22.0
 
 export DSH_HOME=/opt/dsh-home
@@ -164,6 +166,9 @@ llm-pi-ai:
       - id: qwen3.8-27b
         name: Qwen 5090
         contextWindow: 252928
+        # pi-ai's default output cap is 32768; a step spent entirely on reasoning
+        # hit it (toolset12 standard/write-compressor, 2026-08-31). TB_DSH_MAX_TOKENS.
+        maxTokens: {{ max_tokens }}
         reasoningEfforts:
           'off': none
           low: low
@@ -188,26 +193,49 @@ SHIM
 chmod +x /usr/local/bin/dsh
 
 # Headless runner: the one `dsh --profile headless "<task>"` shot, with its
-# output kept and ONE retry on an empty turn. Measured on persona12's
-# sqlite-db-truncate re-run: dsh worked for 4m12s, printed nothing, wrote
-# nothing, and exited 0 - a zero-cost failure with nothing to show for it.
-# Output is judged on stdout+stderr together (dsh's README: successful runs
-# keep stderr empty), so a run that at least reported an error is not retried.
-# Everything lands in /installed-agent/logs, which the adapter copies into the
-# trial's agent-logs/ - the container itself does not survive the run.
+# output kept and two kinds of retry, both measured failure modes:
+#  - an EMPTY turn (persona12's sqlite-db-truncate re-run: 4m12s of work, no
+#    output, nothing written, exit 0) is re-prompted once;
+#  - a turn that ends with reason `max-tokens` (toolset12 standard/
+#    write-compressor: 32,768 output tokens, every one of them reasoning, no
+#    tool call) is continued at LOW effort - a step that spent its whole budget
+#    thinking is better finished at low than not at all - up to twice.
+# The headless profile cannot resume a session, so a continuation is a fresh
+# session told to inspect the working directory first. Output is judged on
+# stdout+stderr together (dsh's README: successful runs keep stderr empty).
+# Everything lands in $DSH_RUN_LOGS (default /installed-agent/logs), which the
+# adapter copies into the trial's agent-logs/ - the container does not survive.
 cat > /usr/local/bin/dsh-headless-run <<'RUN'
 #!/usr/bin/env bash
 TASK_FILE="${1:?task file}"
-LOGS=/installed-agent/logs
+export DSH_HOME="${DSH_HOME:-/opt/dsh-home}"
+LOGS="${DSH_RUN_LOGS:-/installed-agent/logs}"
 mkdir -p "$LOGS"
 task="$(cat "$TASK_FILE")"
-dsh --profile headless "$task" 2>&1 | tee "$LOGS/dsh-out-1.txt"
+MARK=$(mktemp)
+last_reason() {   # reason.kind of the newest session's last turn/end, or "none"
+  local log; log=$(find "$DSH_HOME/sessions" -name session.jsonl.zstd -newer "$MARK" 2>/dev/null -printf '%T@ %p\n' | sort -n | tail -1 | cut -d' ' -f2-)
+  [ -n "$log" ] || { echo none; return; }
+  zstd -dcq "$log" 2>/dev/null | grep '"type":"turn/end"' | tail -1 | grep -oE '"kind": *"[^"]+"' | head -1 | grep -oE '"[^"]+"$' | tr -d '"' || echo none
+}
+shot=1
+dsh --profile headless "$task" 2>&1 | tee "$LOGS/dsh-out-$shot.txt"
 rc=${PIPESTATUS[0]}
-if [ -z "$(tr -d '[:space:]' < "$LOGS/dsh-out-1.txt")" ]; then
+if [ -z "$(tr -d '[:space:]' < "$LOGS/dsh-out-$shot.txt")" ]; then
+  shot=$((shot+1))
   echo "[dsh-headless-run] empty turn (dsh rc=$rc, no output at all) - retrying once"
-  dsh --profile headless "You started this task earlier and stopped without a final message. Inspect the current state of the working directory first, then finish the task and end with a short summary of what is in place. The task: $task" 2>&1 | tee "$LOGS/dsh-out-2.txt"
+  dsh --profile headless "You started this task earlier and stopped without a final message. Inspect the current state of the working directory first, then finish the task and end with a short summary of what is in place. The task: $task" 2>&1 | tee "$LOGS/dsh-out-$shot.txt"
 fi
-cp -r "${DSH_HOME:-/opt/dsh-home}/sessions" "$LOGS/" 2>/dev/null || true
+cont=0
+while [ "$(last_reason)" = "max-tokens" ] && [ "$cont" -lt 2 ]; do
+  cont=$((cont+1)); shot=$((shot+1))
+  echo "[dsh-headless-run] turn ended on max-tokens (reasoning used the whole output budget) - continuation $cont at low effort"
+  [ "$cont" -eq 1 ] && cp "$DSH_HOME/settings.yaml" "$LOGS/settings.yaml.orig" && sed -i 's/^\(\s*reasoningEffort:\).*/\1 low/' "$DSH_HOME/settings.yaml"
+  MARK=$(mktemp)
+  dsh --profile headless "A previous attempt at this task ran out of output budget while reasoning and took no action. Inspect the working directory to see what already exists, then finish the task: reason briefly, act with concrete tool calls, and end with a short summary. The task: $task" 2>&1 | tee "$LOGS/dsh-out-$shot.txt"
+done
+[ -f "$LOGS/settings.yaml.orig" ] && cp "$LOGS/settings.yaml.orig" "$DSH_HOME/settings.yaml"
+cp -r "$DSH_HOME/sessions" "$LOGS/" 2>/dev/null || true
 exit 0
 RUN
 chmod +x /usr/local/bin/dsh-headless-run

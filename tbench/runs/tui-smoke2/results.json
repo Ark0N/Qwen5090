@@ -1,0 +1,34 @@
+{
+    "id": "a5c53fc1-da68-48bf-a727-9522e7ed0d1a",
+    "results": [
+        {
+            "id": "6087e108-1dad-40a6-8954-13913e03f485",
+            "trial_name": "hello-world.1-of-1.tui-smoke2",
+            "task_id": "hello-world",
+            "instruction": "Create a file called hello.txt in the current directory. Write \"Hello, world!\" to it. Make sure it ends in a newline. Don't make any other files or folders.",
+            "is_resolved": true,
+            "failure_mode": "unset",
+            "parser_results": {
+                "test_hello_file_exists": "passed",
+                "test_hello_file_content": "passed"
+            },
+            "recording_path": "tui-smoke2/hello-world/hello-world.1-of-1.tui-smoke2/sessions/agent.cast",
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+            "trial_started_at": "2026-08-31T01:11:37.052088+00:00",
+            "trial_ended_at": "2026-08-31T01:13:42.730682+00:00",
+            "agent_started_at": "2026-08-31T01:11:41.231547+00:00",
+            "agent_ended_at": "2026-08-31T01:13:19.479928+00:00",
+            "test_started_at": "2026-08-31T01:13:22.920361+00:00",
+            "test_ended_at": "2026-08-31T01:13:28.899269+00:00"
+        }
+    ],
+    "pass_at_k": {},
+    "n_resolved": 1,
+    "n_unresolved": 0,
+    "resolved_ids": [
+        "hello-world"
+    ],
+    "unresolved_ids": [],
+    "accuracy": 1.0
+}

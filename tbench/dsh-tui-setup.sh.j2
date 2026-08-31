@@ -18,10 +18,12 @@ done
 # Node via nvm (same pattern as the Claude Code / Qwen Code agents)
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.2/install.sh | bash
 source "$HOME/.nvm/nvm.sh"
+# `-b`: binary only. Without it a failed download falls back to compiling
+# node from source - a 40-minute build that a retry loop happily starts.
 # nodejs.org downloads flake ("Provided file to checksum does not exist" was
 # one such trial): retry, or dsh never installs and the task fails on a
 # missing binary rather than being reported as an install failure.
-for __try in 1 2 3 4; do nvm install 22 && break; echo "nvm install failed (try $__try)"; sleep 10; done
+for __try in 1 2 3 4; do nvm install -b 22 && break; echo "nvm install failed (try $__try)"; sleep 10; done
 npm install -g pnpm@11.22.0
 
 export DSH_HOME=/opt/dsh-home
@@ -191,6 +193,9 @@ llm-pi-ai:
       - id: qwen3.8-27b
         name: Qwen 5090
         contextWindow: 252928
+        # pi-ai's default output cap is 32768; a step spent entirely on reasoning
+        # hit it (toolset12 standard/write-compressor, 2026-08-31). TB_DSH_MAX_TOKENS.
+        maxTokens: {{ max_tokens }}
         reasoningEfforts:
           'off': none
           low: low
@@ -226,7 +231,8 @@ TASK_FILE="${1:?task file}"
 export DSH_HOME="${DSH_HOME:-/opt/dsh-home}"
 PANE=$(tmux display-message -p '#{pane_id}') || { echo "not inside tmux"; exit 1; }
 MARK=$(mktemp)           # session logs newer than this are this run's
-WATCH=/installed-agent/dsh-tui-watch.log
+LOGS="${DSH_RUN_LOGS:-/installed-agent/logs}"
+WATCH="${DSH_RUN_LOGS:-/installed-agent}/dsh-tui-watch.log"
 (
   t0=$(date +%s)
   until tmux capture-pane -p -t "$PANE" | grep -q '❯'; do
@@ -239,15 +245,30 @@ WATCH=/installed-agent/dsh-tui-watch.log
   sleep 1.5
   tmux send-keys -t "$PANE" Enter
   echo "task submitted $(date +%T)"
-  t1=$(date +%s); log=""
+  t1=$(date +%s); log=""; ends=0; cont=0
   while :; do
     [ -z "$log" ] && log=$(find "$DSH_HOME/sessions" -name session.jsonl.zstd -newer "$MARK" 2>/dev/null | head -1)
     # Copy the (append-only, zstd-framed) log on every poll: a trial that hits
     # Terminal-Bench's agent timeout is killed mid-turn, before the post-exit
     # copy below ever runs, and those are the turns whose record matters most.
-    [ -n "$log" ] && { mkdir -p /installed-agent/logs; cp -f "$log" /installed-agent/logs/session-live.jsonl.zstd 2>/dev/null || true; }
-    if [ -n "$log" ] && zstd -dcq "$log" 2>/dev/null | grep -q '"type":"turn/end"'; then
-      echo "turn/end $(date +%T) after $(( $(date +%s) - t1 ))s: $(zstd -dcq "$log" 2>/dev/null | grep '"type":"turn/end"' | head -c 200)"
+    [ -n "$log" ] && { mkdir -p "$LOGS"; cp -f "$log" "$LOGS/session-live.jsonl.zstd" 2>/dev/null || true; }
+    n=0; [ -n "$log" ] && n=$(zstd -dcq "$log" 2>/dev/null | grep -c '"type":"turn/end"')
+    if [ "$n" -gt "$ends" ]; then
+      ends=$n
+      last=$(zstd -dcq "$log" 2>/dev/null | grep '"type":"turn/end"' | tail -1)
+      echo "turn/end $(date +%T) after $(( $(date +%s) - t1 ))s: $(printf '%s' "$last" | head -c 200)"
+      # A turn that ends on max-tokens spent its whole output budget reasoning
+      # and took no action (toolset12 standard/write-compressor: 32,768 tokens,
+      # all of them thinking). The TUI keeps the session, so continue it in
+      # place - up to twice - telling the model to act. `/effort` here is a
+      # slider, not a command with an argument, so the effort stays as set.
+      if printf '%s' "$last" | grep -q '"kind": *"max-tokens"' && [ "$cont" -lt 2 ]; then
+        cont=$((cont+1)); echo "max-tokens: continuation $cont $(date +%T)"
+        sleep 2
+        tmux send-keys -t "$PANE" -l "Your last step ran out of output budget while reasoning and took no action. Continue from the current state of the working directory: reason briefly, then act with a tool call. Finish the task and end with a short summary."
+        sleep 1; tmux send-keys -t "$PANE" Enter
+        continue
+      fi
       break
     fi
     [ $(( $(date +%s) - t1 )) -gt {{ max_turn_sec }} ] && { echo "watch timeout after {{ max_turn_sec }}s"; break; }
@@ -267,11 +288,11 @@ echo; echo "dsh-tui exited rc=$rc"; cat "$WATCH"
 # plus a process/socket snapshot from right after the TUI exit - a detached
 # server that is alive here and refused at test time died in the test phase,
 # not with the TUI (toolset12 minimal/fibonacci-server, 2026-08-31).
-mkdir -p /installed-agent/logs
-ps -eo pid,ppid,pgid,sid,tty,stat,etimes,cmd > /installed-agent/logs/ps-after-exit.txt 2>&1
-cat /proc/net/tcp /proc/net/tcp6 > /installed-agent/logs/tcp-after-exit.txt 2>&1
-cp -r "${DSH_HOME:-/opt/dsh-home}/sessions" /installed-agent/logs/ 2>/dev/null || true
-cp "$WATCH" /installed-agent/logs/ 2>/dev/null || true
+mkdir -p "$LOGS"
+ps -eo pid,ppid,pgid,sid,tty,stat,etimes,cmd > "$LOGS/ps-after-exit.txt" 2>&1
+cat /proc/net/tcp /proc/net/tcp6 > "$LOGS/tcp-after-exit.txt" 2>&1
+cp -r "$DSH_HOME/sessions" "$LOGS/" 2>/dev/null || true
+cp "$WATCH" "$LOGS/" 2>/dev/null || true
 exit 0
 RUN
 chmod +x /usr/local/bin/dsh-tui-run

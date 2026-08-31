@@ -1,0 +1,30 @@
+{
+    "run_id": "mt-tui",
+    "uuid": "b09413c3-641a-4e71-83f8-def0dcd8262c",
+    "dataset_path": null,
+    "dataset_name": "terminal-bench-core",
+    "dataset_version": "0.1.1",
+    "output_path": "/home/arkon/codeman-cases/win11-5090/tbench/runs",
+    "agent_name": "dsh-tui-qwen5090",
+    "no_rebuild": false,
+    "cleanup": false,
+    "log_level": 20,
+    "task_ids": [
+        "hello-world"
+    ],
+    "exclude_task_ids": null,
+    "n_tasks": null,
+    "n_concurrent_trials": 1,
+    "n_attempts": 1,
+    "dataset_size": 1,
+    "accuracy": 0.0,
+    "model_name": null,
+    "start_time": "2026-08-31T01:17:49.396056+00:00",
+    "end_time": "2026-08-31T01:20:54.377535+00:00",
+    "commit_hash": "0976157f9b76f83e88ec38033d8afe76bcbec7b5",
+    "username": "Ark0N",
+    "s3_bucket": null,
+    "agent_kwargs": null,
+    "pass_at_k": {},
+    "resumed_at": null
+}

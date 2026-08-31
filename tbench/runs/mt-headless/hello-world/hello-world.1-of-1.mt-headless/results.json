@@ -1,0 +1,21 @@
+{
+    "id": "d815e289-1152-46a7-8a3b-b86f27d8fbab",
+    "trial_name": "hello-world.1-of-1.mt-headless",
+    "task_id": "hello-world",
+    "instruction": "Create a file called hello.txt in the current directory. Write \"Hello, world!\" to it. Make sure it ends in a newline. Don't make any other files or folders.",
+    "is_resolved": false,
+    "failure_mode": "unset",
+    "parser_results": {
+        "test_hello_file_exists": "failed",
+        "test_hello_file_content": "failed"
+    },
+    "recording_path": "mt-headless/hello-world/hello-world.1-of-1.mt-headless/sessions/agent.cast",
+    "total_input_tokens": 0,
+    "total_output_tokens": 0,
+    "trial_started_at": "2026-08-31T01:25:59.583257+00:00",
+    "trial_ended_at": "2026-08-31T01:28:06.916377+00:00",
+    "agent_started_at": "2026-08-31T01:26:06.544130+00:00",
+    "agent_ended_at": "2026-08-31T01:27:42.096583+00:00",
+    "test_started_at": "2026-08-31T01:27:45.517602+00:00",
+    "test_ended_at": "2026-08-31T01:27:53.521654+00:00"
+}

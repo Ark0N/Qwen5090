@@ -281,7 +281,11 @@ through the "verify before you finish" rule and lost one by being *too*
 careful (it tidied a stray space the test wanted left alone). Keep it or drop
 it: delete the `preset:` line from the patch to go back to the shipped
 `standard` preset (a `/preset` choice made inside the TUI does not survive a
-restart while the patch pins one). Nor is the tool set: the TUI's full `standard` composition measured 7/11
+restart while the patch pins one). One setting *is* worth adding: `maxTokens: 65536` on the model entry under
+`llm-pi-ai.providers.qwen5090.models` — pi-ai's default per-step output cap is
+32768, and a step that spends all of it reasoning ends the turn with no tool
+call and no continuation (measured once on the benchmark). Reasoning tokens
+count against that cap on this serve. Nor is the tool set: the TUI's full `standard` composition measured 7/11
 against `minimal`'s 6/11 on the same tasks, so leave it on — and if you do use
 `minimal` (its `bash` is a persistent shell), start background servers with
 `setsid -f`, or a `cd dir && setsid …` form dies with the session. The sampler is not a lever either: NInfer already applies the

@@ -488,3 +488,38 @@ so in both templates and the live preset (`27ad164`). The headless profile
 runs the same persistent tool and is **not** affected — both forms were
 measured alive after `dsh --profile headless` exits — so this is the TUI's
 interactive shutdown path specifically, and the persona12 numbers stand.
+
+## The `max-tokens` turn: cap raised, continuation added (2026-08-31)
+
+The session logs collected since the tool-set run showed one turn ending with
+reason `max-tokens` (standard arm, `write-compressor`): `stopReason: length`,
+**`outputTokens: 32768`**, and the step's blocks were *reasoning only* — the
+model spent pi-ai's entire default output cap (`DEFAULT_MAX_TOKENS = 32768`,
+per step) thinking, emitted no text and no tool call, and dsh ended the turn
+there. Nothing continued it. Two changes, both in the adapters and mirrored on
+the 5090 box:
+
+- **The cap is now a route setting**: `models[].maxTokens` in the rendered
+  `settings.yaml`, from `TB_DSH_MAX_TOKENS` (default **65536**; the live
+  `~/.dsh/settings.yaml` carries the same). Doubling it gives a long but
+  finite chain room; it does not rescue a runaway one, which is what the
+  second change is for.
+- **A continuation on `max-tokens`, up to twice.** The headless runner reads
+  the session's last `turn/end` reason (zstd is now installed for it) and,
+  on `max-tokens`, re-runs dsh with a prompt that says the previous attempt
+  ran out of budget while reasoning, must inspect the working directory and
+  *act* — **at `low` effort** (the container's `settings.yaml` is flipped
+  for the continuation and restored after), because a step that burned its
+  whole budget thinking is better finished at low than not at all. The TUI
+  watcher does the same in-session: it counts `turn/end` events, and on a
+  `max-tokens` one pastes the continuation into the composer instead of
+  exiting; the effort stays as configured there, since the TUI's `/effort`
+  is a slider rather than a command that takes an argument.
+
+Mechanics verified with the cap forced to 40 tokens (every step then ends on
+`max-tokens`): locally against a DSH_HOME copy — headless made the initial
+shot plus exactly two continuations, flipped to `low` and restored `medium`,
+saved all three outputs; the TUI ran three turns in one session and exited
+cleanly — and then in task containers through both adapters (`runs/mt-headless`,
+`runs/mt-tui`). Whether a continuation *recovers* the real case is a model
+question at n=1: see the `write-compressor` re-run below.

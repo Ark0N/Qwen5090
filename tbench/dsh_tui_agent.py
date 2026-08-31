@@ -32,7 +32,13 @@ from terminal_bench.agents.installed_agents.abstract_installed_agent import (
 )
 from terminal_bench.terminal.models import TerminalCommand
 
-from dsh_agent import QWEN_URL, _effort, _persona_rules, collect_container_logs
+from dsh_agent import (
+    QWEN_URL,
+    _effort,
+    _max_tokens,
+    _persona_rules,
+    collect_container_logs,
+)
 
 TUI_VERSION = "0.9.2"  # the profile installed on the 5090 box, 2026-08-31
 PRESETS = ("standard", "minimal")
@@ -60,6 +66,7 @@ class DshTuiAgent(AbstractInstalledAgent):
         self._effort = _effort()
         self._persona_rules = _persona_rules()
         self._preset = _preset()
+        self._max_tokens = _max_tokens()
 
     @property
     def _env(self) -> dict[str, str]:
@@ -81,6 +88,7 @@ class DshTuiAgent(AbstractInstalledAgent):
             "persona_rules": self._persona_rules,
             "preset": self._preset,
             "max_turn_sec": str(MAX_TURN_SEC),
+            "max_tokens": str(self._max_tokens),
         }
 
     @property
