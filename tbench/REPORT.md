@@ -522,4 +522,15 @@ shot plus exactly two continuations, flipped to `low` and restored `medium`,
 saved all three outputs; the TUI ran three turns in one session and exited
 cleanly — and then in task containers through both adapters (`runs/mt-headless`,
 `runs/mt-tui`). Whether a continuation *recovers* the real case is a model
-question at n=1: see the `write-compressor` re-run below.
+question at n=1 — and the re-run answers it as far as one run can.
+
+**`write-compressor` at the 65536 cap** (`runs/mt-write-compressor`, TUI,
+standard preset, tuned persona): the turn never ended on `max-tokens`. The
+agent took **32 steps** — 4 reads, 17 bash calls, 2 writes, 9 edits, ~170K
+output tokens in all — wrote a compressor, produced `data.comp`, and was
+still shrinking it when the 20-minute agent timeout hit. Tests: **2/3** —
+the file exists and decompresses byte-exact, at **2,679 bytes against the
+2,500 limit**. So the failure mode is fixed (a reasoning-only step that
+ends the turn) and the task is still lost, on merit and narrowly. The
+per-poll session-log copy earned its keep on this exact trial: it was
+killed at the timeout, and the log is in `agent-logs/` anyway.
