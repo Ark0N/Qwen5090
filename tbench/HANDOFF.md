@@ -5,6 +5,46 @@ analysis is in [`REPORT.md`](REPORT.md); the reproduction guide is
 [`README.md`](README.md); the product-facing writeup is
 [`../app/docs/HARNESS-BENCHMARKS.md`](../app/docs/HARNESS-BENCHMARKS.md).
 
+## Follow-up: single-harness tuning + a live eval (2026-08-30 → 31)
+
+The three-phase study above settled on **dsh at `medium`**. Since then the work
+narrowed to making that one harness as good as it gets, all measured on the same
+12-task subset unless noted. New drivers: `persona12.sh`, `toolset12.sh`,
+`low12.sh`. New adapter: `dsh_tui_agent.py` (drives the real TUI in the pane, so
+the cast shows the model working; also copies dsh's session log into each
+trial's `agent-logs/`, timed-out trials included).
+
+- **Effort correction.** The "8/12 ceiling" was really the top of a **5–8
+  range**: the identical dsh-medium config scored 8/12 one day and 5/12 five
+  days later, so cross-date noise on this suite is ~±3 and `pytorch-model-cli`
+  was never a ceiling task (a `null`/parse-error scored as a fail). Count `null`
+  separately from `false`.
+- **Persona.** The self-optimization loop's `structured` persona vs the
+  published one: **7/12 vs 5/12** at medium, within noise — kept, not promoted
+  above effort. A `tuned` persona adds budget awareness + `setsid -f`.
+- **Tool set.** TUI `standard` (≈25 tools) vs `minimal` (2): **7/11 vs 6/11** —
+  the "fewer tools for small models" idea does not show on this model; default
+  stays `standard`.
+- **`setsid` → `setsid -f`.** Under the persistent-bash tool a `cd dir && setsid
+  … &` server is a descendant of the tool's shell and dies at session end;
+  `-f` re-parents it to init. Fixed in both templates and the live preset.
+- **`max-tokens`.** A step that spent pi-ai's 32768 output cap entirely on
+  reasoning ended the turn with no action; the cap is now a route setting
+  (65536, `TB_DSH_MAX_TOKENS`) and both runners continue on `max-tokens` (up to
+  twice; headless drops to `low`).
+- **Sampler.** Not a lever: dsh forwards only `temperature` and sets none, and
+  NInfer's defaults already equal the model card's (`0.7/0.8/1.5`), proven with
+  a fixed `seed`.
+- **Live eval.** A fresh dsh worker passed a 6-test battery (server survival,
+  exact transform, git fix, search, input validation, sanitize), a second
+  Codeman session (Claude Code) reviewed it adversarially and found two edge
+  defects (query-string routing, huge-int crash), the worker fixed both on
+  feedback, and the two lessons were merged into the persona's API rule. See
+  REPORT.md's last two sections.
+
+New adapter knobs: `TB_DSH_PERSONA` (baseline|structured|tuned),
+`TB_DSH_MAX_TOKENS`, `TB_DSH_TUI_PRESET` (standard|minimal).
+
 ## What was done
 
 Benchmarked four coding-agent **harnesses** on [Terminal-Bench](https://www.tbench.ai/)
@@ -37,8 +77,10 @@ the NInfer serve), so the only variable is the harness. Three phases:
 
 ## Current state (as of teardown)
 
-- All results committed and pushed to `Ark0N/Qwen5090` `main`. Git is clean.
-- The 3 Codeman worker sessions used to build this (one per harness lane) are **deleted**.
+- The original three-phase results were pushed to `Ark0N/Qwen5090` `main`.
+  **The follow-up work above is committed but NOT pushed** (local `main` is ahead).
+- The three build-phase worker sessions are deleted. The live-eval sessions
+  (a dsh worker + a Claude reviewer) may still be idle on the box.
 - The LiteLLM bridge (Claude Code's Anthropic→OpenAI translator) is **stopped**.
 - The model serve (`http://<5090-ip>:8000`) was up at teardown; it can sleep.
 

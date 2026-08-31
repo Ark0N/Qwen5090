@@ -698,6 +698,49 @@ coordinates with the harness through `mode.json` and must keep doing so —
 anything that runs benchmarks here shares the one GPU with the user's live
 sessions.
 
+## Tuning dsh and evaluating it (2026-08-30 → 31)
+
+The single-harness follow-up to the four-harness study. All measured on the
+12-task subset; full detail in `tbench/REPORT.md` and
+`app/docs/HARNESS-BENCHMARKS.md`. **The live dsh on the box now runs this tuned
+config** (`~/.dsh/settings.yaml` + the `~/.dsh/.agent-presets/qwen5090` preset,
+selected by the `dsh-tui` profile patch), and the Terminal-Bench adapters
+(`tbench/dsh_agent.py`, `dsh_tui_agent.py`) render the same into each container:
+
+- **`medium` effort, not `xhigh`.** The measured best, and cheaper.
+- **The `qwen5090` preset** = shipped `standard` (16 rows, ~25 tools) with the
+  persona row replaced by: inspect-before-change / small verified steps / never
+  assume / one command per call / final verification / tool-free final message,
+  **plus** budget awareness ("get a working answer in place early") **plus** the
+  background-server and API rules below. Tool-set A/B said keep the full set
+  (`standard` 7/11 vs `minimal` 6/11 — fewer tools did not help this model).
+- **`setsid -f`, not bare `setsid`.** Under the persistent-bash tool a
+  `cd dir && setsid … &` server is a *descendant* of the tool's shell and is
+  killed at session end; `-f` always forks so it re-parents to init. This is
+  distinct from the WSL "background process dies with wsl.exe" rule above.
+- **`maxTokens: 65536`** on the model route. pi-ai's default per-step cap is
+  32768, and a step that spends it all on reasoning ends the turn with no tool
+  call; both bench runners also *continue* on a `max-tokens` turn (headless at
+  `low`). Reasoning tokens bill against this cap.
+- **The API persona rule** now also says: match a route on the **path**, not the
+  raw request-target (a query string does not change the path); and an input
+  that would overflow or raise while computing is out of range → **4xx, never
+  drop the connection**. Both were found by an independent Codeman reviewer in
+  the live eval and merged back.
+- **Sampler: nothing to pin.** dsh forwards only `temperature` and sets none;
+  NInfer's model-aware defaults already equal the card's `0.7/0.8/1.5` (proven
+  with a fixed `seed`).
+- **Numbers are noisier than one run suggests.** The dsh-medium "8/12" is the
+  top of a **5–8 range** across dates (~±3); count `is_resolved: null`
+  separately from `false`. Persona A/B was 7/12 vs 5/12 (within noise).
+- **Live-eval workflow.** Spawn a dsh Codeman worker, give it a battery whose
+  every result is checked from *outside* the harness, then spawn a **Claude
+  reviewer** in a second Codeman session to audit adversarially and feed defects
+  back. Claude cases spawn onto Claude Code's trust dialog whose default is
+  "No, exit" — pre-trust the folder in `~/.claude.json`
+  (`projects[path].hasTrustDialogAccepted=true`) before spawning, or the bare
+  Enter kills the pane.
+
 ## Architecture (three layers, one direction)
 
 1. **Launcher/GUI** — `Start Qwen 5090.cmd` → `app/gui.ps1`: a single-file WPF app (XAML string +

@@ -63,6 +63,15 @@ What the evidence says:
    14-minute one, and one changing request header cost llama.cpp users ~90%
    of their throughput.
 
+   > **Measured on this stack (2026-08-31).** We put this to the test on
+   > Qwen3.8-27B: the DeepSeek Harness's full `standard` tool set (~25 tools)
+   > against its 2-tool `minimal` preset, same 12 tasks — **7/11 vs 6/11**, one
+   > task apart, inside the noise. On *this* model the large tool set costs
+   > nothing measurable and buys nothing measurable; the prefill it adds is
+   > cheap on the NInfer backend. So "few, precise tools for weak models" is a
+   > real design axis but did not move the score here. See
+   > [HARNESS-BENCHMARKS.md](HARNESS-BENCHMARKS.md).
+
 The rest is the evidence.
 
 ## 1. What a harness actually decides

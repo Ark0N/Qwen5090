@@ -1,5 +1,13 @@
 # Full-run runbook — harness comparison on the curated 64 tasks
 
+> **Note (2026-08-31).** This runbook is the original 64-task full-run plan at
+> `xhigh`. The project since settled on **dsh at `medium`**, and later work runs
+> the 12-task subset through `persona12.sh` / `toolset12.sh` / `low12.sh`. The
+> adapters now read `TB_EFFORT` (default `xhigh` in code, but `medium` is the
+> measured best), plus `TB_DSH_PERSONA` (baseline|structured|tuned),
+> `TB_DSH_MAX_TOKENS`, and `TB_DSH_TUI_PRESET`. See `REPORT.md` and
+> `../app/docs/HARNESS-BENCHMARKS.md` for the current numbers and settings.
+
 All runs: same 64-task list (16 exclusions), same model (qwen3.8-27b @ `<5090-ip>:8000`),
 effort xhigh everywhere, `--n-concurrent 2 --global-agent-timeout-sec 800 --no-cleanup`,
 output `<repo>/tbench/runs`. Run SEQUENTIALLY (GPU is shared).
