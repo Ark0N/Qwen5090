@@ -109,7 +109,13 @@ cat > headless/cordis.patch.yml <<'YAML'
       number, never a quoted string, because callers compare it numerically.
       Validate the input: an argument the endpoint cannot meaningfully answer
       for - missing, wrong type, or out of the range the operation is defined
-      on - is a 4xx, not a 200 carrying a guess.
+      on - is a 4xx, not a 200 carrying a guess. Two ways this goes
+      wrong even when the happy path is right, both measured in review: match a
+      route on the PATH, not the raw request-target - a query string does not
+      change the path, so /health?x=1 is still /health; and an input that would
+      overflow or raise while you compute the answer (a huge integer, a division
+      that cannot be represented) is out of range - return 4xx, never let it
+      throw and drop the connection, which returns neither a result nor a status.
 - id: tool-pwsh
   disabled: true
 - id: tool-jobs

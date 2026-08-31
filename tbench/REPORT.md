@@ -534,3 +534,53 @@ the file exists and decompresses byte-exact, at **2,679 bytes against the
 ends the turn) and the task is still lost, on merit and narrowly. The
 per-poll session-log copy earned its keep on this exact trial: it was
 killed at the timeout, and the log is in `agent-logs/` anyway.
+
+## Live-harness evaluation with an independent reviewer (2026-08-31)
+
+Not Terminal-Bench: a direct check that the configured DeepSeek Harness on the
+5090 runs at its tuned best and can drive all the tools an agent task needs.
+A fresh `dsh` worker (medium effort, the tuned `qwen5090` preset, `maxTokens`
+65536, model-card sampling) was given a six-test battery built around the
+failure modes this report documents, each verified from **outside** the
+harness, and a second Codeman session (Claude Code, Fable 5) then audited the
+artifacts adversarially. The worker's session log shows the tools it exercised:
+`bash` ×28, `read` ×8, `edit` ×7, `write` ×3, `grep` ×1, across **7 completed
+turns, zero errored, zero `max-tokens`** — and the harness enforced
+read-before-edit (`FS_NOT_OBSERVED`) and string-only tool content
+(`ToolArgsError`), so `edit` never smeared a file.
+
+| # | test (failure mode it targets) | first pass | independent review |
+|---|---|:---:|---|
+| 1 | background server survives the turn (`setsid`) | PASS | CONCERN → fixed |
+| 2 | CSV→JSON preserving a `"done "` trailing space (over-clean) | PASS | PASS |
+| 3 | fix an `a-b` git bug, tests pass, test file untouched, commit | PASS | PASS |
+| 4 | find a token planted across five files (search) | PASS | PASS |
+| 5 | `/div` returns a JSON number / 4xx on bad input (API rule) | PASS | CONCERN → fixed |
+| 6 | redact two secrets byte-exact, change nothing else (sanitize) | PASS | PASS |
+
+**The review earned its place** — with ~70 probes it found two real edge
+defects the first pass's 2-and-4-request checks could not have seen, both in
+the *model's* code, not the harness:
+
+- **T1**: `GET /health?x=1` → 400, because the server matched the full
+  request-target (`self.path` includes the query string) instead of the path.
+- **T5**: an integer ≥ 10^309 (OverflowError) or ≥ 4301 digits (ValueError)
+  crashed the request with **no HTTP status at all** — a violation of the
+  "never return neither" contract the API persona rule is built on. Above
+  2^53 the float result also silently loses precision.
+
+Fed back to the worker, both were fixed (`urlparse(self.path).path`;
+`try/except (OverflowError, ValueError)` → 400) and re-verified from outside
+with the reviewer's exact inputs: `/health?x=1` → 200, the 400- and
+5000-digit integers → 400, normal inputs unchanged, both servers alive across
+the restart. That is the whole agent loop working end to end: build →
+independent review → act on the findings → verify.
+
+**Merged back into the harness.** Both defects generalise, so the persona's
+API rule (both `tbench/*setup*.j2` templates and the live `qwen5090` preset)
+gained two clauses: *match a route on the path, not the raw request-target —
+a query string does not change the path*; and *an input that would overflow
+or raise while computing the answer is out of range — return 4xx, never let
+it throw and drop the connection.* The full reviewer report is
+`dsh-eval-review/REVIEW.md` on the box (not shipped — it references live
+session paths).
