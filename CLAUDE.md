@@ -741,6 +741,35 @@ selected by the `dsh-tui` profile patch), and the Terminal-Bench adapters
   (`projects[path].hasTrustDialogAccepted=true`) before spawning, or the bare
   Enter kills the pane.
 
+### dsh 0.1.5-rc.2 removed `agent-presets` (2026-09-20)
+
+The native-Linux install was updated 0.1.1-rc.2 -> **0.1.5-rc.2** (the npm
+`latest` tag; `0.1.6-alpha.2` exists on `alpha`). The tuning above still
+applies, but **the mechanism it names is gone** and the adapters above still
+render it:
+
+- There is no `config/agent-presets/` in the package any more, no
+  `agent.cordis.yml` anywhere, and no `.agent-presets` string in `lib/`. The
+  regex in `tbench/dsh-tui-setup.sh.j2` that rewrites the shipped preset's
+  persona row therefore cannot match on 0.1.5 - it will fail its own
+  `assert n == 1`. Both `dsh-setup.sh.j2` and `dsh-tui-setup.sh.j2` need
+  porting before the next bench run.
+- The persona is now the **`system-prompt` row** (`@deepseek-ai/dsh-system-prompt`,
+  config keys `personaPrefix` / `personaSuffix`). The old `persona` row
+  (`@deepseek-ai/dsh-persona`, `config.text`) is absent from the composed tree
+  even though the package is still a dependency - so grepping node_modules for
+  it says nothing about whether it is live. Read `--dump-config` instead: here
+  it is the one place the composition layer *is* the answer, which is the
+  opposite of the `settings.yaml` case documented above.
+- A profile's `cordis.patch.yml` is the supported override, and the old preset
+  file was itself a cordis tree, so the tuned persona ports across as one
+  id-targeted patch entry rather than a copied directory. Applied to both the
+  `headless` and `web` profiles on the box; verified by asking the agent to
+  quote its own first rule back.
+
+`settings.yaml` needed no porting - 0.1.5 accepts the same route shape, and
+`medium` + `maxTokens: 65536` are live there now.
+
 ## Architecture (three layers, one direction)
 
 1. **Launcher/GUI** — `Start Qwen 5090.cmd` → `app/gui.ps1`: a single-file WPF app (XAML string +
