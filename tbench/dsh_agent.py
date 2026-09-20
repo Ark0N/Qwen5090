@@ -24,6 +24,13 @@ from terminal_bench.terminal.models import TerminalCommand
 EFFORTS = ("low", "medium", "xhigh")
 DEFAULT_EFFORT = "xhigh"
 
+# Tracks the version installed on the 5090 box (2026-09-20). Bumping this
+# is a measurement decision, not a maintenance one: 0.1.5-rc.2 moved the
+# persona to the system-prompt row's personaPrefix and removed the
+# agent-presets mechanism, so a run pinned to 0.1.1-rc.2 composes its
+# profile by a different route than the box does.
+DEFAULT_DSH_VERSION = "0.1.5-rc.2"
+
 # The model serve, for the provider route rendered into the setup script. Not
 # hardcoded: the address of the box this was measured on has no business in the
 # repo. Same variable app/scripts/terminal-bench.sh reads.
@@ -147,7 +154,7 @@ class DshAgent(AbstractInstalledAgent):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._version = kwargs.get("version", "0.1.1-rc.2")
+        self._version = kwargs.get("version", DEFAULT_DSH_VERSION)
         self._effort = _effort()
         self._persona_rules = _persona_rules()
         self._max_tokens = _max_tokens()

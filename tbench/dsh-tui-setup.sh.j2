@@ -115,65 +115,94 @@ YAML
 test -d "$DSH_HOME/profiles/dsh-tui/node_modules/@deepseek-harness-tui/dsh-tui" \
   || { echo "dsh-tui package did not install"; false; }
 
-# The session's composition: a user preset copied from the shipped
-# `{{ preset }}` preset with its persona swapped for the benchmark's - the
-# same text the headless adapter renders, so the only differences to a
-# headless run are the tool set the preset carries and the TUI itself.
-mkdir -p "$DSH_HOME/.agent-presets/bench"
-python3 - "$DSH_HOME/.agent-presets/bench" <<'PYEOF'
-import re, sys, shutil
-dst = sys.argv[1]
-src = "/opt/dsh-runtime/node_modules/@deepseek-ai/dsh/config/agent-presets/{{ preset }}"
-t = open(f"{src}/agent.cordis.yml").read()
-persona = """You are a helpful software engineer assistant.{{ persona_rules }}
-
-When a task needs a long-running process (a server, daemon or watcher) to
-still be running after your turn ends, start it in its own session:
-`setsid -f nohup <command> > <log> 2>&1 < /dev/null &`. A bare `nohup ... &`
-is not enough here - the executor signals the whole process group when a
-turn finishes, so a merely backgrounded child is killed along with it.
-The `-f` matters as well: without it a form like `cd dir && setsid ... &`
-leaves the process inside the shell's process tree, and the tool kills that
-whole tree when the session ends.
-After starting one, confirm it is really listening (curl it, or `ss -ltn`)
-and leave it running.
-
-When you implement an API, keep to the documented response shape and
-return values in their natural JSON types - a number stays a JSON
-number, never a quoted string, because callers compare it numerically.
-Validate the input: an argument the endpoint cannot meaningfully answer
-for - missing, wrong type, or out of the range the operation is defined
-on - is a 4xx, not a 200 carrying a guess. Two ways this goes
-wrong even when the happy path is right, both measured in review: match a route
-on the PATH, not the raw request-target - a query string does not change the
-path, so /health?x=1 is still /health; and an input that would overflow or raise
-while you compute the answer (a huge integer, a division that cannot be
-represented) is out of range - return 4xx, never let it throw and drop the
-connection, which returns neither a result nor a status."""
-block = "    text: |\n" + "".join("      " + l + "\n" for l in persona.splitlines())
-# standard: `text: >-` folded block; minimal: `text: <one line>`. Replace
-# whichever form the persona row carries, leaving its other keys alone.
-pat = re.compile(r"(- id: persona\n  name: '@deepseek-ai/dsh-persona'\n  config:\n)"
-                 r"    text: (?:>-\n(?:      .*\n)+|.*\n)")
-new, n = pat.subn(lambda m: m.group(1) + block, t, count=1)
-assert n == 1, "persona row not found in shipped preset"
-open(f"{dst}/agent.cordis.yml", "w").write(new)
-open(f"{dst}/preset.yml", "w").write(
-    "name: bench\ndescription: shipped {{ preset }} with the benchmark persona\n")
-print("preset bench written from {{ preset }}")
-PYEOF
-
-# Profile patch: route the TUI at the serve, pin the effort and the preset.
-# The TUI resolves its route from THIS row (not agent-default-model), and a
-# route counts only when it names both provider and model.
+# The session's composition. dsh 0.1.5-rc.2 REMOVED the agent-presets
+# mechanism this used to copy from: there is no
+# config/agent-presets/<name>/agent.cordis.yml in the package any more, so the
+# regex that swapped the shipped preset's persona row has nothing to match.
+# The persona and the tool set are written straight into the profile's patch
+# layer instead - which is what a preset file always was, so this is the same
+# composition expressed in the mechanism that replaced it.
+#
+# Same persona text as the headless adapter, so a TUI run still differs from a
+# headless one only by the tool set and the TUI itself.
 cat > "$DSH_HOME/profiles/dsh-tui/cordis.patch.yml" <<'YAML'
+- id: system-prompt
+  config:
+    personaPrefix: |
+      You are a helpful software engineer assistant.{{ persona_rules }}
+
+      When a task needs a long-running process (a server, daemon or watcher) to
+      still be running after your turn ends, start it in its own session:
+      `setsid -f nohup <command> > <log> 2>&1 < /dev/null &`. A bare `nohup ... &`
+      is not enough here - the executor signals the whole process group when a
+      turn finishes, so a merely backgrounded child is killed along with it.
+      The `-f` matters as well: without it a form like `cd dir && setsid ... &`
+      leaves the process inside the shell's process tree, and the tool kills that
+      whole tree when the session ends.
+      After starting one, confirm it is really listening (curl it, or `ss -ltn`)
+      and leave it running.
+
+      When you implement an API, keep to the documented response shape and
+      return values in their natural JSON types - a number stays a JSON
+      number, never a quoted string, because callers compare it numerically.
+      Validate the input: an argument the endpoint cannot meaningfully answer
+      for - missing, wrong type, or out of the range the operation is defined
+      on - is a 4xx, not a 200 carrying a guess. Two ways this goes
+      wrong even when the happy path is right, both measured in review: match a route
+      on the PATH, not the raw request-target - a query string does not change the
+      path, so /health?x=1 is still /health; and an input that would overflow or raise
+      while you compute the answer (a huge integer, a division that cannot be
+      represented) is out of range - return 4xx, never let it throw and drop the
+      connection, which returns neither a result nor a status.
 - id: dsh-tui
   config:
     provider: qwen5090
     model: qwen3.8-27b
     effort: {{ effort }}
-    preset: bench
 YAML
+{% if preset == 'minimal' %}
+# `minimal`: the shipped presets are gone, so the reduced tool set is now
+# expressed as explicit disables - the same list the headless adapter carries.
+# `tool-subagent-report` is absent from that list on purpose: 0.1.5 dropped the
+# row, and disabling an id that is not in the tree is a silent no-op.
+# `tool-result-pruner` (new in 0.1.5) stays enabled - it trims tool results
+# rather than granting a capability.
+cat >> "$DSH_HOME/profiles/dsh-tui/cordis.patch.yml" <<'YAML'
+- id: tool-pwsh
+  disabled: true
+- id: tool-jobs
+  disabled: true
+- id: tool-fs
+  disabled: true
+- id: tool-fs-search
+  disabled: true
+- id: tool-skill
+  disabled: true
+- id: tool-subagent-control
+  disabled: true
+- id: tool-subagent-list-agents
+  disabled: true
+- id: tool-subagent
+  disabled: true
+- id: tool-subagent-fork
+  disabled: true
+- id: tool-workflow
+  disabled: true
+- id: tool-todo
+  disabled: true
+- id: tool-goal
+  disabled: true
+- id: tool-ralph
+  disabled: true
+- id: tool-web
+  disabled: true
+YAML
+{% endif %}
+
+# The TUI route rides in the same patch file written above: the TUI resolves
+# its route from the `dsh-tui` row (not agent-default-model), and a route
+# counts only when it names both provider and model. `preset:` is gone with
+# the preset mechanism itself.
 
 # Model route: the 5090 box's NInfer serve, canonical settings.
 cat > "$DSH_HOME/settings.yaml" <<'YAML'
@@ -309,6 +338,27 @@ cd "$__DSH_SETUP_PWD"
 # Readiness probe: composes the TUI profile without booting it, so a broken
 # bundle or preset fails HERE (surfaced as INSTALL_FAIL_STATUS), not mid-task.
 dsh --profile dsh-tui --dump-config >/dev/null; __dsh_probe_rc=$?
+
+# Persona guard. The readiness probe above cannot catch a persona that failed
+# to land: a cordis patch is merged as plain YAML and is never validated
+# against the plugin's schema, so an unknown config key survives
+# --dump-config and is then STRIPPED by zod when the plugin loads. That is
+# exactly how 0.1.5's removal of the `persona` key would have played out - a
+# clean install, a green probe, and an agent silently running without its
+# rules.
+#
+# The sentinel is from the setsid block, not the Rules block: `persona_rules`
+# is empty for the `baseline` persona, so a Rules grep would fail a run that
+# is configured correctly.
+#
+# Folded into __dsh_probe_rc rather than left as a bare `false`: the final
+# line of this script is what Terminal-Bench reads, so a guard that only
+# returned non-zero here would be overwritten by it and the install would
+# still score as healthy.
+if ! dsh --profile dsh-tui --dump-config 2>/dev/null | grep -q 'setsid -f nohup'; then
+  echo "PERSONA MISSING from composed dsh-tui profile - refusing to run"
+  __dsh_probe_rc=1
+fi
 
 # Echo the effort this run was configured with, so the sweep knob is visible in
 # the trial's own pane capture rather than only in the launching shell.

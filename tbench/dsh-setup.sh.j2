@@ -88,9 +88,18 @@ cat > headless/cordis.yml <<'YAML'
 YAML
 cat > headless/cordis.patch.yml <<'YAML'
 # Reproduces the harness's `minimal` agent preset for the headless profile.
+#
+# `personaPrefix`, not `persona`: dsh 0.1.5-rc.2's SystemPrompt.Config is
+# {includeHarnessIdentity, includeRuntimeContext, personaPrefix, personaSuffix,
+# toolOrder}. The old `persona` key is gone, and zod STRIPS an unknown key
+# instead of rejecting it - the persona would vanish with the run still
+# passing setup validation, and --dump-config would still show the key,
+# because the composition layer never validates against the plugin schema.
+# Prefix rather than suffix because this text replaces dsh's own persona
+# wholesale, which is what `persona` used to do.
 - id: system-prompt
   config:
-    persona: |
+    personaPrefix: |
       You are a helpful software engineer assistant.{{ persona_rules }}
 
       When a task needs a long-running process (a server, daemon or watcher) to
@@ -134,8 +143,6 @@ cat > headless/cordis.patch.yml <<'YAML'
   disabled: true
 - id: tool-subagent-fork
   disabled: true
-- id: tool-subagent-report
-  disabled: true
 - id: tool-workflow
   disabled: true
 - id: tool-todo
@@ -146,6 +153,12 @@ cat > headless/cordis.patch.yml <<'YAML'
   disabled: true
 - id: tool-web
   disabled: true
+# Two drifts against the list this was written from, both checked on
+# 0.1.5-rc.2: `tool-subagent-report` no longer exists (dropped rather than
+# disabled - a `disabled:` on an absent id is a silent no-op), and
+# `tool-result-pruner` is new. The pruner is left ENABLED: it trims tool
+# results rather than giving the agent a capability, so disabling it would
+# change context economics rather than the tool set under test.
 YAML
 
 # Model route: the 5090 box's NInfer serve, canonical settings.
@@ -252,6 +265,27 @@ cd "$__DSH_SETUP_PWD"
 # Readiness probe: composes the headless profile, so a broken bundle
 # install fails HERE (surfaced as INSTALL_FAIL_STATUS), not mid-task.
 dsh --profile headless --help >/dev/null; __dsh_probe_rc=$?
+
+# Persona guard. The readiness probe above cannot catch a persona that failed
+# to land: a cordis patch is merged as plain YAML and is never validated
+# against the plugin's schema, so an unknown config key survives
+# --dump-config and is then STRIPPED by zod when the plugin loads. That is
+# exactly how 0.1.5's removal of the `persona` key would have played out - a
+# clean install, a green probe, and an agent silently running without its
+# rules.
+#
+# The sentinel is from the setsid block, not the Rules block: `persona_rules`
+# is empty for the `baseline` persona, so a Rules grep would fail a run that
+# is configured correctly.
+#
+# Folded into __dsh_probe_rc rather than left as a bare `false`: the final
+# line of this script is what Terminal-Bench reads, so a guard that only
+# returned non-zero here would be overwritten by it and the install would
+# still score as healthy.
+if ! dsh --profile headless --dump-config 2>/dev/null | grep -q 'setsid -f nohup'; then
+  echo "PERSONA MISSING from composed headless profile - refusing to run"
+  __dsh_probe_rc=1
+fi
 
 # Echo the effort this run was configured with, so the sweep knob is visible in
 # the trial's own pane capture rather than only in the launching shell.

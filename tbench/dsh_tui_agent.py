@@ -41,6 +41,7 @@ from dsh_agent import (
 )
 
 TUI_VERSION = "0.9.2"  # the profile installed on the 5090 box, 2026-08-31
+DEFAULT_DSH_VERSION = "0.1.5-rc.2"  # see dsh_agent.py
 PRESETS = ("standard", "minimal")
 DEFAULT_PRESET = "standard"
 # The watcher's own ceiling on one turn; Terminal-Bench's
@@ -62,7 +63,7 @@ class DshTuiAgent(AbstractInstalledAgent):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._version = kwargs.get("version", "0.1.1-rc.2")
+        self._version = kwargs.get("version", DEFAULT_DSH_VERSION)
         self._effort = _effort()
         self._persona_rules = _persona_rules()
         self._preset = _preset()

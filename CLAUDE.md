@@ -745,15 +745,15 @@ selected by the `dsh-tui` profile patch), and the Terminal-Bench adapters
 
 The native-Linux install was updated 0.1.1-rc.2 -> **0.1.5-rc.2** (the npm
 `latest` tag; `0.1.6-alpha.2` exists on `alpha`). The tuning above still
-applies, but **the mechanism it names is gone** and the adapters above still
-render it:
+applies, but **the mechanism it names is gone**, so the adapters above were
+ported to the mechanism that replaced it:
 
 - There is no `config/agent-presets/` in the package any more, no
   `agent.cordis.yml` anywhere, and no `.agent-presets` string in `lib/`. The
-  regex in `tbench/dsh-tui-setup.sh.j2` that rewrites the shipped preset's
-  persona row therefore cannot match on 0.1.5 - it will fail its own
-  `assert n == 1`. Both `dsh-setup.sh.j2` and `dsh-tui-setup.sh.j2` need
-  porting before the next bench run.
+  adapters were **not** broken by this, because they pinned `0.1.1-rc.2` and
+  kept installing it - they had simply stopped describing the box. Both are
+  now ported and pinned to `0.1.5-rc.2` (`DEFAULT_DSH_VERSION`), so the
+  `dsh-tui` preset-rewrite regex and its `assert n == 1` are gone.
 - The persona is now the **`system-prompt` row** (`@deepseek-ai/dsh-system-prompt`,
   config keys `personaPrefix` / `personaSuffix`). The old `persona` row
   (`@deepseek-ai/dsh-persona`, `config.text`) is absent from the composed tree
@@ -769,6 +769,38 @@ render it:
 
 `settings.yaml` needed no porting - 0.1.5 accepts the same route shape, and
 `medium` + `maxTokens: 65536` are live there now.
+
+**The dangerous half was the headless adapter, which looked fine.** It already
+wrote `- id: system-prompt` into `cordis.patch.yml`, but under the config key
+`persona:`. On 0.1.5 that key does not exist, and zod **strips** an unknown key
+rather than rejecting it - so the bench would have installed cleanly, passed
+its readiness probe, and run every task with no persona at all. Two traps
+compound it, and both are now guarded:
+
+- **A cordis patch is merged as plain YAML and never validated against the
+  plugin schema**, so `--dump-config` renders `persona:` back to you intact.
+  It is proof the patch layer parsed, not proof the plugin accepted it. (Note
+  this cuts the other way from the `settings.yaml` case: for *composition*
+  the dump is authoritative, for *plugin config* it is not.)
+- **A patch entry's `config:` replaces the row's whole mapping**, it does not
+  merge into it. Writing `personaSuffix` alone silently drops the shipped
+  `personaPrefix`; write both.
+
+Both setup scripts now end with a persona guard that greps the composed tree
+for the `setsid -f nohup` sentinel and folds the result into `__dsh_probe_rc`
+(a bare `false` would be overwritten by the script's last line, which is what
+Terminal-Bench actually reads). The sentinel is from the setsid block rather
+than the Rules block because `persona_rules` is empty for the `baseline`
+persona.
+
+Tool sets moved too: `minimal` was a preset, and is now the explicit
+`disabled: true` list the headless adapter always carried. `DSH_TOOLS_MODE` is
+**not** the replacement - it is `native|ptc|both`, the tool-*calling* mode.
+Two ids drifted: `tool-subagent-report` is gone (a `disabled:` on an absent id
+is a silent no-op, so it was removed rather than left in), and
+`tool-result-pruner` is new and stays enabled - it trims tool results rather
+than granting a capability. Verified on the box: 14 disables apply, leaving
+`tool-bash` and the pruner.
 
 ## Architecture (three layers, one direction)
 
