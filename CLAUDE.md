@@ -793,6 +793,39 @@ Terminal-Bench actually reads). The sentinel is from the setsid block rather
 than the Rules block because `persona_rules` is empty for the `baseline`
 persona.
 
+### The TUI arm needs 0.10.2, and two probes that were lying
+
+`dsh-tui` **0.9.2 cannot boot on dsh 0.1.5** - it imports `resolveSessionPreset`
+from `@deepseek-ai/dsh-agent-presets`, removed with the preset mechanism, and
+dies at loader-apply. `TUI_VERSION` is **0.10.2**, which boots and drives a task
+(composer in 1 s, `turn/end` in 6 s, file verified from outside the harness).
+Note 0.10.2's own banner says it is validated against dsh **0.1.5-rc.1**, one
+patch behind the rc.2 pinned here - the pairing works but is not vendor-blessed.
+
+Two silent failures found getting there, both now guarded:
+
+- **`--dump-config` exits 0 on a TUI that cannot boot.** Resolving the config
+  tree never imports the plugin's own modules, so 0.9.2 dumped a clean
+  534-line tree and then died the instant it started. That command was the
+  adapter's entire readiness probe, so a trial would have passed setup and
+  burned its whole agent timeout on a TUI that never drew a composer.
+  `dsh-tui-setup.sh.j2` now also *starts* the TUI and greps for
+  `failed to apply loader entry`. This is the third distinct thing
+  `--dump-config` has been wrong about; treat it as "the composition layer
+  parsed", never as "this will run".
+- **The session log was renamed** `session.jsonl.zstd` ->
+  `session.v3.jsonl.zstd`. Both adapters found it by exact name, so the
+  watcher saw no `turn/end`, every trial would have run to `max_turn_sec`
+  instead of ending with the turn, and the max-tokens continuation could
+  never fire. Measured directly: 300 s timeout before the fix, 6 s after.
+  Globbed as `session*.jsonl.zstd` now. `turn/end` itself is unchanged in v3.
+
+Testing the TUI by hand needs `tmux` on the box, and one rule: **run `dsh`
+bare in the pane.** Piping its stdout (`| tee`) makes `isatty(stdout)` false
+and the TUI exits without drawing a thing - which reads exactly like the 0.9.2
+crash and cost a wasted diagnosis here. Capture with `tmux pipe-pane`, which
+taps the pty instead of replacing it.
+
 Tool sets moved too: `minimal` was a preset, and is now the explicit
 `disabled: true` list the headless adapter always carried. `DSH_TOOLS_MODE` is
 **not** the replacement - it is `native|ptc|both`, the tool-*calling* mode.

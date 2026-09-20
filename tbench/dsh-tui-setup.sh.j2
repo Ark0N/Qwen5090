@@ -282,7 +282,8 @@ WATCH="${DSH_RUN_LOGS:-/installed-agent}/dsh-tui-watch.log"
   echo "task submitted $(date +%T)"
   t1=$(date +%s); log=""; ends=0; cont=0
   while :; do
-    [ -z "$log" ] && log=$(find "$DSH_HOME/sessions" -name session.jsonl.zstd -newer "$MARK" 2>/dev/null | head -1)
+    # See the note in dsh-setup.sh.j2: 0.1.5 writes session.v3.jsonl.zstd.
+    [ -z "$log" ] && log=$(find "$DSH_HOME/sessions" -name 'session*.jsonl.zstd' -newer "$MARK" 2>/dev/null | head -1)
     # Copy the (append-only, zstd-framed) log on every poll: a trial that hits
     # Terminal-Bench's agent timeout is killed mid-turn, before the post-exit
     # copy below ever runs, and those are the turns whose record matters most.
@@ -338,6 +339,23 @@ cd "$__DSH_SETUP_PWD"
 # Readiness probe: composes the TUI profile without booting it, so a broken
 # bundle or preset fails HERE (surfaced as INSTALL_FAIL_STATUS), not mid-task.
 dsh --profile dsh-tui --dump-config >/dev/null; __dsh_probe_rc=$?
+
+# Boot probe. --dump-config is NOT sufficient for this profile, measured
+# 2026-09-20: dsh-tui 0.9.2 against dsh 0.1.5-rc.2 dumps a clean 534-line tree
+# and exits 0, then dies the moment it actually boots -
+#   failed to apply loader entry dsh-tui: the requested module
+#   '@deepseek-ai/dsh-agent-presets' does not provide an export named
+#   'resolveSessionPreset'
+# because the config tree resolves without importing the plugin's own modules.
+# A trial whose setup passed here would burn its whole agent timeout on a TUI
+# that never drew a composer. So start it for real and look for the loader
+# error; a healthy TUI just sits there until the timeout kills it.
+__tui_boot=$(timeout 20 dsh --profile dsh-tui </dev/null 2>&1 | head -40)
+if printf '%s' "$__tui_boot" | grep -qE 'plugin tree failed to load|failed to apply loader entry'; then
+  echo "dsh-tui failed to boot against dsh {{ version }}:"
+  printf '%s\n' "$__tui_boot" | head -12
+  __dsh_probe_rc=1
+fi
 
 # Persona guard. The readiness probe above cannot catch a persona that failed
 # to land: a cordis patch is merged as plain YAML and is never validated

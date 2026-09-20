@@ -40,7 +40,12 @@ from dsh_agent import (
     collect_container_logs,
 )
 
-TUI_VERSION = "0.9.2"  # the profile installed on the 5090 box, 2026-08-31
+# 0.9.2 CANNOT boot on dsh 0.1.5: it imports `resolveSessionPreset` from
+# @deepseek-ai/dsh-agent-presets, which 0.1.5 removed along with the preset
+# mechanism, and dies at loader-apply time. 0.10.2 boots and drives a task
+# (verified on the box 2026-09-20). Note its own banner says it is validated
+# against dsh 0.1.5-rc.1, one patch behind the rc.2 pinned here.
+TUI_VERSION = "0.10.2"
 DEFAULT_DSH_VERSION = "0.1.5-rc.2"  # see dsh_agent.py
 PRESETS = ("standard", "minimal")
 DEFAULT_PRESET = "standard"

@@ -233,7 +233,11 @@ mkdir -p "$LOGS"
 task="$(cat "$TASK_FILE")"
 MARK=$(mktemp)
 last_reason() {   # reason.kind of the newest session's last turn/end, or "none"
-  local log; log=$(find "$DSH_HOME/sessions" -name session.jsonl.zstd -newer "$MARK" 2>/dev/null -printf '%T@ %p\n' | sort -n | tail -1 | cut -d' ' -f2-)
+  # dsh 0.1.5 renamed the session log to `session.v3.jsonl.zstd`; 0.1.1 wrote
+  # `session.jsonl.zstd`. Match both - a miss here is silent and expensive: the
+  # watcher never sees turn/end, so every trial runs to its timeout instead of
+  # ending when the turn does (and the max-tokens continuation never fires).
+  local log; log=$(find "$DSH_HOME/sessions" -name 'session*.jsonl.zstd' -newer "$MARK" 2>/dev/null -printf '%T@ %p\n' | sort -n | tail -1 | cut -d' ' -f2-)
   [ -n "$log" ] || { echo none; return; }
   zstd -dcq "$log" 2>/dev/null | grep '"type":"turn/end"' | tail -1 | grep -oE '"kind": *"[^"]+"' | head -1 | grep -oE '"[^"]+"$' | tr -d '"' || echo none
 }
