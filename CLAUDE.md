@@ -21,7 +21,7 @@ committed and synced). `.claude/` stays ignored — it is only harness runtime s
 | GPU | RTX 5090, 32 GB (32,607 MiB), `sm_120`, PCIe gen 5 x16, one 12VHPWR; 600 W stock limit, 596.6 W peak measured |
 | RAM | 2×16 GB Lexar DDR5, CL26 (~31.7 GB usable); WSL2 gets 20 GB + 8 GB swap (`.wslconfig`, 12 GB reserved for Windows) |
 | storage | C: plus a large **E:** (`QWEN5090_DRIVE`) for GGUFs, llama.cpp and snapshots |
-| PSU | ASUS ROG Thor 1200P3, 1200 W Platinum. Worst case is ~600 W GPU + ≤230 W CPU package, so raw capacity is not a crash suspect; its transient handling and the cable still are (see the crash section below) |
+| PSU | ASUS ROG Thor 1200P3, 1200 W Platinum — ample for ~600 W GPU + ≤230 W CPU package. The GPU crashes were its 12VHPWR not being fully seated, fixed by reseating (see the crash section below) |
 | OS | Windows 11 (tailnet `gamingpc`) and Ubuntu 26.04 (`terstuserubuntu`), one NIC `eno1` |
 
 "The Windows box" and "the
@@ -1062,14 +1062,13 @@ A full-window run — server started by `serve.sh`, a real code-generation task 
   The sizing stays raise-only, so an existing `.wslconfig` at 24 GB must be lowered
   by hand, then `wsl --shutdown`.
 
-## The GPU falls off under load — resolved, pending a full-day soak (2026-08-21)
+## The GPU falls off under load — resolved: the 12VHPWR was not seated (2026-08-21)
 
-**Status: the cause was physical — the 12VHPWR was not fully seated — and both
-arms of the validation are clean so far.** Linux ran 42.6 minutes of unbroken
-decode load with zero faults; Windows has since served for a few hours under
-real use with nothing at all. That clears the fastest of the eight crashes
-several times over and is a genuine signal, but the standard this file set for
-itself is a full day, so **do not write "confirmed" yet**.
+**Status: fixed. The cause was physical — the 12VHPWR was not fully seated.**
+The maintainer confirmed it on 2026-10-12, seven weeks after the 2026-08-21
+reseat, on both OSes. Before that, Linux ran 42.6 minutes of unbroken decode
+load with zero faults and Windows served for hours under real use; the
+"pending a full-day soak" caveat this section carried until then is closed.
 
 Everything below this header is now a **historical record**. It is kept for one
 reason: it is what falsified five software explanations, and a future reader
@@ -1267,8 +1266,8 @@ not, on its own, meet the bar this section set.
 What would close it: a day of uptime with active serving on either OS, or a
 Windows run logged the way the Linux one was — `gpu-telemetry-*.log` alongside
 the server, so the power ceiling and the peak draw are on record rather than
-inferred. Until then the finding stands as *very likely* and the section stays
-open.
+inferred. *(Closed 2026-10-12: the maintainer confirmed the fix after seven
+weeks of use since the reseat — see the status at the top of this section.)*
 
 **This run is uncapped at 600 W, and that is deliberate** — it makes the test
 stronger, not weaker. The 450 W cap reverted at the 17:42 reboot (persistence
