@@ -12,6 +12,21 @@ ZIP; the entire UX is: unzip → double-click `Start Qwen 5090.cmd` → click In
 **This file is tracked** (it was gitignored until 2026-08-20, when the maintainer asked for it to be
 committed and synced). `.claude/` stays ignored — it is only harness runtime state.
 
+## The hardware (one PC, dual-boot)
+
+| | |
+|---|---|
+| board | ASUS ROG Strix X670E-F Gaming WiFi — AM5 socket, AMD X670E chipset, ATX |
+| CPU | AM5 Ryzen, **model not recorded** |
+| GPU | RTX 5090, 32 GB (32,607 MiB), `sm_120`, PCIe gen 5 x16, one 12VHPWR; 600 W stock limit, 596.6 W peak measured |
+| RAM | ~31.7 GB; WSL2 gets 20 GB + 8 GB swap (`.wslconfig`, 12 GB reserved for Windows) |
+| storage | C: plus a large **E:** (`QWEN5090_DRIVE`) for GGUFs, llama.cpp and snapshots |
+| PSU | **not recorded** — still a named suspect in the crash section below |
+| OS | Windows 11 (tailnet `gamingpc`) and Ubuntu 26.04 (`terstuserubuntu`), one NIC `eno1` |
+
+Fill in the two gaps from Ubuntu with `lscpu` and the PSU label. "The Windows box" and "the
+native Linux box" elsewhere in this file are this one machine.
+
 ## The core constraint: cross-platform development
 
 *(Applies when developing from Linux **without a GPU**. If you are on the RTX 5090 PC itself, this
