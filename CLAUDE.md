@@ -21,10 +21,10 @@ committed and synced). `.claude/` stays ignored — it is only harness runtime s
 | GPU | RTX 5090, 32 GB (32,607 MiB), `sm_120`, PCIe gen 5 x16, one 12VHPWR; 600 W stock limit, 596.6 W peak measured |
 | RAM | 2×16 GB Lexar DDR5, CL26 (~31.7 GB usable); WSL2 gets 20 GB + 8 GB swap (`.wslconfig`, 12 GB reserved for Windows) |
 | storage | C: plus a large **E:** (`QWEN5090_DRIVE`) for GGUFs, llama.cpp and snapshots |
-| PSU | **not recorded** — still a named suspect in the crash section below |
+| PSU | ASUS ROG Thor 1200P3, 1200 W Platinum. Worst case is ~600 W GPU + ≤230 W CPU package, so raw capacity is not a crash suspect; its transient handling and the cable still are (see the crash section below) |
 | OS | Windows 11 (tailnet `gamingpc`) and Ubuntu 26.04 (`terstuserubuntu`), one NIC `eno1` |
 
-The PSU is the one gap left — read it off the label. "The Windows box" and "the
+"The Windows box" and "the
 native Linux box" elsewhere in this file are this one machine.
 
 ## The core constraint: cross-platform development
